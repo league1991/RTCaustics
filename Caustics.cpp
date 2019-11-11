@@ -68,6 +68,8 @@ void Caustics::loadScene(const std::string& filename, const Fbo* pTargetFbo)
     mpScene = RtScene::loadFromFile(filename, RtBuildFlags::None, Model::LoadFlags::None);
     if (!mpScene) return;
 
+    mpQuad = Model::createFromFile("Caustics/quad.obj");
+
     Model::SharedPtr pModel = mpScene->getModel(0);
     float radius = pModel->getRadius();
 
@@ -95,7 +97,7 @@ void Caustics::loadScene(const std::string& filename, const Fbo* pTargetFbo)
     mpPhotonTraceRenderer = RtSceneRenderer::create(mpScene);
 
     mpRasterPass = RasterScenePass::create(mpScene, "Caustics.ps.hlsl", "", "main");
-    mpPhotonScatterPass = RasterScenePass::create(mpScene, "PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
+    //mpPhotonScatterPass = RasterScenePass::create(mpScene, "PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
 }
 
 void Caustics::onLoad(RenderContext* pRenderContext)
@@ -128,6 +130,11 @@ void Caustics::onLoad(RenderContext* pRenderContext)
     mpPhotonTraceState = RtState::create();
     mpPhotonTraceState->setProgram(mpPhotonTraceProgram);
     mpPhotonTraceState->setMaxTraceRecursionDepth(3);
+
+    mpPhotonScatterState = GraphicsState::create();
+    mpPhotonScatterProgram = GraphicsProgram::createFromFile("PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
+    mpPhotonScatterState->setProgram(mpPhotonScatterProgram);
+    mpPhotonScatterVars = GraphicsVars::create(mpPhotonScatterProgram->getReflector());
 
     loadScene(kDefaultScene, gpFramework->getTargetFbo().get());
 
@@ -164,7 +171,16 @@ void Caustics::renderRT(RenderContext* pContext, const Fbo* pTargetFbo)
 
     // photon scattering
     pContext->clearTexture(mpCausticsMap->getColorTexture(0).get());
-    mpPhotonScatterPass->renderScene(pContext, mpCausticsMap);
+    pContext->clearTexture(mpCausticsMap->getDepthStencilTexture().get(), vec4(1.f, 1.f, 1.f, 1.f));
+    //mpPhotonScatterPass->renderScene(pContext, mpCausticsMap);
+    glm::mat4 wvp = mpCamera->getProjMatrix() * mpCamera->getViewMatrix();
+    ConstantBuffer::SharedPtr pPerFrameCB = mpPhotonScatterVars["PerFrameCB"];
+    pPerFrameCB["gWorldMat"] = glm::mat4();
+    pPerFrameCB["gWvpMat"] = wvp;
+    pPerFrameCB["gEyePosW"] = mpCamera->getPosition();
+    mpPhotonScatterState->setVao(mpQuad->getMesh(0)->getVao());
+    const int instanceCount = 10;
+    pContext->drawIndexedInstanced(mpPhotonScatterState.get(), mpPhotonScatterVars.get(), mpQuad->getMesh(0)->getIndexCount(), instanceCount, 0, 0, 0);
 
     // Render output
     pContext->clearUAV(mpRtOut->getUAV().get(), kClearColor);

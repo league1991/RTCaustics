@@ -46,21 +46,25 @@ private:
     bool mUseDOF = false;
     uint32_t mSampleIndex = 0xdeadbeef;
 
+    Model::SharedPtr mpQuad;
     RtScene::SharedPtr mpScene;
     Camera::SharedPtr mpCamera;
     FirstPersonCameraController mCamController;
 
     RasterScenePass::SharedPtr mpRasterPass;
 
-    RasterScenePass::SharedPtr mpPhotonScatterPass;
+    //RasterScenePass::SharedPtr mpPhotonScatterPass;
+    GraphicsState::SharedPtr mpPhotonScatterState;
+    GraphicsProgram::SharedPtr mpPhotonScatterProgram;
+    GraphicsVars::SharedPtr mpPhotonScatterVars;
 
-    RtProgram::SharedPtr mpRaytraceProgram = nullptr;
+    RtProgram::SharedPtr mpRaytraceProgram;
     RtProgramVars::SharedPtr mpRtVars;
     RtState::SharedPtr mpRtState;
     RtSceneRenderer::SharedPtr mpRtRenderer;
     Texture::SharedPtr mpRtOut;
 
-    RtProgram::SharedPtr mpPhotonTraceProgram = nullptr;
+    RtProgram::SharedPtr mpPhotonTraceProgram;
     RtProgramVars::SharedPtr mpPhotonTraceVars;
     RtState::SharedPtr mpPhotonTraceState;
     RtSceneRenderer::SharedPtr mpPhotonTraceRenderer;
