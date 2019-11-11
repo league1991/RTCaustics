@@ -120,7 +120,7 @@ void Caustics::onLoad(RenderContext* pRenderContext)
     mpRtState->setMaxTraceRecursionDepth(3); // 1 for calling TraceRay from RayGen, 1 for calling it from the primary-ray ClosestHitShader for reflections, 1 for reflection ray tracing a shadow ray
 
     RtProgram::Desc photonTraceProgDesc;
-    photonTraceProgDesc.addShaderLibrary("PhotonTracing.rt.hlsl");
+    photonTraceProgDesc.addShaderLibrary("PhotonTrace.rt.hlsl");
     photonTraceProgDesc.setRayGen("rayGen");
     photonTraceProgDesc.addHitGroup(0, "primaryClosestHit", "");
     photonTraceProgDesc.addMiss(0, "primaryMiss");
@@ -167,11 +167,12 @@ void Caustics::renderRT(RenderContext* pContext, const Fbo* pTargetFbo)
 
     // photon tracing
     mpPhotonTraceVars->getRayGenVars()->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
+    mpPhotonTraceVars->getRayGenVars()->setTexture("gOutput", mpRtOut);
     mpRtRenderer->renderScene(pContext, mpPhotonTraceVars, mpPhotonTraceState, uvec3(CAUSTICS_MAP_SIZE, CAUSTICS_MAP_SIZE, 1), mpCamera.get());
 
     // photon scattering
     pContext->clearTexture(mpCausticsMap->getColorTexture(0).get());
-    pContext->clearTexture(mpCausticsMap->getDepthStencilTexture().get(), vec4(1.f, 1.f, 1.f, 1.f));
+    //pContext->clearTexture(mpCausticsMap->getDepthStencilTexture().get(), vec4(1.f, 1.f, 1.f, 1.f));
     //mpPhotonScatterPass->renderScene(pContext, mpCausticsMap);
     glm::mat4 wvp = mpCamera->getProjMatrix() * mpCamera->getViewMatrix();
     ConstantBuffer::SharedPtr pPerFrameCB = mpPhotonScatterVars["PerFrameCB"];
@@ -183,9 +184,9 @@ void Caustics::renderRT(RenderContext* pContext, const Fbo* pTargetFbo)
     pContext->drawIndexedInstanced(mpPhotonScatterState.get(), mpPhotonScatterVars.get(), mpQuad->getMesh(0)->getIndexCount(), instanceCount, 0, 0, 0);
 
     // Render output
-    pContext->clearUAV(mpRtOut->getUAV().get(), kClearColor);
-    mpRtVars->getRayGenVars()->setTexture("gOutput", mpRtOut);
-    mpRtRenderer->renderScene(pContext, mpRtVars, mpRtState, uvec3(pTargetFbo->getWidth(), pTargetFbo->getHeight(), 1), mpCamera.get());
+    //pContext->clearUAV(mpRtOut->getUAV().get(), kClearColor);
+    //mpRtVars->getRayGenVars()->setTexture("gOutput", mpRtOut);
+    //mpRtRenderer->renderScene(pContext, mpRtVars, mpRtState, uvec3(pTargetFbo->getWidth(), pTargetFbo->getHeight(), 1), mpCamera.get());
 
     pContext->blit(mpRtOut->getSRV(), pTargetFbo->getRenderTargetView(0));
 }

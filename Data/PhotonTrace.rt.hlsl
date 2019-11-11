@@ -151,7 +151,7 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
             Photon photon;
             photon.posW = posW;
             photon.normalW = sd.N;
-            photon.color = float(1, 1, 1);
+            photon.color = float3(1, 1, 1);
             gPhotonBuffer.Append(photon);
         }
     }
@@ -205,9 +205,11 @@ void rayGen()
     PrimaryRayData hitData;
     hitData.depth = 0;
     TraceRay( gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, hitData );
-    gOutput[launchIndex.xy] = hitData.color;
+    gOutput[launchIndex.xy] = float4(1, 0, 0, 1);// hitData.color;
 
-    PhotonBuffer photon;
-    photon.screenPos = int2(0, 0);
-    gPhotonBuffer[0] = photon;
+    Photon photon;
+    photon.posW = float3(0, 0, 0);
+    photon.normalW = float3(0, 0, 0);
+    photon.color = float3(0, 0, 0);
+    //gPhotonBuffer[0] = photon;
 }

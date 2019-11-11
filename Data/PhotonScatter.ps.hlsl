@@ -37,6 +37,15 @@ struct Photon
 };
 AppendStructuredBuffer<Photon> gPhotonBuffer;
 
+cbuffer PerFrameCB : register(b0)
+{
+    float4x4 gWvpMat;
+    float4x4 gWorldMat;
+    float3 gEyePosW;
+    float gLightIntensity;
+    float gSurfaceRoughness;
+};
+
 struct PhotonVSOut
 {
     //INTERPOLATION_MODE float3 normalW    : NORMAL;
@@ -52,11 +61,12 @@ struct PhotonVSOut
 PhotonVSOut photonScatterVS(VertexIn vIn)
 {
     PhotonVSOut vOut;
-    float4x4 worldMat = getWorldMat(vIn);
-    float4 posW = mul(vIn.pos, worldMat);
-    //vOut.posW = posW.xyz;
-    vOut.posH = mul(posW, gCamera.viewProjMat);
+    //float4x4 worldMat = getWorldMat(vIn);
+    //float4 posW = mul(vIn.pos, worldMat);
+    ////vOut.posW = posW.xyz;
+    //vOut.posH = mul(posW, gCamera.viewProjMat);
 
+    vOut.posH = mul(vIn.pos, gWvpMat);
     return vOut;
 }
 
