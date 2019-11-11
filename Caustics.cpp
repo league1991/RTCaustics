@@ -27,8 +27,10 @@
 ***************************************************************************/
 #include "Caustics.h"
 
-static const glm::vec4 kClearColor(0.38f, 0.52f, 0.10f, 1);
-static const std::string kDefaultScene = "Arcade/Arcade.fscene";
+#define CAUSTICS_MAP_SIZE 1024
+
+static const glm::vec4 kClearColor(0.f, 0.f, 0.f, 1);
+static const std::string kDefaultScene = "Caustics/ring.fscene";
 
 std::string to_string(const vec3& v)
 {
@@ -37,7 +39,7 @@ std::string to_string(const vec3& v)
     return s;
 }
 
-void HelloDXR::onGuiRender(Gui* pGui)
+void Caustics::onGuiRender(Gui* pGui)
 {
     pGui->addCheckBox("Ray Trace", mRayTrace);
     pGui->addCheckBox("Use Depth of Field", mUseDOF);
@@ -61,7 +63,7 @@ void HelloDXR::onGuiRender(Gui* pGui)
     mpCamera->renderUI(pGui);
 }
 
-void HelloDXR::loadScene(const std::string& filename, const Fbo* pTargetFbo)
+void Caustics::loadScene(const std::string& filename, const Fbo* pTargetFbo)
 {
     mpScene = RtScene::loadFromFile(filename, RtBuildFlags::None, Model::LoadFlags::None);
     if (!mpScene) return;
@@ -85,13 +87,18 @@ void HelloDXR::loadScene(const std::string& filename, const Fbo* pTargetFbo)
     float farZ = radius * 10;
     mpCamera->setDepthRange(nearZ, farZ);
     mpCamera->setAspectRatio((float)pTargetFbo->getWidth() / (float)pTargetFbo->getHeight());
+
     mpRtVars = RtProgramVars::create(mpRaytraceProgram, mpScene);
     mpRtRenderer = RtSceneRenderer::create(mpScene);
 
-    mpRasterPass = RasterScenePass::create(mpScene, "HelloDXR.ps.hlsl", "", "main");
+    mpPhotonTraceVars = RtProgramVars::create(mpPhotonTraceProgram, mpScene);
+    mpPhotonTraceRenderer = RtSceneRenderer::create(mpScene);
+
+    mpRasterPass = RasterScenePass::create(mpScene, "Caustics.ps.hlsl", "", "main");
+    mpPhotonScatterPass = RasterScenePass::create(mpScene, "PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
 }
 
-void HelloDXR::onLoad(RenderContext* pRenderContext)
+void Caustics::onLoad(RenderContext* pRenderContext)
 {
     if (gpDevice->isFeatureSupported(Device::SupportedFeatures::Raytracing) == false)
     {
@@ -99,59 +106,91 @@ void HelloDXR::onLoad(RenderContext* pRenderContext)
     }
 
     RtProgram::Desc rtProgDesc;
-    rtProgDesc.addShaderLibrary("HelloDXR.rt.hlsl").setRayGen("rayGen");
-    rtProgDesc.addHitGroup(0, "primaryClosestHit", "").addMiss(0, "primaryMiss");
-    rtProgDesc.addHitGroup(1, "", "shadowAnyHit").addMiss(1, "shadowMiss");
-
+    rtProgDesc.addShaderLibrary("Caustics.rt.hlsl");
+    rtProgDesc.setRayGen("rayGen");
+    rtProgDesc.addHitGroup(0, "primaryClosestHit", "");
+    rtProgDesc.addMiss(0, "primaryMiss");
+    rtProgDesc.addHitGroup(1, "", "shadowAnyHit");
+    rtProgDesc.addMiss(1, "shadowMiss");
     mpRaytraceProgram = RtProgram::create(rtProgDesc);
-
-    loadScene(kDefaultScene, gpFramework->getTargetFbo().get());
-
     mpRtState = RtState::create();
     mpRtState->setProgram(mpRaytraceProgram);
     mpRtState->setMaxTraceRecursionDepth(3); // 1 for calling TraceRay from RayGen, 1 for calling it from the primary-ray ClosestHitShader for reflections, 1 for reflection ray tracing a shadow ray
+
+    RtProgram::Desc photonTraceProgDesc;
+    photonTraceProgDesc.addShaderLibrary("PhotonTracing.rt.hlsl");
+    photonTraceProgDesc.setRayGen("rayGen");
+    photonTraceProgDesc.addHitGroup(0, "primaryClosestHit", "");
+    photonTraceProgDesc.addMiss(0, "primaryMiss");
+    photonTraceProgDesc.addHitGroup(1, "", "shadowAnyHit");
+    photonTraceProgDesc.addMiss(1, "shadowMiss");
+    mpPhotonTraceProgram = RtProgram::create(photonTraceProgDesc);
+    mpPhotonTraceState = RtState::create();
+    mpPhotonTraceState->setProgram(mpPhotonTraceProgram);
+    mpPhotonTraceState->setMaxTraceRecursionDepth(3);
+
+    loadScene(kDefaultScene, gpFramework->getTargetFbo().get());
+
 }
 
-void HelloDXR::setPerFrameVars(const Fbo* pTargetFbo)
+void Caustics::setCommonVars(GraphicsVars* pVars, const Fbo* pTargetFbo)
 {
-    PROFILE("setPerFrameVars");
-    GraphicsVars* pVars = mpRtVars->getGlobalVars().get();
     ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
     pCB["invView"] = glm::inverse(mpCamera->getViewMatrix());
     pCB["viewportDims"] = vec2(pTargetFbo->getWidth(), pTargetFbo->getHeight());
     float fovY = focalLengthToFovY(mpCamera->getFocalLength(), Camera::kDefaultFrameHeight);
     pCB["tanHalfFovY"] = tanf(fovY * 0.5f);
-    pCB["sampleIndex"] = mSampleIndex++;
+    pCB["sampleIndex"] = mSampleIndex;
     pCB["useDOF"] = mUseDOF;
 }
 
-void HelloDXR::renderRT(RenderContext* pContext, const Fbo* pTargetFbo)
+void Caustics::setPerFrameVars(const Fbo* pTargetFbo)
+{
+    PROFILE("setPerFrameVars");
+    GraphicsVars* pVars = mpRtVars->getGlobalVars().get();
+    setCommonVars(mpRtVars->getGlobalVars().get(), pTargetFbo);
+    setCommonVars(mpPhotonTraceVars->getGlobalVars().get(), pTargetFbo);
+    mSampleIndex++;
+}
+
+void Caustics::renderRT(RenderContext* pContext, const Fbo* pTargetFbo)
 {
     PROFILE("renderRT");
     setPerFrameVars(pTargetFbo);
 
+    // photon tracing
+    mpPhotonTraceVars->getRayGenVars()->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
+    mpRtRenderer->renderScene(pContext, mpPhotonTraceVars, mpPhotonTraceState, uvec3(CAUSTICS_MAP_SIZE, CAUSTICS_MAP_SIZE, 1), mpCamera.get());
+
+    // photon scattering
+    pContext->clearTexture(mpCausticsMap->getColorTexture(0).get());
+    mpPhotonScatterPass->renderScene(pContext, mpCausticsMap);
+
+    // Render output
     pContext->clearUAV(mpRtOut->getUAV().get(), kClearColor);
     mpRtVars->getRayGenVars()->setTexture("gOutput", mpRtOut);
-
     mpRtRenderer->renderScene(pContext, mpRtVars, mpRtState, uvec3(pTargetFbo->getWidth(), pTargetFbo->getHeight(), 1), mpCamera.get());
+
     pContext->blit(mpRtOut->getSRV(), pTargetFbo->getRenderTargetView(0));
 }
 
-void HelloDXR::onFrameRender(RenderContext* pRenderContext, const Fbo::SharedPtr& pTargetFbo)
+void Caustics::onFrameRender(RenderContext* pRenderContext, const Fbo::SharedPtr& pTargetFbo)
 {
     pRenderContext->clearFbo(pTargetFbo.get(), kClearColor, 1.0f, 0, FboAttachmentType::All);
 
     if(mpScene)
     {
         mCamController.update();
-        if (mRayTrace) renderRT(pRenderContext, pTargetFbo.get());
-        else mpRasterPass->renderScene(pRenderContext, pTargetFbo);
+        if (mRayTrace)
+            renderRT(pRenderContext, pTargetFbo.get());
+        else
+            mpRasterPass->renderScene(pRenderContext, pTargetFbo);
     }
 
     TextRenderer::render(pRenderContext, gpFramework->getFrameRate().getMsg(), pTargetFbo, { 20, 20 });
 }
 
-bool HelloDXR::onKeyEvent(const KeyboardEvent& keyEvent)
+bool Caustics::onKeyEvent(const KeyboardEvent& keyEvent)
 {
     if (mCamController.onKeyEvent(keyEvent))
     {
@@ -165,12 +204,12 @@ bool HelloDXR::onKeyEvent(const KeyboardEvent& keyEvent)
     return false;
 }
 
-bool HelloDXR::onMouseEvent(const MouseEvent& mouseEvent)
+bool Caustics::onMouseEvent(const MouseEvent& mouseEvent)
 {
     return mCamController.onMouseEvent(mouseEvent);
 }
 
-void HelloDXR::onResizeSwapChain(uint32_t width, uint32_t height)
+void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
 {
     float h = (float)height;
     float w = (float)width;
@@ -183,13 +222,16 @@ void HelloDXR::onResizeSwapChain(uint32_t width, uint32_t height)
     }
 
     mpRtOut = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
+    mpPhotonBuffer = StructuredBuffer::create(mpPhotonTraceProgram->getRayGenProgram().get(), std::string("gPhotonBuffer"), CAUSTICS_MAP_SIZE * CAUSTICS_MAP_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
+    //mpCausticsMap = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
+    mpCausticsMap = Fbo::create2D(width, height, ResourceFormat::RGBA16Float);
 }
 
 int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd)
 {
-    HelloDXR::UniquePtr pRenderer = std::make_unique<HelloDXR>();
+    Caustics::UniquePtr pRenderer = std::make_unique<Caustics>();
     SampleConfig config;
-    config.windowDesc.title = "HelloDXR";
+    config.windowDesc.title = "Caustics";
     config.windowDesc.resizableWindow = true;
 
     Sample::run(config, pRenderer);

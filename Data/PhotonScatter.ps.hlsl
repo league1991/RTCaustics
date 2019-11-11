@@ -25,54 +25,54 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
-#pragma once
-#include "Falcor.h"
-#include "FalcorExperimental.h"
+__import ShaderCommon;
+__import Shading;
+__import DefaultVS;
 
-using namespace Falcor;
-
-class Caustics : public IRenderer
+struct Photon
 {
-public:
-    void onLoad(RenderContext* pRenderContext) override;
-    void onFrameRender(RenderContext* pRenderContext, const Fbo::SharedPtr& pTargetFbo) override;
-    void onResizeSwapChain(uint32_t width, uint32_t height) override;
-    bool onKeyEvent(const KeyboardEvent& keyEvent) override;
-    bool onMouseEvent(const MouseEvent& mouseEvent) override;
-    void onGuiRender(Gui* pGui) override;
-
-private:
-    bool mRayTrace = true;
-    bool mUseDOF = false;
-    uint32_t mSampleIndex = 0xdeadbeef;
-
-    RtScene::SharedPtr mpScene;
-    Camera::SharedPtr mpCamera;
-    FirstPersonCameraController mCamController;
-
-    RasterScenePass::SharedPtr mpRasterPass;
-
-    RasterScenePass::SharedPtr mpPhotonScatterPass;
-
-    RtProgram::SharedPtr mpRaytraceProgram = nullptr;
-    RtProgramVars::SharedPtr mpRtVars;
-    RtState::SharedPtr mpRtState;
-    RtSceneRenderer::SharedPtr mpRtRenderer;
-    Texture::SharedPtr mpRtOut;
-
-    RtProgram::SharedPtr mpPhotonTraceProgram = nullptr;
-    RtProgramVars::SharedPtr mpPhotonTraceVars;
-    RtState::SharedPtr mpPhotonTraceState;
-    RtSceneRenderer::SharedPtr mpPhotonTraceRenderer;
-
-    // Caustics map
-    //Texture::SharedPtr mpCausticsMap;
-    Fbo::SharedPtr mpCausticsMap;
-    StructuredBuffer::SharedPtr  mpPhotonBuffer;
-
-
-    void setPerFrameVars(const Fbo* pTargetFbo);
-    void renderRT(RenderContext* pContext, const Fbo* pTargetFbo);
-    void loadScene(const std::string& filename, const Fbo* pTargetFbo);
-    void setCommonVars(GraphicsVars* pVars, const Fbo* pTargetFbo);
+    float3 posW;
+    float3 normalW;
+    float3 color;
 };
+AppendStructuredBuffer<Photon> gPhotonBuffer;
+
+struct PhotonVSOut
+{
+    //INTERPOLATION_MODE float3 normalW    : NORMAL;
+    //INTERPOLATION_MODE float3 bitangentW : BITANGENT;
+    //INTERPOLATION_MODE float2 texC       : TEXCRD;
+    //INTERPOLATION_MODE float3 posW       : POSW;
+    //INTERPOLATION_MODE float3 colorV     : COLOR;
+    //INTERPOLATION_MODE float4 prevPosH   : PREVPOSH;
+    //INTERPOLATION_MODE float2 lightmapC  : LIGHTMAPUV;
+    float4 posH : SV_POSITION;
+};
+
+PhotonVSOut photonScatterVS(VertexIn vIn)
+{
+    PhotonVSOut vOut;
+    float4x4 worldMat = getWorldMat(vIn);
+    float4 posW = mul(vIn.pos, worldMat);
+    //vOut.posW = posW.xyz;
+    vOut.posH = mul(posW, gCamera.viewProjMat);
+
+    return vOut;
+}
+
+float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
+{
+    //ShadingData sd = prepareShadingData(vOut, gMaterial, gCamera.posW);
+    //float4 color = 0;
+    //color.a = 1;
+
+    //[unroll]
+    //for (uint i = 0; i < 3; i++)
+    //{
+    //    color += evalMaterial(sd, gLights[i], 1).color;
+    //}
+    //color.rgb += sd.emissive;
+
+    //return color;
+    return float4(1,0,0,1);
+}

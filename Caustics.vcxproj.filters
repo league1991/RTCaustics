@@ -12,6 +12,12 @@
     <FxCompile Include="Data\Caustics.ps.hlsl">
       <Filter>Data</Filter>
     </FxCompile>
+    <FxCompile Include="Data\PhotonScatter.ps.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\PhotonTrace.rt.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Caustics.h" />
