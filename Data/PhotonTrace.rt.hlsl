@@ -147,11 +147,11 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     }
     else
     {
-        //Photon photon;
-        //photon.posW = posW;
-        //photon.normalW = sd.N;
-        //photon.color = float3(1, 1, 1);
-        //gPhotonBuffer.Append(photon);
+        Photon photon;
+        photon.posW = posW;
+        photon.normalW = sd.N;
+        photon.color = float3(1, 1, 1);
+        gPhotonBuffer.Append(photon);
 
         float4 cameraPnt = mul(float4(posW,1), gCamera.viewProjMat);
         cameraPnt.xyz /= cameraPnt.w;
@@ -161,7 +161,7 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         gOutput.GetDimensions(screenDim.x, screenDim.y);
         int2 screenPosI = screenPosF * screenDim;
         //screenPosI = DispatchRaysIndex().xy;
-        gOutput[screenPosI.xy] = float4((sd.N), 1);
+        gOutput[screenPosI.xy] = float4(abs(sd.N), 1);
     }
     //float3 color = 0;
 

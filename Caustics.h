@@ -53,10 +53,18 @@ private:
 
     RasterScenePass::SharedPtr mpRasterPass;
 
+    // photon trace
+    RtProgram::SharedPtr mpPhotonTraceProgram;
+    RtProgramVars::SharedPtr mpPhotonTraceVars;
+    RtState::SharedPtr mpPhotonTraceState;
+    //RtSceneRenderer::SharedPtr mpPhotonTraceRenderer;
+
+    // photon scatter
     //RasterScenePass::SharedPtr mpPhotonScatterPass;
-    GraphicsState::SharedPtr mpPhotonScatterState;
     GraphicsProgram::SharedPtr mpPhotonScatterProgram;
     GraphicsVars::SharedPtr mpPhotonScatterVars;
+    GraphicsState::SharedPtr mpPhotonScatterState;
+    Fbo::SharedPtr mpCausticsFbo;
 
     RtProgram::SharedPtr mpRaytraceProgram;
     RtProgramVars::SharedPtr mpRtVars;
@@ -64,19 +72,15 @@ private:
     RtSceneRenderer::SharedPtr mpRtRenderer;
     Texture::SharedPtr mpRtOut;
 
-    RtProgram::SharedPtr mpPhotonTraceProgram;
-    RtProgramVars::SharedPtr mpPhotonTraceVars;
-    RtState::SharedPtr mpPhotonTraceState;
-    RtSceneRenderer::SharedPtr mpPhotonTraceRenderer;
 
     // Caustics map
     //Texture::SharedPtr mpCausticsMap;
-    Fbo::SharedPtr mpCausticsMap;
     StructuredBuffer::SharedPtr  mpPhotonBuffer;
 
 
     void setPerFrameVars(const Fbo* pTargetFbo);
-    void renderRT(RenderContext* pContext, const Fbo* pTargetFbo);
+    void renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo);
     void loadScene(const std::string& filename, const Fbo* pTargetFbo);
+    void loadShader();
     void setCommonVars(GraphicsVars* pVars, const Fbo* pTargetFbo);
 };

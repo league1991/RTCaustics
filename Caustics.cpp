@@ -31,6 +31,7 @@
 
 static const glm::vec4 kClearColor(0.f, 0.f, 0.f, 1);
 static const std::string kDefaultScene = "Caustics/ring.fscene";
+static int gDispatchSize = 512;
 
 std::string to_string(const vec3& v)
 {
@@ -49,23 +50,12 @@ void Caustics::onGuiRender(Gui* pGui)
         if (openFileDialog(Scene::kFileExtensionFilters, filename))
         {
             loadScene(filename, gpFramework->getTargetFbo().get());
+            loadShader();
         }
     }
-    if (pGui->addButton("Update Photon Tracing Shader"))
+    if (pGui->addButton("Update Shader"))
     {
-        RtProgram::Desc photonTraceProgDesc;
-        photonTraceProgDesc.addShaderLibrary("PhotonTrace.rt.hlsl");
-        photonTraceProgDesc.setRayGen("rayGen");
-        photonTraceProgDesc.addHitGroup(0, "primaryClosestHit", "");
-        photonTraceProgDesc.addMiss(0, "primaryMiss");
-        //photonTraceProgDesc.addHitGroup(1, "", "shadowAnyHit");
-        //photonTraceProgDesc.addMiss(1, "shadowMiss");
-        mpPhotonTraceProgram = RtProgram::create(photonTraceProgDesc);
-        mpPhotonTraceState = RtState::create();
-        mpPhotonTraceState->setProgram(mpPhotonTraceProgram);
-        mpPhotonTraceState->setMaxTraceRecursionDepth(3);
-        mpPhotonTraceVars = RtProgramVars::create(mpPhotonTraceProgram, mpScene);
-        mpPhotonTraceRenderer = RtSceneRenderer::create(mpScene);
+        loadShader();
     }
 
     if (mpScene)
@@ -105,24 +95,10 @@ void Caustics::loadScene(const std::string& filename, const Fbo* pTargetFbo)
     float farZ = radius * 10;
     mpCamera->setDepthRange(nearZ, farZ);
     mpCamera->setAspectRatio((float)pTargetFbo->getWidth() / (float)pTargetFbo->getHeight());
-
-    mpRtVars = RtProgramVars::create(mpRaytraceProgram, mpScene);
-    mpRtRenderer = RtSceneRenderer::create(mpScene);
-
-    mpPhotonTraceVars = RtProgramVars::create(mpPhotonTraceProgram, mpScene);
-    mpPhotonTraceRenderer = RtSceneRenderer::create(mpScene);
-
-    mpRasterPass = RasterScenePass::create(mpScene, "Caustics.ps.hlsl", "", "main");
-    //mpPhotonScatterPass = RasterScenePass::create(mpScene, "PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
 }
 
-void Caustics::onLoad(RenderContext* pRenderContext)
+void Caustics::loadShader()
 {
-    if (gpDevice->isFeatureSupported(Device::SupportedFeatures::Raytracing) == false)
-    {
-        logErrorAndExit("Device does not support raytracing!");
-    }
-
     RtProgram::Desc rtProgDesc;
     rtProgDesc.addShaderLibrary("Caustics.rt.hlsl");
     rtProgDesc.setRayGen("rayGen");
@@ -152,8 +128,25 @@ void Caustics::onLoad(RenderContext* pRenderContext)
     mpPhotonScatterState->setProgram(mpPhotonScatterProgram);
     mpPhotonScatterVars = GraphicsVars::create(mpPhotonScatterProgram->getReflector());
 
-    loadScene(kDefaultScene, gpFramework->getTargetFbo().get());
+    mpRtVars = RtProgramVars::create(mpRaytraceProgram, mpScene);
+    mpRtRenderer = RtSceneRenderer::create(mpScene);
 
+    mpPhotonTraceVars = RtProgramVars::create(mpPhotonTraceProgram, mpScene);
+    //mpPhotonTraceRenderer = RtSceneRenderer::create(mpScene);
+
+    mpRasterPass = RasterScenePass::create(mpScene, "Caustics.ps.hlsl", "", "main");
+    //mpPhotonScatterPass = RasterScenePass::create(mpScene, "PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
+}
+
+void Caustics::onLoad(RenderContext* pRenderContext)
+{
+    if (gpDevice->isFeatureSupported(Device::SupportedFeatures::Raytracing) == false)
+    {
+        logErrorAndExit("Device does not support raytracing!");
+    }
+
+    loadScene(kDefaultScene, gpFramework->getTargetFbo().get());
+    loadShader();
 }
 
 void Caustics::setCommonVars(GraphicsVars* pVars, const Fbo* pTargetFbo)
@@ -176,10 +169,10 @@ void Caustics::setPerFrameVars(const Fbo* pTargetFbo)
     mSampleIndex++;
 }
 
-void Caustics::renderRT(RenderContext* pContext, const Fbo* pTargetFbo)
+void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
 {
     PROFILE("renderRT");
-    setPerFrameVars(pTargetFbo);
+    setPerFrameVars(pTargetFbo.get());
     pContext->clearTexture(mpRtOut.get());
 
     // photon tracing
@@ -189,28 +182,31 @@ void Caustics::renderRT(RenderContext* pContext, const Fbo* pTargetFbo)
     for (auto& hitVar: hitVars)
     {
         hitVar->setTexture("gOutput", mpRtOut);
+        hitVar->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
     }
-    static int dispatchSize = 512;
-    mpRtRenderer->renderScene(pContext, mpPhotonTraceVars, mpPhotonTraceState, uvec3(dispatchSize, dispatchSize, 1), mpCamera.get());
+    mpRtRenderer->renderScene(pContext, mpPhotonTraceVars, mpPhotonTraceState, uvec3(gDispatchSize, gDispatchSize, 1), mpCamera.get());
 
     // photon scattering
-    pContext->clearTexture(mpCausticsMap->getColorTexture(0).get());
-    //pContext->clearTexture(mpCausticsMap->getDepthStencilTexture().get(), vec4(1.f, 1.f, 1.f, 1.f));
-    //mpPhotonScatterPass->renderScene(pContext, mpCausticsMap);
+    //pContext->clearTexture(mpCausticsFbo->getColorTexture(0).get());
+    //pContext->clearTexture(mpCausticsFbo->getDepthStencilTexture().get(), vec4(1.f, 1.f, 1.f, 1.f));
+    //mpPhotonScatterPass->renderScene(pContext, mpCausticsFbo);
+    pContext->clearFbo(mpCausticsFbo.get(), vec4(0, 0, 0, 0), 1.0, 0);
     glm::mat4 wvp = mpCamera->getProjMatrix() * mpCamera->getViewMatrix();
     ConstantBuffer::SharedPtr pPerFrameCB = mpPhotonScatterVars["PerFrameCB"];
     pPerFrameCB["gWorldMat"] = glm::mat4();
     pPerFrameCB["gWvpMat"] = wvp;
     pPerFrameCB["gEyePosW"] = mpCamera->getPosition();
     mpPhotonScatterState->setVao(mpQuad->getMesh(0)->getVao());
-    const int instanceCount = 10;
-    //pContext->drawIndexedInstanced(mpPhotonScatterState.get(), mpPhotonScatterVars.get(), mpQuad->getMesh(0)->getIndexCount(), instanceCount, 0, 0, 0);
+    mpPhotonScatterState->setFbo(mpCausticsFbo);
+    int instanceCount = gDispatchSize * gDispatchSize;
+    pContext->drawIndexedInstanced(mpPhotonScatterState.get(), mpPhotonScatterVars.get(), mpQuad->getMesh(0)->getIndexCount(), instanceCount, 0, 0, 0);
 
     // Render output
     //pContext->clearUAV(mpRtOut->getUAV().get(), kClearColor);
     //mpRtVars->getRayGenVars()->setTexture("gOutput", mpRtOut);
     //mpRtRenderer->renderScene(pContext, mpRtVars, mpRtState, uvec3(pTargetFbo->getWidth(), pTargetFbo->getHeight(), 1), mpCamera.get());
 
+    //pContext->blit(mpCausticsFbo->getColorTexture(0)->getSRV(), pTargetFbo->getRenderTargetView(0));
     pContext->blit(mpRtOut->getSRV(), pTargetFbo->getRenderTargetView(0));
 }
 
@@ -222,7 +218,7 @@ void Caustics::onFrameRender(RenderContext* pRenderContext, const Fbo::SharedPtr
     {
         mCamController.update();
         if (mRayTrace)
-            renderRT(pRenderContext, pTargetFbo.get());
+            renderRT(pRenderContext, pTargetFbo);
         else
             mpRasterPass->renderScene(pRenderContext, pTargetFbo);
     }
@@ -263,8 +259,8 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
 
     mpRtOut = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpPhotonBuffer = StructuredBuffer::create(mpPhotonTraceProgram->getHitProgram(0).get(), std::string("gPhotonBuffer"), CAUSTICS_MAP_SIZE * CAUSTICS_MAP_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
-    //mpCausticsMap = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
-    mpCausticsMap = Fbo::create2D(width, height, ResourceFormat::RGBA16Float);
+    //mpCausticsFbo = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
+    mpCausticsFbo = Fbo::create2D(width, height, ResourceFormat::RGBA16Float);
 }
 
 int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd)
