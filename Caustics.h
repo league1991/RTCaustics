@@ -72,7 +72,6 @@ private:
     RtSceneRenderer::SharedPtr mpRtRenderer;
     Texture::SharedPtr mpRtOut;
 
-
     // Caustics map
     //Texture::SharedPtr mpCausticsMap;
     StructuredBuffer::SharedPtr  mpPhotonBuffer;

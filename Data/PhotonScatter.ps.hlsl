@@ -35,7 +35,7 @@ struct Photon
     float3 normalW;
     float3 color;
 };
-AppendStructuredBuffer<Photon> gPhotonBuffer;
+StructuredBuffer<Photon> gPhotonBuffer;
 
 cbuffer PerFrameCB : register(b0)
 {
@@ -65,7 +65,8 @@ PhotonVSOut photonScatterVS(VertexIn vIn)
     //float4 posW = mul(vIn.pos, worldMat);
     ////vOut.posW = posW.xyz;
     //vOut.posH = mul(posW, gCamera.viewProjMat);
-
+    Photon p = gPhotonBuffer[vIn.instanceID];
+    vIn.pos.xyz += p.posW;
     vOut.posH = mul(vIn.pos, gWvpMat);
     return vOut;
 }

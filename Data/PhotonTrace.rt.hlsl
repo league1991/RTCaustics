@@ -36,7 +36,7 @@ struct Photon
     float3 normalW;
     float3 color;
 };
-AppendStructuredBuffer<Photon> gPhotonBuffer;
+RWStructuredBuffer<Photon> gPhotonBuffer;
 
 shared cbuffer PerFrameCB
 {
@@ -147,11 +147,15 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     }
     else
     {
+        int2 rayId  = DispatchRaysIndex().xy;
+        int2 rayDim = DispatchRaysDimensions().xy;
         Photon photon;
         photon.posW = posW;
         photon.normalW = sd.N;
         photon.color = float3(1, 1, 1);
-        gPhotonBuffer.Append(photon);
+        //gPhotonBuffer.Append(photon);
+        int idx = rayId.y * rayDim.x + rayId.x;
+        gPhotonBuffer[idx] = photon;
 
         float4 cameraPnt = mul(float4(posW,1), gCamera.viewProjMat);
         cameraPnt.xyz /= cameraPnt.w;
@@ -160,7 +164,7 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         uint2 screenDim;
         gOutput.GetDimensions(screenDim.x, screenDim.y);
         int2 screenPosI = screenPosF * screenDim;
-        //screenPosI = DispatchRaysIndex().xy;
+        // screenPosI = dispatchID;
         gOutput[screenPosI.xy] = float4(abs(sd.N), 1);
     }
     //float3 color = 0;

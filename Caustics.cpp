@@ -123,8 +123,8 @@ void Caustics::loadShader()
     mpPhotonTraceState->setProgram(mpPhotonTraceProgram);
     mpPhotonTraceState->setMaxTraceRecursionDepth(3);
 
-    mpPhotonScatterState = GraphicsState::create();
     mpPhotonScatterProgram = GraphicsProgram::createFromFile("PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
+    mpPhotonScatterState = GraphicsState::create();
     mpPhotonScatterState->setProgram(mpPhotonScatterProgram);
     mpPhotonScatterVars = GraphicsVars::create(mpPhotonScatterProgram->getReflector());
 
@@ -196,6 +196,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     pPerFrameCB["gWorldMat"] = glm::mat4();
     pPerFrameCB["gWvpMat"] = wvp;
     pPerFrameCB["gEyePosW"] = mpCamera->getPosition();
+    mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
     mpPhotonScatterState->setVao(mpQuad->getMesh(0)->getVao());
     mpPhotonScatterState->setFbo(mpCausticsFbo);
     int instanceCount = gDispatchSize * gDispatchSize;
@@ -206,8 +207,8 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     //mpRtVars->getRayGenVars()->setTexture("gOutput", mpRtOut);
     //mpRtRenderer->renderScene(pContext, mpRtVars, mpRtState, uvec3(pTargetFbo->getWidth(), pTargetFbo->getHeight(), 1), mpCamera.get());
 
-    //pContext->blit(mpCausticsFbo->getColorTexture(0)->getSRV(), pTargetFbo->getRenderTargetView(0));
-    pContext->blit(mpRtOut->getSRV(), pTargetFbo->getRenderTargetView(0));
+    pContext->blit(mpCausticsFbo->getColorTexture(0)->getSRV(), pTargetFbo->getRenderTargetView(0));
+    //pContext->blit(mpRtOut->getSRV(), pTargetFbo->getRenderTargetView(0));
 }
 
 void Caustics::onFrameRender(RenderContext* pRenderContext, const Fbo::SharedPtr& pTargetFbo)
