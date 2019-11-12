@@ -123,9 +123,14 @@ void Caustics::loadShader()
     mpPhotonTraceState->setProgram(mpPhotonTraceProgram);
     mpPhotonTraceState->setMaxTraceRecursionDepth(3);
 
+    BlendState::Desc scatterBlendStateDesc;
+    scatterBlendStateDesc.setRtBlend(0, true);
+    scatterBlendStateDesc.setRtParams(0, BlendState::BlendOp::Add, BlendState::BlendOp::Add, BlendState::BlendFunc::One, BlendState::BlendFunc::One, BlendState::BlendFunc::One, BlendState::BlendFunc::One);
+    BlendState::SharedPtr scatterBlendState = BlendState::create(scatterBlendStateDesc);
     mpPhotonScatterProgram = GraphicsProgram::createFromFile("PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
     mpPhotonScatterState = GraphicsState::create();
     mpPhotonScatterState->setProgram(mpPhotonScatterProgram);
+    mpPhotonScatterState->setBlendState(scatterBlendState);
     mpPhotonScatterVars = GraphicsVars::create(mpPhotonScatterProgram->getReflector());
 
     mpRtVars = RtProgramVars::create(mpRaytraceProgram, mpScene);

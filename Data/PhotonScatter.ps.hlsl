@@ -85,5 +85,5 @@ float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
     //color.rgb += sd.emissive;
 
     //return color;
-    return float4(1,0,0,1);
+    return float4(0.1,0,0,1);
 }
