@@ -59,40 +59,40 @@ struct ShadowRayData
     bool hit;
 };
 
-[shader("miss")]
-void shadowMiss(inout ShadowRayData hitData)
-{
-    hitData.hit = false;
-}
+//[shader("miss")]
+//void shadowMiss(inout ShadowRayData hitData)
+//{
+//    hitData.hit = false;
+//}
 
-[shader("anyhit")]
-void shadowAnyHit(inout ShadowRayData hitData, in BuiltInTriangleIntersectionAttributes attribs)
-{
-    hitData.hit = true;
-}
+//[shader("anyhit")]
+//void shadowAnyHit(inout ShadowRayData hitData, in BuiltInTriangleIntersectionAttributes attribs)
+//{
+//    hitData.hit = true;
+//}
 
 [shader("miss")]
 void primaryMiss(inout PrimaryRayData hitData)
 {
-    hitData.color = float4(0.38f, 0.52f, 0.10f, 1);
+    hitData.color = float4(1, 0, 0, 1);
     hitData.hitT = -1;
 }
 
-bool checkLightHit(uint lightIndex, float3 origin)
-{
-    float3 direction = gLights[lightIndex].posW - origin;
-    RayDesc ray;
-    float epsilon = 0.01;
-    ray.Origin = origin;
-    ray.Direction = normalize(direction);
-    ray.TMin = epsilon;
-    ray.TMax = max(0.01, length(direction)- epsilon);
-
-    ShadowRayData rayData;
-    rayData.hit = true;
-    TraceRay(gRtScene, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xFF, 1 /* ray index */, hitProgramCount, 1, ray, rayData);
-    return rayData.hit;
-}
+//bool checkLightHit(uint lightIndex, float3 origin)
+//{
+//    float3 direction = gLights[lightIndex].posW - origin;
+//    RayDesc ray;
+//    float epsilon = 0.01;
+//    ray.Origin = origin;
+//    ray.Direction = normalize(direction);
+//    ray.TMin = epsilon;
+//    ray.TMax = max(0.01, length(direction)- epsilon);
+//
+//    ShadowRayData rayData;
+//    rayData.hit = true;
+//    TraceRay(gRtScene, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xFF, 1 /* ray index */, hitProgramCount, 1, ray, rayData);
+//    return rayData.hit;
+//}
 
 //float3 getReflectionColor(float3 worldOrigin, VertexOut v, float3 worldRayDir, uint hitDepth)
 //{
@@ -130,49 +130,58 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
 
     // Shoot a reflection ray
     float3 reflectColor = float3(0, 0, 0);
+    //reflectColor = getReflectionColor(posW, v, rayDirW, hitData.depth);
+    if (sd.roughness > 0 && hitData.depth < 1)
     {
-        //reflectColor = getReflectionColor(posW, v, rayDirW, hitData.depth);
-        if (hitData.depth == 0)
-        {
-            PrimaryRayData secondaryRay;
-            secondaryRay.depth = 1;
-            RayDesc ray;
-            ray.Origin = posW;
-            ray.Direction = reflect(rayDirW, v.normalW);
-            ray.TMin = 0.001;
-            ray.TMax = 100000;
-            TraceRay(gRtScene, 0 /*rayFlags*/, 0xFF, 0 /* ray index*/, hitProgramCount, 0, ray, secondaryRay);
-            reflectColor = secondaryRay.hitT == -1 ? 0 : secondaryRay.color.rgb;
-            float falloff = max(1, (secondaryRay.hitT * secondaryRay.hitT));
-            reflectColor *= 20 / falloff;
-        }
-        else
-        {
-            Photon photon;
-            photon.posW = posW;
-            photon.normalW = sd.N;
-            photon.color = float3(1, 1, 1);
-            gPhotonBuffer.Append(photon);
-        }
+        PrimaryRayData secondaryRay;
+        secondaryRay.depth = hitData.depth + 1;
+        RayDesc ray;
+        ray.Origin = posW;
+        ray.Direction = reflect(rayDirW, v.normalW);
+        ray.TMin = 0.001;
+        ray.TMax = 1000000000000000;
+        TraceRay(gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, secondaryRay);
+        //reflectColor = secondaryRay.hitT == -1 ? 0 : secondaryRay.color.rgb;
+        //float falloff = max(1, (secondaryRay.hitT * secondaryRay.hitT));
+        //reflectColor *= 20 / falloff;
     }
-    float3 color = 0;
-
-    [unroll]
-    for (int i = 0; i < gLightsCount; i++)
+    else
     {
-        if (checkLightHit(i, posW) == false)
-        {
-            color += evalMaterial(sd, gLights[i], 1).color.xyz;
-        }
-    }
+        //Photon photon;
+        //photon.posW = posW;
+        //photon.normalW = sd.N;
+        //photon.color = float3(1, 1, 1);
+        //gPhotonBuffer.Append(photon);
 
-    hitData.color.rgb = color;
+        float4 cameraPnt = mul(float4(posW,1), gCamera.viewProjMat);
+        cameraPnt.xyz /= cameraPnt.w;
+
+        float2 screenPosF = saturate((cameraPnt.xy * float2(1,-1) + 1.0) * 0.5);
+        uint2 screenDim;
+        gOutput.GetDimensions(screenDim.x, screenDim.y);
+        int2 screenPosI = screenPosF * screenDim;
+        //screenPosI = DispatchRaysIndex().xy;
+        gOutput[screenPosI.xy] = float4((sd.N), 1);
+    }
+    //float3 color = 0;
+
+    //[unroll]
+    //for (int i = 0; i < gLightsCount; i++)
+    //{
+    //    if (checkLightHit(i, posW) == false)
+    //    {
+    //        color += evalMaterial(sd, gLights[i], 1).color.xyz;
+    //    }
+    //}
+
+    hitData.color = float4(sd.N, 1.0);
     hitData.hitT = hitT;
+    //hitData.color.rgb = color;
     // A very non-PBR inaccurate way to do reflections
-    float roughness = min(0.5, max(1e-8, sd.roughness));
-    hitData.color.rgb += sd.specular * reflectColor * (roughness * roughness);
-    hitData.color.rgb += sd.emissive;
-    hitData.color.a = 1;
+    //float roughness = min(0.5, max(1e-8, sd.roughness));
+    //hitData.color.rgb += sd.specular * reflectColor * (roughness * roughness);
+    //hitData.color.rgb += sd.emissive;
+    //hitData.color.a = 1;
 }
 
 [shader("raygeneration")]
@@ -197,15 +206,17 @@ void rayGen()
     float2 lightUV = float2(launchIndex.xy) / float2(launchDimension.xy);
     lightUV = lightUV * 2 - 1;
 
-    ray.Origin = lightOrigin + lightDirX * lightUV.x + lightDirY * lightUV.y;
-    ray.Direction = lightDirZ;
+    ray.Origin = lightOrigin;// +lightDirX * lightUV.x + lightDirY * lightUV.y;
+    ray.Direction = (lightDirX * lightUV.x + lightDirY * lightUV.y) * tan(gLights[0].openingAngle*0.5) + lightDirZ;// lightDirZ;
     ray.TMin = 0.0;
     ray.TMax = 1e10;
 
     PrimaryRayData hitData;
     hitData.depth = 0;
+    hitData.color = float4(0, 0, 1, 1);
     TraceRay( gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, hitData );
-    gOutput[launchIndex.xy] = float4(1, 0, 0, 1);// hitData.color;
+    //gOutput[launchIndex.xy] = hitData.color;
+    //gOutput[int2(0,0)] = hitData.color;
 
     Photon photon;
     photon.posW = float3(0, 0, 0);

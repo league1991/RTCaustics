@@ -43,7 +43,7 @@ public:
 
 private:
     bool mRayTrace = true;
-    bool mUseDOF = false;
+    //bool mUseDOF = false;
     uint32_t mSampleIndex = 0xdeadbeef;
 
     Model::SharedPtr mpQuad;
