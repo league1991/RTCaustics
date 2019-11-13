@@ -42,9 +42,10 @@ shared cbuffer PerFrameCB
 {
     float4x4 invView;
     float2 viewportDims;
-    float tanHalfFovY;
-    uint sampleIndex;
-    bool useDOF;
+    float emitSize;
+    //float tanHalfFovY;
+    //uint sampleIndex;
+    //bool useDOF;
 };
 
 struct PrimaryRayData
@@ -203,15 +204,15 @@ void rayGen()
     //{
     //    ray = generateDOFRay(gCamera, launchIndex.xy, viewportDims, randSeed);
     //}
-    float3 lightOrigin = gLights[0].posW;
+    float3 lightOrigin = gLights[0].dirW * -10;// gLights[0].posW;
     float3 lightDirZ = gLights[0].dirW;
     float3 lightDirX = normalize(float3(-lightDirZ.y, lightDirZ.x, 0));
     float3 lightDirY = normalize(cross(lightDirX, lightDirZ));
     float2 lightUV = float2(launchIndex.xy) / float2(launchDimension.xy);
     lightUV = lightUV * 2 - 1;
 
-    ray.Origin = lightOrigin;// +lightDirX * lightUV.x + lightDirY * lightUV.y;
-    ray.Direction = (lightDirX * lightUV.x + lightDirY * lightUV.y) * tan(gLights[0].openingAngle*0.5) + lightDirZ;// lightDirZ;
+    ray.Origin = lightOrigin + (lightDirX * lightUV.x + lightDirY * lightUV.y)* emitSize;
+    ray.Direction = lightDirZ;// lightDirZ;
     ray.TMin = 0.0;
     ray.TMax = 1e10;
 

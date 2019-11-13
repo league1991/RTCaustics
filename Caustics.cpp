@@ -54,7 +54,6 @@ void Caustics::onGuiRender(Gui* pGui)
     debugModeList.push_back({ 6, "World" });
     debugModeList.push_back({ 7, "Roughness" });
     pGui->addDropdown("Debug mode", debugModeList, (uint32_t&)mDebugMode);
-
     if (pGui->addButton("Load Scene"))
     {
         std::string filename;
@@ -69,6 +68,8 @@ void Caustics::onGuiRender(Gui* pGui)
         loadShader();
     }
 
+    pGui->addFloatVar("Emit size", mEmitSize, 0, 1000, 5);
+    pGui->addFloatVar("Splat size", mSplatSize, 0, 10, 0.01f);
     if (mpScene)
     {
         for (uint32_t i = 0; i < mpScene->getLightCount(); i++)
@@ -178,21 +179,39 @@ void Caustics::onLoad(RenderContext* pRenderContext)
 void Caustics::setCommonVars(GraphicsVars* pVars, const Fbo* pTargetFbo)
 {
     ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
-    pCB["invView"] = glm::inverse(mpCamera->getViewMatrix());
-    pCB["viewportDims"] = vec2(pTargetFbo->getWidth(), pTargetFbo->getHeight());
-    float fovY = focalLengthToFovY(mpCamera->getFocalLength(), Camera::kDefaultFrameHeight);
-    pCB["tanHalfFovY"] = tanf(fovY * 0.5f);
-    pCB["sampleIndex"] = mSampleIndex;
-    pCB["useDOF"] = false;// mUseDOF;
+    //pCB["invView"] = glm::inverse(mpCamera->getViewMatrix());
+    //pCB["viewportDims"] = vec2(pTargetFbo->getWidth(), pTargetFbo->getHeight());
+    //pCB["emitSize"] = mEmitSize;
+    //float fovY = focalLengthToFovY(mpCamera->getFocalLength(), Camera::kDefaultFrameHeight);
+    //pCB["tanHalfFovY"] = tanf(fovY * 0.5f);
+    //pCB["sampleIndex"] = mSampleIndex;
+    //pCB["useDOF"] = false;// mUseDOF;
 }
 
 void Caustics::setPerFrameVars(const Fbo* pTargetFbo)
 {
     PROFILE("setPerFrameVars");
-    GraphicsVars* pVars = mpRtVars->getGlobalVars().get();
-    setCommonVars(mpRtVars->getGlobalVars().get(), pTargetFbo);
-    setCommonVars(mpPhotonTraceVars->getGlobalVars().get(), pTargetFbo);
-    mSampleIndex++;
+    {
+        GraphicsVars* pVars = mpRtVars->getGlobalVars().get();
+        ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
+        pCB["invView"] = glm::inverse(mpCamera->getViewMatrix());
+        pCB["viewportDims"] = vec2(pTargetFbo->getWidth(), pTargetFbo->getHeight());
+        float fovY = focalLengthToFovY(mpCamera->getFocalLength(), Camera::kDefaultFrameHeight);
+        pCB["tanHalfFovY"] = tanf(fovY * 0.5f);
+        pCB["sampleIndex"] = mSampleIndex;
+        pCB["useDOF"] = mUseDOF;
+    }
+    //setCommonVars(mpRtVars->getGlobalVars().get(), pTargetFbo);
+
+    {
+        GraphicsVars* pVars = mpPhotonTraceVars->getGlobalVars().get();
+        ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
+        pCB["invView"] = glm::inverse(mpCamera->getViewMatrix());
+        pCB["viewportDims"] = vec2(pTargetFbo->getWidth(), pTargetFbo->getHeight());
+        pCB["emitSize"] = mEmitSize;
+        //setCommonVars(mpPhotonTraceVars->getGlobalVars().get(), pTargetFbo);
+        mSampleIndex++;
+    }
 }
 
 void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
@@ -226,6 +245,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     pPerFrameCB["gWorldMat"] = glm::mat4();
     pPerFrameCB["gWvpMat"] = wvp;
     pPerFrameCB["gEyePosW"] = mpCamera->getPosition();
+    pPerFrameCB["gSplatSize"] = mSplatSize;
     mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
     mpPhotonScatterState->setVao(mpQuad->getMesh(0)->getVao());
     mpPhotonScatterState->setFbo(mpCausticsFbo);

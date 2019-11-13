@@ -44,8 +44,10 @@ public:
 private:
     bool mRayTrace = true;
     uint32_t mDebugMode = 0;
-    //bool mUseDOF = false;
+    bool mUseDOF = false;
     uint32_t mSampleIndex = 0xdeadbeef;
+    float mEmitSize = 100.0;
+    float mSplatSize = 3;
 
     Model::SharedPtr mpQuad;
     RtScene::SharedPtr mpScene;

@@ -44,6 +44,7 @@ cbuffer PerFrameCB : register(b0)
     float3 gEyePosW;
     float gLightIntensity;
     float gSurfaceRoughness;
+    float gSplatSize;
 };
 
 struct PhotonVSOut
@@ -66,7 +67,7 @@ PhotonVSOut photonScatterVS(VertexIn vIn)
     ////vOut.posW = posW.xyz;
     //vOut.posH = mul(posW, gCamera.viewProjMat);
     Photon p = gPhotonBuffer[vIn.instanceID];
-    vIn.pos.xyz = vIn.pos.xyz * 0.1 + p.posW;
+    vIn.pos.xyz = vIn.pos.xyz * gSplatSize + p.posW;
     vOut.posH = mul(vIn.pos, gWvpMat);
     vOut.color = float4(p.color,1);
     return vOut;
