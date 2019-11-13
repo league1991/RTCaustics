@@ -29,46 +29,53 @@ __import ShaderCommon;
 __import Shading;
 __import DefaultVS;
 
-SamplerState gColorSampler : register(s1);
-Texture2D gColorTex;
+SamplerState gPointSampler : register(s1);
 
-//cbuffer PerFrameCB : register(b0)
-//{
-//    float4x4 gWvpMat;
-//    float4x4 gWorldMat;
-//    float3 gEyePosW;
-//    float gLightIntensity;
-//    float gSurfaceRoughness;
-//};
+Texture2D gDepthTex;
+Texture2D gNormalTex;
+Texture2D gDiffuseTex;
+Texture2D gSpecularTex;
+Texture2D gPhotonTex;
 
-//struct GPassVsOut
-//{
-//    float4 posH : SV_POSITION;
-//    float4 normal: NORMAL;
-//};
-//
-//struct GPassPsOut
-//{
-//    float4 normal: SV_TARGET;
-//};
+// Debug modes
+#define ShowDepth       1
+#define ShowNormal      2
+#define ShowDiffuse     3
+#define ShowSpecular    4
+#define ShowPhoton      5
 
-//GPassVsOut gpassVS(VertexIn input)
-//{
-//    GPassVsOut output;
-//    output.posH = mul(input.pos, gWvpMat);
-//    output.normal = input.normal;
-//    return output;
-//}
-//
-//GPassPsOut gpassPS(GPassVsOut input)
-//{
-//    GPassPsOut output;
-//    output.normal = input.normal;
-//    return output;
-//}
+cbuffer PerImageCB
+{
+    // Lighting params
+    LightData gLightData[16];
+    uint gNumLights;
+    uint gDebugMode;
+};
 
 float4 main(float2 texC  : TEXCOORD) : SV_TARGET
 {
+    //ShadingData sd = initShadingData();
+    //sd.posW = posW;
+    //sd.V = normalize(gCamera.posW - posW);
+    //sd.N = normalW;
+    //sd.NdotV = abs(dot(sd.V, sd.N));
+    //sd.linearRoughness = linearRoughness;
+
+    ///* Reconstruct layers (one diffuse layer) */
+    //sd.diffuse = albedo.rgb;
+    //sd.opacity = 0;
+
+    //float3 color = 0;
+    //float3 diffuseIllumination = 0;
+
+    ///* Do lighting */
+    //for (uint l = 0; l < gNumLights; l++)
+    //{
+    //    ShadingResult sr = evalMaterial(sd, gLightData[l], 1);
+    //    color += sr.color.rgb;
+    //    diffuseIllumination += sr.diffuseBrdf;
+    //}
+
     //ShadingData sd = prepareShadingData(vOut, gMaterial, gCamera.posW);
     //float4 color = 0;
     //color.a = 1;
@@ -80,6 +87,18 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
     //}
     //color.rgb += sd.emissive;
     //return color;
-    float4 color = gColorTex.Sample(gColorSampler, texC);
+
+    float4 color = 0;
+    if (gDebugMode == ShowDepth)
+        color = gDepthTex.Sample(gPointSampler, texC);
+    else if (gDebugMode == ShowNormal)
+        color = gNormalTex.Sample(gPointSampler, texC);
+    else if (gDebugMode == ShowDiffuse)
+        color = gDiffuseTex.Sample(gPointSampler, texC);
+    else if (gDebugMode == ShowSpecular)
+        color = gSpecularTex.Sample(gPointSampler, texC);
+    else if (gDebugMode == ShowPhoton)
+        color = gPhotonTex.Sample(gPointSampler, texC);
+
     return color;
 }

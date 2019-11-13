@@ -43,6 +43,7 @@ public:
 
 private:
     bool mRayTrace = true;
+    uint32_t mDebugMode = 1;
     //bool mUseDOF = false;
     uint32_t mSampleIndex = 0xdeadbeef;
 
@@ -56,6 +57,10 @@ private:
 
     // g-pass
     RasterScenePass::SharedPtr mpGPass;
+    Texture::SharedPtr mpNormalTex;
+    Texture::SharedPtr mpDiffuseTex;
+    Texture::SharedPtr mpSpecularTex;
+    Texture::SharedPtr mpDepthTex;
     Fbo::SharedPtr mpGPassFbo;
 
     // photon trace

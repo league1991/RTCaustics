@@ -43,7 +43,16 @@ std::string to_string(const vec3& v)
 void Caustics::onGuiRender(Gui* pGui)
 {
     pGui->addCheckBox("Ray Trace", mRayTrace);
-    //pGui->addCheckBox("Use Depth of Field", mUseDOF);
+
+    Gui::DropdownList debugModeList;
+    debugModeList.push_back({ 0, "Disabled" });
+    debugModeList.push_back({ 1, "Depth" });
+    debugModeList.push_back({ 2, "Normal" });
+    debugModeList.push_back({ 3, "Diffuse" });
+    debugModeList.push_back({ 4, "Specular" });
+    debugModeList.push_back({ 5, "Photon" });
+    pGui->addDropdown("Debug mode", debugModeList, (uint32_t&)mDebugMode);
+
     if (pGui->addButton("Load Scene"))
     {
         std::string filename;
@@ -225,8 +234,20 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     Sampler::Desc samplerDesc;
     samplerDesc.setFilterMode(Sampler::Filter::Point, Sampler::Filter::Point, Sampler::Filter::Point);
     mpPointSampler = Sampler::create(samplerDesc);
-    mpCompositePass["gColorTex"] = mpGPassFbo->getColorTexture(0);
-    mpCompositePass["gColorSampler"] = mpPointSampler;
+    mpCompositePass["gDepthTex"]   = mpGPassFbo->getDepthStencilTexture();
+    mpCompositePass["gNormalTex"]  = mpGPassFbo->getColorTexture(0);
+    mpCompositePass["gDiffuseTex"] = mpGPassFbo->getColorTexture(1);
+    mpCompositePass["gSpecularTex"]  = mpGPassFbo->getColorTexture(2);
+    mpCompositePass["gPhotonTex"] = mpCausticsFbo->getColorTexture(0);
+    mpCompositePass["gPointSampler"] = mpPointSampler;
+    ConstantBuffer::SharedPtr pCompCB = mpCompositePass["PerImageCB"];
+    pCompCB["gNumLights"] = mpScene->getLightCount();
+    pCompCB["gDebugMode"] = (uint32_t)mDebugMode;
+    for (uint32_t i = 0; i < mpScene->getLightCount(); i++)
+    {
+        mpScene->getLight(i)->setIntoProgramVars(mpCompositePass->getVars().get(), pCompCB.get(), "gLightData[" + std::to_string(i) + "]");
+    }
+
     mpCompositePass->execute(pContext, pTargetFbo);
     //pContext->blit(mpGPassFbo->getColorTexture(0)->getSRV(), pTargetFbo->getRenderTargetView(0));
     //pContext->blit(mpCausticsFbo->getColorTexture(0)->getSRV(), pTargetFbo->getRenderTargetView(0));
@@ -284,7 +305,12 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
     mpPhotonBuffer = StructuredBuffer::create(mpPhotonTraceProgram->getHitProgram(0).get(), std::string("gPhotonBuffer"), CAUSTICS_MAP_SIZE * CAUSTICS_MAP_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     //mpCausticsFbo = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpCausticsFbo = Fbo::create2D(width, height, ResourceFormat::RGBA16Float);
-    mpGPassFbo = Fbo::create2D(width, height, ResourceFormat::RGBA16Float, ResourceFormat::D24UnormS8);
+
+    mpNormalTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
+    mpDiffuseTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
+    mpSpecularTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
+    mpDepthTex = Texture::create2D(width, height, ResourceFormat::D24UnormS8, 1, 1, nullptr, Resource::BindFlags::DepthStencil | Resource::BindFlags::ShaderResource);
+    mpGPassFbo = Fbo::create({ mpNormalTex , mpDiffuseTex ,mpSpecularTex }, mpDepthTex);//Fbo::create2D(width, height, ResourceFormat::RGBA16Float, ResourceFormat::D24UnormS8);
 }
 
 int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd)

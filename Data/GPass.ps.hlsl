@@ -44,10 +44,12 @@ __import DefaultVS;
 //    float4 normal: NORMAL;
 //};
 //
-//struct GPassPsOut
-//{
-//    float4 normal: SV_TARGET;
-//};
+struct GPassPsOut
+{
+    float4 normal: SV_TARGET0;
+    float4 diffuse: SV_TARGET1;
+    float4 specular: SV_TARGET2;
+};
 
 //GPassVsOut gpassVS(VertexIn input)
 //{
@@ -64,7 +66,7 @@ __import DefaultVS;
 //    return output;
 //}
 
-float4 gpassPS(VertexOut vOut) : SV_TARGET
+GPassPsOut gpassPS(VertexOut vOut) : SV_TARGET
 {
     //ShadingData sd = prepareShadingData(vOut, gMaterial, gCamera.posW);
     //float4 color = 0;
@@ -77,5 +79,9 @@ float4 gpassPS(VertexOut vOut) : SV_TARGET
     //}
     //color.rgb += sd.emissive;
     //return color;
-    return float4(normalize(vOut.normalW), 1);
+    GPassPsOut output;
+    output.normal = float4(normalize(vOut.normalW), 1);
+    output.diffuse = 1;
+    output.specular = 0.5;
+    return output;
 }
