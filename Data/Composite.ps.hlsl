@@ -44,6 +44,7 @@ Texture2D gPhotonTex;
 #define ShowSpecular    4
 #define ShowPhoton      5
 #define ShowWorld       6
+#define ShowRoughness   7
 
 cbuffer PerImageCB
 {
@@ -111,6 +112,8 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
         color = gPhotonTex.Sample(gPointSampler, texC);
     else if (gDebugMode == ShowWorld)
         color = frac(worldPnt * 0.01 + 0.01);
+    else if (gDebugMode == ShowRoughness)
+        color = gDiffuseTex.Sample(gPointSampler, texC).a;
     else
     {
         ShadingData sd = initShadingData();

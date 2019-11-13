@@ -52,6 +52,7 @@ void Caustics::onGuiRender(Gui* pGui)
     debugModeList.push_back({ 4, "Specular" });
     debugModeList.push_back({ 5, "Photon" });
     debugModeList.push_back({ 6, "World" });
+    debugModeList.push_back({ 7, "Roughness" });
     pGui->addDropdown("Debug mode", debugModeList, (uint32_t&)mDebugMode);
 
     if (pGui->addButton("Load Scene"))

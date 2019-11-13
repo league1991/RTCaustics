@@ -138,8 +138,8 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         RayDesc ray;
         ray.Origin = posW;
         ray.Direction = reflect(rayDirW, v.normalW);
-        ray.TMin = 0.001;
-        ray.TMax = 1000000000000000;
+        ray.TMin = 0.01;
+        ray.TMax = 100000;
         TraceRay(gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, secondaryRay);
         //reflectColor = secondaryRay.hitT == -1 ? 0 : secondaryRay.color.rgb;
         //float falloff = max(1, (secondaryRay.hitT * secondaryRay.hitT));

@@ -29,21 +29,6 @@ __import ShaderCommon;
 __import Shading;
 __import DefaultVS;
 
-//cbuffer PerFrameCB : register(b0)
-//{
-//    float4x4 gWvpMat;
-//    float4x4 gWorldMat;
-//    float3 gEyePosW;
-//    float gLightIntensity;
-//    float gSurfaceRoughness;
-//};
-
-//struct GPassVsOut
-//{
-//    float4 posH : SV_POSITION;
-//    float4 normal: NORMAL;
-//};
-//
 struct GPassPsOut
 {
     float4 normal: SV_TARGET0;
@@ -51,34 +36,8 @@ struct GPassPsOut
     float4 specular: SV_TARGET2;
 };
 
-//GPassVsOut gpassVS(VertexIn input)
-//{
-//    GPassVsOut output;
-//    output.posH = mul(input.pos, gWvpMat);
-//    output.normal = input.normal;
-//    return output;
-//}
-//
-//GPassPsOut gpassPS(GPassVsOut input)
-//{
-//    GPassPsOut output;
-//    output.normal = input.normal;
-//    return output;
-//}
-
 GPassPsOut gpassPS(VertexOut vOut) : SV_TARGET
 {
-    //ShadingData sd = prepareShadingData(vOut, gMaterial, gCamera.posW);
-    //float4 color = 0;
-    //color.a = 1;
-
-    //[unroll]
-    //for (uint i = 0; i < 3; i++)
-    //{
-    //    color += evalMaterial(sd, gLights[i], 1).color;
-    //}
-    //color.rgb += sd.emissive;
-    //return color;
     ShadingData sd = prepareShadingData(vOut, gMaterial, gCamera.posW);
 
     GPassPsOut output;
