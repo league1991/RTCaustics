@@ -152,7 +152,7 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         Photon photon;
         photon.posW = posW;
         photon.normalW = sd.N;
-        photon.color = float3(1, 1, 1);
+        photon.color = sd.diffuse;// float3(1, 1, 1);
         //gPhotonBuffer.Append(photon);
         int idx = rayId.y * rayDim.x + rayId.x;
         gPhotonBuffer[idx] = photon;

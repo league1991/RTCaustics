@@ -29,50 +29,45 @@ __import ShaderCommon;
 __import Shading;
 __import DefaultVS;
 
-struct Photon
-{
-    float3 posW;
-    float3 normalW;
-    float3 color;
-};
-StructuredBuffer<Photon> gPhotonBuffer;
+SamplerState gColorSampler : register(s1);
+Texture2D gColorTex;
 
-cbuffer PerFrameCB : register(b0)
-{
-    float4x4 gWvpMat;
-    float4x4 gWorldMat;
-    float3 gEyePosW;
-    float gLightIntensity;
-    float gSurfaceRoughness;
-};
+//cbuffer PerFrameCB : register(b0)
+//{
+//    float4x4 gWvpMat;
+//    float4x4 gWorldMat;
+//    float3 gEyePosW;
+//    float gLightIntensity;
+//    float gSurfaceRoughness;
+//};
 
-struct PhotonVSOut
-{
-    //INTERPOLATION_MODE float3 normalW    : NORMAL;
-    //INTERPOLATION_MODE float3 bitangentW : BITANGENT;
-    //INTERPOLATION_MODE float2 texC       : TEXCRD;
-    //INTERPOLATION_MODE float3 posW       : POSW;
-    //INTERPOLATION_MODE float4 prevPosH   : PREVPOSH;
-    //INTERPOLATION_MODE float2 lightmapC  : LIGHTMAPUV;
-    float4 posH : SV_POSITION;
-    float4 color     : COLOR;
-};
+//struct GPassVsOut
+//{
+//    float4 posH : SV_POSITION;
+//    float4 normal: NORMAL;
+//};
+//
+//struct GPassPsOut
+//{
+//    float4 normal: SV_TARGET;
+//};
 
-PhotonVSOut photonScatterVS(VertexIn vIn)
-{
-    PhotonVSOut vOut;
-    //float4x4 worldMat = getWorldMat(vIn);
-    //float4 posW = mul(vIn.pos, worldMat);
-    ////vOut.posW = posW.xyz;
-    //vOut.posH = mul(posW, gCamera.viewProjMat);
-    Photon p = gPhotonBuffer[vIn.instanceID];
-    vIn.pos.xyz += p.posW;
-    vOut.posH = mul(vIn.pos, gWvpMat);
-    vOut.color = float4(p.color,1);
-    return vOut;
-}
+//GPassVsOut gpassVS(VertexIn input)
+//{
+//    GPassVsOut output;
+//    output.posH = mul(input.pos, gWvpMat);
+//    output.normal = input.normal;
+//    return output;
+//}
+//
+//GPassPsOut gpassPS(GPassVsOut input)
+//{
+//    GPassPsOut output;
+//    output.normal = input.normal;
+//    return output;
+//}
 
-float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
+float4 main(float2 texC  : TEXCOORD) : SV_TARGET
 {
     //ShadingData sd = prepareShadingData(vOut, gMaterial, gCamera.posW);
     //float4 color = 0;
@@ -84,7 +79,7 @@ float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
     //    color += evalMaterial(sd, gLights[i], 1).color;
     //}
     //color.rgb += sd.emissive;
-
     //return color;
-    return vOut.color;// float4(0.1,0,0,1);
+    float4 color = gColorTex.Sample(gColorSampler, texC);
+    return color;
 }

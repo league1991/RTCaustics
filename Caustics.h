@@ -51,7 +51,12 @@ private:
     Camera::SharedPtr mpCamera;
     FirstPersonCameraController mCamController;
 
+    // forward shading pass
     RasterScenePass::SharedPtr mpRasterPass;
+
+    // g-pass
+    RasterScenePass::SharedPtr mpGPass;
+    Fbo::SharedPtr mpGPassFbo;
 
     // photon trace
     RtProgram::SharedPtr mpPhotonTraceProgram;
@@ -66,11 +71,16 @@ private:
     GraphicsState::SharedPtr mpPhotonScatterState;
     Fbo::SharedPtr mpCausticsFbo;
 
+    // raytrace
     RtProgram::SharedPtr mpRaytraceProgram;
     RtProgramVars::SharedPtr mpRtVars;
     RtState::SharedPtr mpRtState;
     RtSceneRenderer::SharedPtr mpRtRenderer;
     Texture::SharedPtr mpRtOut;
+
+    // composite pass
+    Sampler::SharedPtr mpPointSampler;
+    FullScreenPass::SharedPtr mpCompositePass;
 
     // Caustics map
     //Texture::SharedPtr mpCausticsMap;

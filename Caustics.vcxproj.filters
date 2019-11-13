@@ -18,6 +18,12 @@
     <FxCompile Include="Data\PhotonTrace.rt.hlsl">
       <Filter>Data</Filter>
     </FxCompile>
+    <FxCompile Include="Data\GPass.ps.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\Composite.ps.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Caustics.h" />
