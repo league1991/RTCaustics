@@ -57,40 +57,6 @@ cbuffer PerImageCB
 
 float4 main(float2 texC  : TEXCOORD) : SV_TARGET
 {
-    //ShadingData sd = initShadingData();
-    //sd.posW = posW;
-    //sd.V = normalize(gCamera.posW - posW);
-    //sd.N = normalW;
-    //sd.NdotV = abs(dot(sd.V, sd.N));
-    //sd.linearRoughness = linearRoughness;
-
-    ///* Reconstruct layers (one diffuse layer) */
-    //sd.diffuse = albedo.rgb;
-    //sd.opacity = 0;
-
-    //float3 color = 0;
-    //float3 diffuseIllumination = 0;
-
-    ///* Do lighting */
-    //for (uint l = 0; l < gNumLights; l++)
-    //{
-    //    ShadingResult sr = evalMaterial(sd, gLightData[l], 1);
-    //    color += sr.color.rgb;
-    //    diffuseIllumination += sr.diffuseBrdf;
-    //}
-
-    //ShadingData sd = prepareShadingData(vOut, gMaterial, gCamera.posW);
-    //float4 color = 0;
-    //color.a = 1;
-
-    //[unroll]
-    //for (uint i = 0; i < 3; i++)
-    //{
-    //    color += evalMaterial(sd, gLights[i], 1).color;
-    //}
-    //color.rgb += sd.emissive;
-    //return color;
-
     float depth = gDepthTex.Sample(gPointSampler, texC).r;
     float4 screenPnt = float4(texC * float2(2,-2) + float2(-1,1), depth, 1);
     float4 worldPnt = mul(screenPnt, gInvWvpMat);
@@ -103,7 +69,7 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
     if (gDebugMode == ShowDepth)
         color = depth;
     else if (gDebugMode == ShowNormal)
-        color = gNormalTex.Sample(gPointSampler, texC);
+        color = normalVal;
     else if (gDebugMode == ShowDiffuse)
         color = gDiffuseTex.Sample(gPointSampler, texC);
     else if (gDebugMode == ShowSpecular)
@@ -123,7 +89,6 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
         sd.NdotV = abs(dot(sd.V, sd.N));
         sd.linearRoughness = diffuseVal.a;
         sd.specular = specularVal.xyz;
-
         sd.diffuse = diffuseVal.rgb;
         sd.opacity = 0;
 
