@@ -51,6 +51,7 @@ void Caustics::onGuiRender(Gui* pGui)
     debugModeList.push_back({ 3, "Diffuse" });
     debugModeList.push_back({ 4, "Specular" });
     debugModeList.push_back({ 5, "Photon" });
+    debugModeList.push_back({ 6, "World" });
     pGui->addDropdown("Debug mode", debugModeList, (uint32_t&)mDebugMode);
 
     if (pGui->addButton("Load Scene"))
@@ -143,9 +144,13 @@ void Caustics::loadShader()
     scatterBlendStateDesc.setRtParams(0, BlendState::BlendOp::Add, BlendState::BlendOp::Add, BlendState::BlendFunc::One, BlendState::BlendFunc::One, BlendState::BlendFunc::One, BlendState::BlendFunc::One);
     BlendState::SharedPtr scatterBlendState = BlendState::create(scatterBlendStateDesc);
     mpPhotonScatterProgram = GraphicsProgram::createFromFile("PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
+    DepthStencilState::Desc scatterDSDesc;
+    scatterDSDesc.setDepthEnabled(false);
+    auto depthStencilState = DepthStencilState::create(scatterDSDesc);
     mpPhotonScatterState = GraphicsState::create();
     mpPhotonScatterState->setProgram(mpPhotonScatterProgram);
     mpPhotonScatterState->setBlendState(scatterBlendState);
+    mpPhotonScatterState->setDepthStencilState(depthStencilState);
     mpPhotonScatterVars = GraphicsVars::create(mpPhotonScatterProgram->getReflector());
     //mpPhotonScatterPass = RasterScenePass::create(mpScene, "PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
 
@@ -243,6 +248,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     ConstantBuffer::SharedPtr pCompCB = mpCompositePass["PerImageCB"];
     pCompCB["gNumLights"] = mpScene->getLightCount();
     pCompCB["gDebugMode"] = (uint32_t)mDebugMode;
+    pCompCB["gInvWvpMat"] = mpCamera->getInvViewProjMatrix();
     for (uint32_t i = 0; i < mpScene->getLightCount(); i++)
     {
         mpScene->getLight(i)->setIntoProgramVars(mpCompositePass->getVars().get(), pCompCB.get(), "gLightData[" + std::to_string(i) + "]");
@@ -304,12 +310,14 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
     mpRtOut = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpPhotonBuffer = StructuredBuffer::create(mpPhotonTraceProgram->getHitProgram(0).get(), std::string("gPhotonBuffer"), CAUSTICS_MAP_SIZE * CAUSTICS_MAP_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     //mpCausticsFbo = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
-    mpCausticsFbo = Fbo::create2D(width, height, ResourceFormat::RGBA16Float);
+    mpDepthTex = Texture::create2D(width, height, ResourceFormat::D24UnormS8, 1, 1, nullptr, Resource::BindFlags::DepthStencil | Resource::BindFlags::ShaderResource);
+    //mpCausticsTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
+    mpCausticsFbo = Fbo::create2D(width, height, ResourceFormat::RGBA16Float, ResourceFormat::D24UnormS8);
+    //Fbo::create2D(width, height, ResourceFormat::RGBA16Float);
 
     mpNormalTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
     mpDiffuseTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
     mpSpecularTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
-    mpDepthTex = Texture::create2D(width, height, ResourceFormat::D24UnormS8, 1, 1, nullptr, Resource::BindFlags::DepthStencil | Resource::BindFlags::ShaderResource);
     mpGPassFbo = Fbo::create({ mpNormalTex , mpDiffuseTex ,mpSpecularTex }, mpDepthTex);//Fbo::create2D(width, height, ResourceFormat::RGBA16Float, ResourceFormat::D24UnormS8);
 }
 

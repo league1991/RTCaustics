@@ -43,11 +43,13 @@ Texture2D gPhotonTex;
 #define ShowDiffuse     3
 #define ShowSpecular    4
 #define ShowPhoton      5
+#define ShowWorld       6
 
 cbuffer PerImageCB
 {
     // Lighting params
     LightData gLightData[16];
+    float4x4 gInvWvpMat;
     uint gNumLights;
     uint gDebugMode;
 };
@@ -88,9 +90,14 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
     //color.rgb += sd.emissive;
     //return color;
 
+    float depth = gDepthTex.Sample(gPointSampler, texC).r;
+    float4 screenPnt = float4(texC * float2(2,-2) + float2(-1,1), depth, 1);
+    float4 worldPnt = mul(screenPnt, gInvWvpMat);
+    worldPnt /= worldPnt.w;
+
     float4 color = 0;
     if (gDebugMode == ShowDepth)
-        color = gDepthTex.Sample(gPointSampler, texC);
+        color = depth;
     else if (gDebugMode == ShowNormal)
         color = gNormalTex.Sample(gPointSampler, texC);
     else if (gDebugMode == ShowDiffuse)
@@ -99,6 +106,8 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
         color = gSpecularTex.Sample(gPointSampler, texC);
     else if (gDebugMode == ShowPhoton)
         color = gPhotonTex.Sample(gPointSampler, texC);
+    else if (gDebugMode == ShowWorld)
+        color = frac(worldPnt * 0.01 + 0.01);
 
     return color;
 }

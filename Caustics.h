@@ -74,6 +74,7 @@ private:
     GraphicsProgram::SharedPtr mpPhotonScatterProgram;
     GraphicsVars::SharedPtr mpPhotonScatterVars;
     GraphicsState::SharedPtr mpPhotonScatterState;
+    //Texture::SharedPtr mpCausticsTex;
     Fbo::SharedPtr mpCausticsFbo;
 
     // raytrace
