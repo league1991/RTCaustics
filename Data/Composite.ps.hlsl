@@ -94,6 +94,9 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
     float4 screenPnt = float4(texC * float2(2,-2) + float2(-1,1), depth, 1);
     float4 worldPnt = mul(screenPnt, gInvWvpMat);
     worldPnt /= worldPnt.w;
+    float4 normalVal = gNormalTex.Sample(gPointSampler, texC);
+    float4 diffuseVal = gDiffuseTex.Sample(gPointSampler, texC);
+    float4 specularVal = gSpecularTex.Sample(gPointSampler, texC);
 
     float4 color = 0;
     if (gDebugMode == ShowDepth)
@@ -108,6 +111,25 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
         color = gPhotonTex.Sample(gPointSampler, texC);
     else if (gDebugMode == ShowWorld)
         color = frac(worldPnt * 0.01 + 0.01);
+    else
+    {
+        ShadingData sd = initShadingData();
+        sd.posW = worldPnt.xyz;
+        sd.V = normalize(gCamera.posW - sd.posW);
+        sd.N = normalVal.xyz;
+        sd.NdotV = abs(dot(sd.V, sd.N));
+        sd.linearRoughness = diffuseVal.a;
+        sd.specular = specularVal.xyz;
+
+        sd.diffuse = diffuseVal.rgb;
+        sd.opacity = 0;
+
+        for (uint l = 0; l < gNumLights; l++)
+        {
+            ShadingResult sr = evalMaterial(sd, gLightData[l], 1);
+            color.rgb += sr.color.rgb;
+        }
+    }
 
     return color;
 }

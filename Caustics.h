@@ -43,7 +43,7 @@ public:
 
 private:
     bool mRayTrace = true;
-    uint32_t mDebugMode = 1;
+    uint32_t mDebugMode = 0;
     //bool mUseDOF = false;
     uint32_t mSampleIndex = 0xdeadbeef;
 
