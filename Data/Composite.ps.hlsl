@@ -51,6 +51,7 @@ cbuffer PerImageCB
     // Lighting params
     LightData gLightData[16];
     float4x4 gInvWvpMat;
+    float3 gCameraPos;
     uint gNumLights;
     uint gDebugMode;
 };
@@ -84,7 +85,7 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
     {
         ShadingData sd = initShadingData();
         sd.posW = worldPnt.xyz;
-        sd.V = normalize(gCamera.posW - sd.posW);
+        sd.V = normalize(gCameraPos - sd.posW);
         sd.N = normalVal.xyz;
         sd.NdotV = abs(dot(sd.V, sd.N));
         sd.linearRoughness = diffuseVal.a;

@@ -270,6 +270,9 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     pCompCB["gNumLights"] = mpScene->getLightCount();
     pCompCB["gDebugMode"] = (uint32_t)mDebugMode;
     pCompCB["gInvWvpMat"] = mpCamera->getInvViewProjMatrix();
+    pCompCB["gCameraPos"] = mpCamera->getPosition();
+    //ConstantBuffer::SharedPtr pImageCB = mpCompositePass["PerImageCB"];
+    //mpCamera->setIntoConstantBuffer(pImageCB.get(), 0);
     for (uint32_t i = 0; i < mpScene->getLightCount(); i++)
     {
         mpScene->getLight(i)->setIntoProgramVars(mpCompositePass->getVars().get(), pCompCB.get(), "gLightData[" + std::to_string(i) + "]");

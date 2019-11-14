@@ -47,7 +47,7 @@ private:
     bool mUseDOF = false;
     uint32_t mSampleIndex = 0xdeadbeef;
     float mEmitSize = 100.0;
-    float mSplatSize = 3;
+    float mSplatSize = 0.2f;
 
     Model::SharedPtr mpQuad;
     RtScene::SharedPtr mpScene;
