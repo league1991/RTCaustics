@@ -34,6 +34,7 @@ using namespace Falcor;
 class Caustics : public IRenderer
 {
 public:
+    Caustics();
     void onLoad(RenderContext* pRenderContext) override;
     void onFrameRender(RenderContext* pRenderContext, const Fbo::SharedPtr& pTargetFbo) override;
     void onResizeSwapChain(uint32_t width, uint32_t height) override;
@@ -48,6 +49,8 @@ private:
     uint32_t mSampleIndex = 0xdeadbeef;
     float mEmitSize = 100.0;
     float mSplatSize = 0.2f;
+    float mRoughThreshold = 0.1f;
+    float2 mLightAngle;
 
     Model::SharedPtr mpQuad;
     RtScene::SharedPtr mpScene;
@@ -56,6 +59,12 @@ private:
 
     // forward shading pass
     RasterScenePass::SharedPtr mpRasterPass;
+
+    // Clear draw argument
+    ComputeProgram::SharedPtr mpDrawArgumentProgram;
+    ComputeVars::SharedPtr mpDrawArgumentVars;
+    ComputeState::SharedPtr mpDrawArgumentState;
+    StructuredBuffer::SharedPtr  mpDrawArgumentBuffer;
 
     // g-pass
     RasterScenePass::SharedPtr mpGPass;

@@ -53,7 +53,9 @@ void Caustics::onGuiRender(Gui* pGui)
     debugModeList.push_back({ 5, "Photon" });
     debugModeList.push_back({ 6, "World" });
     debugModeList.push_back({ 7, "Roughness" });
+    debugModeList.push_back({ 8, "Ray" });
     pGui->addDropdown("Debug mode", debugModeList, (uint32_t&)mDebugMode);
+
     if (pGui->addButton("Load Scene"))
     {
         std::string filename;
@@ -70,13 +72,20 @@ void Caustics::onGuiRender(Gui* pGui)
 
     pGui->addFloatVar("Emit size", mEmitSize, 0, 1000, 5);
     pGui->addFloatVar("Splat size", mSplatSize, 0, 10, 0.01f);
+    pGui->addFloatVar("Rough Threshold", mRoughThreshold, 0, 1, 0.01f);
+    pGui->addFloat2Var("Light Angle", mLightAngle);
     if (mpScene)
     {
-        for (uint32_t i = 0; i < mpScene->getLightCount(); i++)
-        {
-            std::string group = "Point Light" + std::to_string(i);
-            mpScene->getLight(i)->renderUI(pGui, group.c_str());
-        }
+        auto light0 = dynamic_cast<DirectionalLight*>(mpScene->getLight(0).get());
+        light0->setWorldDirection(vec3(
+            cos(mLightAngle.x) * sin(mLightAngle.y),
+            cos(mLightAngle.y),
+            sin(mLightAngle.x) * sin(mLightAngle.y)));
+        //for (uint32_t i = 0; i < mpScene->getLightCount(); i++)
+        //{
+        //    std::string group = "Point Light" + std::to_string(i);
+        //    mpScene->getLight(i)->renderUI(pGui, group.c_str());
+        //}
     }
     mpCamera->renderUI(pGui);
 }
@@ -125,6 +134,12 @@ void Caustics::loadShader()
     mpRtState->setMaxTraceRecursionDepth(3);
     mpRtVars = RtProgramVars::create(mpRaytraceProgram, mpScene);
 
+    // clear draw argument program
+    mpDrawArgumentProgram = ComputeProgram::createFromFile("ResetDrawArgument.cs.hlsl", "main");
+    mpDrawArgumentState = ComputeState::create();
+    mpDrawArgumentState->setProgram(mpDrawArgumentProgram);
+    mpDrawArgumentVars = ComputeVars::create(mpDrawArgumentProgram.get());
+
     // photon trace
     RtProgram::Desc photonTraceProgDesc;
     photonTraceProgDesc.addShaderLibrary("PhotonTrace.rt.hlsl");
@@ -164,6 +179,11 @@ void Caustics::loadShader()
 
     mpCompositePass = FullScreenPass::create("Composite.ps.hlsl");
 }
+
+Caustics::Caustics() :
+    mLightAngle(0.4f, 4.2f),
+    mEmitSize(65.f)
+{}
 
 void Caustics::onLoad(RenderContext* pRenderContext)
 {
@@ -209,6 +229,7 @@ void Caustics::setPerFrameVars(const Fbo* pTargetFbo)
         pCB["invView"] = glm::inverse(mpCamera->getViewMatrix());
         pCB["viewportDims"] = vec2(pTargetFbo->getWidth(), pTargetFbo->getHeight());
         pCB["emitSize"] = mEmitSize;
+        pCB["roughThreshold"] = mRoughThreshold;
         //setCommonVars(mpPhotonTraceVars->getGlobalVars().get(), pTargetFbo);
         mSampleIndex++;
     }
@@ -223,6 +244,11 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     pContext->clearFbo(mpGPassFbo.get(), vec4(0, 0, 0, 1), 1.0, 0);
     mpGPass->renderScene(pContext, mpGPassFbo);
 
+    // set draw argument
+    mpDrawArgumentVars->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
+    //mpDrawArgumentVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
+    pContext->dispatch(mpDrawArgumentState.get(), mpDrawArgumentVars.get(), uvec3(1, 1, 1));
+
     // photon tracing
     pContext->clearTexture(mpRtOut.get());
     mpPhotonTraceVars->getRayGenVars()->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
@@ -232,6 +258,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     {
         hitVar->setTexture("gOutput", mpRtOut);
         hitVar->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
+        hitVar->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
     }
     mpRtRenderer->renderScene(pContext, mpPhotonTraceVars, mpPhotonTraceState, uvec3(gDispatchSize, gDispatchSize, 1), mpCamera.get());
 
@@ -250,7 +277,8 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     mpPhotonScatterState->setVao(mpQuad->getMesh(0)->getVao());
     mpPhotonScatterState->setFbo(mpCausticsFbo);
     int instanceCount = gDispatchSize * gDispatchSize;
-    pContext->drawIndexedInstanced(mpPhotonScatterState.get(), mpPhotonScatterVars.get(), mpQuad->getMesh(0)->getIndexCount(), instanceCount, 0, 0, 0);
+    //pContext->drawIndexedInstanced(mpPhotonScatterState.get(), mpPhotonScatterVars.get(), mpQuad->getMesh(0)->getIndexCount(), instanceCount, 0, 0, 0);
+    pContext->drawIndexedIndirect(mpPhotonScatterState.get(), mpPhotonScatterVars.get(), mpDrawArgumentBuffer.get(), 0);
 
     // Render output
     //pContext->clearUAV(mpRtOut->getUAV().get(), kClearColor);
@@ -265,6 +293,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     mpCompositePass["gDiffuseTex"] = mpGPassFbo->getColorTexture(1);
     mpCompositePass["gSpecularTex"]  = mpGPassFbo->getColorTexture(2);
     mpCompositePass["gPhotonTex"] = mpCausticsFbo->getColorTexture(0);
+    mpCompositePass["gRayTex"] = mpRtOut;
     mpCompositePass["gPointSampler"] = mpPointSampler;
     ConstantBuffer::SharedPtr pCompCB = mpCompositePass["PerImageCB"];
     pCompCB["gNumLights"] = mpScene->getLightCount();
@@ -331,8 +360,9 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
         mpCamera->setAspectRatio(aspectRatio);
     }
 
-    mpRtOut = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpPhotonBuffer = StructuredBuffer::create(mpPhotonTraceProgram->getHitProgram(0).get(), std::string("gPhotonBuffer"), CAUSTICS_MAP_SIZE * CAUSTICS_MAP_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
+    mpDrawArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gDrawArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg);
+    mpRtOut = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     //mpCausticsFbo = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpDepthTex = Texture::create2D(width, height, ResourceFormat::D24UnormS8, 1, 1, nullptr, Resource::BindFlags::DepthStencil | Resource::BindFlags::ShaderResource);
     //mpCausticsTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);

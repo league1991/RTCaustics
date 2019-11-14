@@ -36,6 +36,7 @@ Texture2D gNormalTex;
 Texture2D gDiffuseTex;
 Texture2D gSpecularTex;
 Texture2D gPhotonTex;
+Texture2D gRayTex;
 
 // Debug modes
 #define ShowDepth       1
@@ -45,6 +46,7 @@ Texture2D gPhotonTex;
 #define ShowPhoton      5
 #define ShowWorld       6
 #define ShowRoughness   7
+#define ShowRayTex      8
 
 cbuffer PerImageCB
 {
@@ -81,6 +83,8 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
         color = frac(worldPnt * 0.01 + 0.01);
     else if (gDebugMode == ShowRoughness)
         color = diffuseVal.a;
+    else if (gDebugMode == ShowRayTex)
+        color = gRayTex.Sample(gPointSampler, texC);
     else
     {
         ShadingData sd = initShadingData();

@@ -37,12 +37,14 @@ struct Photon
     float3 color;
 };
 RWStructuredBuffer<Photon> gPhotonBuffer;
+RWStructuredBuffer<DrawArguments> gDrawArgument;
 
 shared cbuffer PerFrameCB
 {
     float4x4 invView;
     float2 viewportDims;
     float emitSize;
+    float roughThreshold;
     //float tanHalfFovY;
     //uint sampleIndex;
     //bool useDOF;
@@ -132,7 +134,7 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     // Shoot a reflection ray
     float3 reflectColor = float3(0, 0, 0);
     //reflectColor = getReflectionColor(posW, v, rayDirW, hitData.depth);
-    if (sd.roughness > 0 && hitData.depth < 1)
+    if (sd.linearRoughness > roughThreshold && hitData.depth < 1)
     {
         PrimaryRayData secondaryRay;
         secondaryRay.depth = hitData.depth + 1;
@@ -146,7 +148,7 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         //float falloff = max(1, (secondaryRay.hitT * secondaryRay.hitT));
         //reflectColor *= 20 / falloff;
     }
-    else
+    else if(hitData.depth > 0)
     {
         int2 rayId  = DispatchRaysIndex().xy;
         int2 rayDim = DispatchRaysDimensions().xy;
@@ -155,17 +157,24 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         photon.normalW = sd.N;
         photon.color = sd.diffuse;// float3(1, 1, 1);
         //gPhotonBuffer.Append(photon);
-        int idx = rayId.y * rayDim.x + rayId.x;
-        gPhotonBuffer[idx] = photon;
+        //int idx = rayId.y * rayDim.x + rayId.x;
 
-        float4 cameraPnt = mul(float4(posW,1), gCamera.viewProjMat);
+        uint instanceIdx = 0;
+        InterlockedAdd(gDrawArgument[0].instanceCount, 1, instanceIdx);
+        gPhotonBuffer[instanceIdx] = photon;
+
+    }
+
+    if (hitData.depth == 0)
+    {
+        float4 cameraPnt = mul(float4(posW, 1), gCamera.viewProjMat);
         cameraPnt.xyz /= cameraPnt.w;
-
-        float2 screenPosF = saturate((cameraPnt.xy * float2(1,-1) + 1.0) * 0.5);
+        float2 screenPosF = saturate((cameraPnt.xy * float2(1, -1) + 1.0) * 0.5);
         uint2 screenDim;
         gOutput.GetDimensions(screenDim.x, screenDim.y);
+
         int2 screenPosI = screenPosF * screenDim;
-        // screenPosI = dispatchID;
+        screenPosI = DispatchRaysIndex().xy;
         gOutput[screenPosI.xy] = float4(abs(sd.N), 1);
     }
     //float3 color = 0;
@@ -204,10 +213,10 @@ void rayGen()
     //{
     //    ray = generateDOFRay(gCamera, launchIndex.xy, viewportDims, randSeed);
     //}
-    float3 lightOrigin = gLights[0].dirW * -10;// gLights[0].posW;
+    float3 lightOrigin = gLights[0].dirW * -100;// gLights[0].posW;
     float3 lightDirZ = gLights[0].dirW;
-    float3 lightDirX = normalize(float3(-lightDirZ.y, lightDirZ.x, 0));
-    float3 lightDirY = normalize(cross(lightDirX, lightDirZ));
+    float3 lightDirX = normalize(float3(-lightDirZ.z, 0, lightDirZ.x));
+    float3 lightDirY = normalize(cross(lightDirZ, lightDirX));
     float2 lightUV = float2(launchIndex.xy) / float2(launchDimension.xy);
     lightUV = lightUV * 2 - 1;
 
