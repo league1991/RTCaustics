@@ -80,18 +80,19 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
     else if (gDebugMode == ShowWorld)
         color = frac(worldPnt * 0.01 + 0.01);
     else if (gDebugMode == ShowRoughness)
-        color = gDiffuseTex.Sample(gPointSampler, texC).a;
+        color = diffuseVal.a;
     else
     {
         ShadingData sd = initShadingData();
         sd.posW = worldPnt.xyz;
         sd.V = normalize(gCameraPos - sd.posW);
         sd.N = normalVal.xyz;
-        sd.NdotV = abs(dot(sd.V, sd.N));
+        sd.NdotV = saturate(dot(sd.V, sd.N));
         sd.linearRoughness = diffuseVal.a;
+        sd.roughness = sd.linearRoughness * sd.linearRoughness;
         sd.specular = specularVal.xyz;
         sd.diffuse = diffuseVal.rgb;
-        sd.opacity = 0;
+        sd.opacity = specularVal.a;
 
         for (uint l = 0; l < gNumLights; l++)
         {

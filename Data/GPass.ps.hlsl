@@ -42,7 +42,7 @@ GPassPsOut gpassPS(VertexOut vOut) : SV_TARGET
 
     GPassPsOut output;
     output.normal = float4(normalize(vOut.normalW.xyz), 1);
-    output.diffuse = float4(sd.diffuse, sd.roughness);
+    output.diffuse = float4(sd.diffuse, sd.linearRoughness);
     output.specular = float4(sd.specular, sd.opacity);
     return output;
 }
