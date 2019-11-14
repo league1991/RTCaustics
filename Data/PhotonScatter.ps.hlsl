@@ -96,7 +96,10 @@ float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
     //    color += evalMaterial(sd, gLights[i], 1).color;
     //}
     //color.rgb += sd.emissive;
-
-    //return color;
-    return vOut.color;// float4(0.1,0,0,1);
+    float depth = gDepthTex.Load(int3(vOut.posH.xy, 0)).x;
+    if (abs(depth- vOut.posH.z) > 0.0001)
+    {
+        discard;
+    }
+    return vOut.color;
 }
