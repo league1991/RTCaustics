@@ -274,6 +274,10 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     pPerFrameCB["gEyePosW"] = mpCamera->getPosition();
     pPerFrameCB["gSplatSize"] = mSplatSize;
     mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
+    mpPhotonScatterVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
+    mpPhotonScatterVars->setTexture("gNormalTex", mpGPassFbo->getColorTexture(0));
+    mpPhotonScatterVars->setTexture("gDiffuseTex", mpGPassFbo->getColorTexture(1));
+    mpPhotonScatterVars->setTexture("gSpecularTex", mpGPassFbo->getColorTexture(2));
     mpPhotonScatterState->setVao(mpQuad->getMesh(0)->getVao());
     mpPhotonScatterState->setFbo(mpCausticsFbo);
     int instanceCount = gDispatchSize * gDispatchSize;

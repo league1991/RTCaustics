@@ -37,6 +37,11 @@ struct Photon
 };
 StructuredBuffer<Photon> gPhotonBuffer;
 
+Texture2D gDepthTex;
+Texture2D gNormalTex;
+Texture2D gDiffuseTex;
+Texture2D gSpecularTex;
+
 cbuffer PerFrameCB : register(b0)
 {
     float4x4 gWvpMat;
@@ -66,8 +71,14 @@ PhotonVSOut photonScatterVS(VertexIn vIn)
     //float4 posW = mul(vIn.pos, worldMat);
     ////vOut.posW = posW.xyz;
     //vOut.posH = mul(posW, gCamera.viewProjMat);
+
     Photon p = gPhotonBuffer[vIn.instanceID];
-    vIn.pos.xyz = vIn.pos.xyz * gSplatSize + p.posW;
+    float3 normal = normalize(p.normalW);
+    float3 tangent = normalize(float3(normal.y, -normal.x, 0));
+    float3 bitangent = cross(tangent, normal);
+
+    float3 localPoint = tangent * vIn.pos.x + normal * vIn.pos.y + bitangent * vIn.pos.z;
+    vIn.pos.xyz = localPoint * gSplatSize + p.posW;
     vOut.posH = mul(vIn.pos, gWvpMat);
     vOut.color = float4(p.color,1);
     return vOut;
