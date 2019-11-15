@@ -103,6 +103,8 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
             ShadingResult sr = evalMaterial(sd, gLightData[l], 1);
             color.rgb += sr.color.rgb;
         }
+
+        color.rgb += gPhotonTex.Sample(gPointSampler, texC).rgb;
     }
 
     return color;
