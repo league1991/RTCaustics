@@ -87,6 +87,8 @@ private:
     GraphicsState::SharedPtr mpPhotonScatterState;
     //Texture::SharedPtr mpCausticsTex;
     Fbo::SharedPtr mpCausticsFbo;
+    Texture::SharedPtr mpGaussianKernel;
+    Sampler::SharedPtr mpLinearSampler;
 
     // raytrace
     RtProgram::SharedPtr mpRaytraceProgram;

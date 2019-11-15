@@ -42,6 +42,10 @@ Texture2D gNormalTex;
 Texture2D gDiffuseTex;
 Texture2D gSpecularTex;
 
+Texture2D gGaussianTex;
+
+SamplerState gLinearSampler;
+
 cbuffer PerFrameCB : register(b0)
 {
     float4x4 gWvpMat;
@@ -61,6 +65,7 @@ struct PhotonVSOut
     //INTERPOLATION_MODE float4 prevPosH   : PREVPOSH;
     //INTERPOLATION_MODE float2 lightmapC  : LIGHTMAPUV;
     float4 posH : SV_POSITION;
+    float2 texcoord: TEXCOORD0;
     float4 color     : COLOR;
 };
 
@@ -78,6 +83,7 @@ PhotonVSOut photonScatterVS(VertexIn vIn)
     float3 bitangent = cross(tangent, normal);
 
     float3 localPoint = tangent * vIn.pos.x + normal * vIn.pos.y + bitangent * vIn.pos.z;
+    vOut.texcoord = (vIn.pos.xz + 1) * 0.5;
     vIn.pos.xyz = localPoint * gSplatSize + p.posW;
     vOut.posH = mul(vIn.pos, gWvpMat);
     vOut.color = float4(p.color,1);
@@ -101,5 +107,7 @@ float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
     {
         discard;
     }
-    return vOut.color;
+
+    float alpha = gGaussianTex.Sample(gLinearSampler, vOut.texcoord).r;
+    return float4(vOut.color.rgb * alpha, 1);
 }

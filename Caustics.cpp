@@ -111,11 +111,13 @@ void Caustics::loadScene(const std::string& filename, const Fbo* pTargetFbo)
     pModel->bindSamplerToMaterials(pSampler);
 
     // Update the controllers
-    mCamController.setCameraSpeed(radius * 0.25f);
+    mCamController.setCameraSpeed(radius * 0.4f);
     float nearZ = std::max(0.1f, pModel->getRadius() / 750.0f);
     float farZ = radius * 10;
     mpCamera->setDepthRange(nearZ, farZ);
     mpCamera->setAspectRatio((float)pTargetFbo->getWidth() / (float)pTargetFbo->getHeight());
+
+    mpGaussianKernel = Texture::createFromFile("Caustics/gaussian.png", true, false);
 }
 
 void Caustics::loadShader()
@@ -178,6 +180,12 @@ void Caustics::loadShader()
     mpGPass = RasterScenePass::create(mpScene, "GPass.ps.hlsl", "", "gpassPS");
 
     mpCompositePass = FullScreenPass::create("Composite.ps.hlsl");
+
+    Sampler::Desc samplerDesc;
+    samplerDesc.setFilterMode(Sampler::Filter::Linear, Sampler::Filter::Linear, Sampler::Filter::Linear);
+    mpLinearSampler = Sampler::create(samplerDesc);
+    samplerDesc.setFilterMode(Sampler::Filter::Point, Sampler::Filter::Point, Sampler::Filter::Point);
+    mpPointSampler = Sampler::create(samplerDesc);
 }
 
 Caustics::Caustics() :
@@ -273,11 +281,13 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     pPerFrameCB["gWvpMat"] = wvp;
     pPerFrameCB["gEyePosW"] = mpCamera->getPosition();
     pPerFrameCB["gSplatSize"] = mSplatSize;
+    mpPhotonScatterVars["gLinearSampler"] = mpLinearSampler;
     mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
     mpPhotonScatterVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
     mpPhotonScatterVars->setTexture("gNormalTex", mpGPassFbo->getColorTexture(0));
     mpPhotonScatterVars->setTexture("gDiffuseTex", mpGPassFbo->getColorTexture(1));
     mpPhotonScatterVars->setTexture("gSpecularTex", mpGPassFbo->getColorTexture(2));
+    mpPhotonScatterVars->setTexture("gGaussianTex", mpGaussianKernel);
     mpPhotonScatterState->setVao(mpQuad->getMesh(0)->getVao());
     mpPhotonScatterState->setFbo(mpCausticsFbo);
     int instanceCount = gDispatchSize * gDispatchSize;
@@ -288,10 +298,6 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     //pContext->clearUAV(mpRtOut->getUAV().get(), kClearColor);
     //mpRtVars->getRayGenVars()->setTexture("gOutput", mpRtOut);
     //mpRtRenderer->renderScene(pContext, mpRtVars, mpRtState, uvec3(pTargetFbo->getWidth(), pTargetFbo->getHeight(), 1), mpCamera.get());
-
-    Sampler::Desc samplerDesc;
-    samplerDesc.setFilterMode(Sampler::Filter::Point, Sampler::Filter::Point, Sampler::Filter::Point);
-    mpPointSampler = Sampler::create(samplerDesc);
     mpCompositePass["gDepthTex"]   = mpGPassFbo->getDepthStencilTexture();
     mpCompositePass["gNormalTex"]  = mpGPassFbo->getColorTexture(0);
     mpCompositePass["gDiffuseTex"] = mpGPassFbo->getColorTexture(1);
