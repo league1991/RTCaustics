@@ -72,6 +72,7 @@ void Caustics::onGuiRender(Gui* pGui)
 
     pGui->addFloatVar("Emit size", mEmitSize, 0, 1000, 5);
     pGui->addFloatVar("Splat size", mSplatSize, 0, 10, 0.01f);
+    pGui->addFloatVar("Jitter", mJitter, 0, 1, 0.01f);
     pGui->addFloatVar("Rough Threshold", mRoughThreshold, 0, 1, 0.01f);
     pGui->addFloat2Var("Light Angle", mLightAngle);
     if (mpScene)
@@ -118,6 +119,7 @@ void Caustics::loadScene(const std::string& filename, const Fbo* pTargetFbo)
     mpCamera->setAspectRatio((float)pTargetFbo->getWidth() / (float)pTargetFbo->getHeight());
 
     mpGaussianKernel = Texture::createFromFile("Caustics/gaussian.png", true, false);
+    mpUniformNoise = Texture::createFromFile("Caustics/uniform.png", true, false);
 }
 
 void Caustics::loadShader()
@@ -190,7 +192,8 @@ void Caustics::loadShader()
 
 Caustics::Caustics() :
     mLightAngle(0.4f, 4.2f),
-    mEmitSize(65.f)
+    mEmitSize(65.f),
+    mJitter(1.0f)
 {}
 
 void Caustics::onLoad(RenderContext* pRenderContext)
@@ -238,6 +241,7 @@ void Caustics::setPerFrameVars(const Fbo* pTargetFbo)
         pCB["viewportDims"] = vec2(pTargetFbo->getWidth(), pTargetFbo->getHeight());
         pCB["emitSize"] = mEmitSize;
         pCB["roughThreshold"] = mRoughThreshold;
+        pCB["jitter"] = mJitter;
         //setCommonVars(mpPhotonTraceVars->getGlobalVars().get(), pTargetFbo);
         mSampleIndex++;
     }
@@ -259,8 +263,10 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
 
     // photon tracing
     pContext->clearTexture(mpRtOut.get());
-    mpPhotonTraceVars->getRayGenVars()->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
-    mpPhotonTraceVars->getRayGenVars()->setTexture("gOutput", mpRtOut);
+    auto rayGenVars = mpPhotonTraceVars->getRayGenVars();
+    rayGenVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
+    rayGenVars->setTexture("gOutput", mpRtOut);
+    rayGenVars->setTexture("gUniformNoise", mpUniformNoise);
     auto hitVars = mpPhotonTraceVars->getHitVars(0);
     for (auto& hitVar: hitVars)
     {

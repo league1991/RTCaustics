@@ -39,6 +39,7 @@ struct Photon
 };
 RWStructuredBuffer<Photon> gPhotonBuffer;
 RWStructuredBuffer<DrawArguments> gDrawArgument;
+Texture2D gUniformNoise;
 
 shared cbuffer PerFrameCB
 {
@@ -46,6 +47,7 @@ shared cbuffer PerFrameCB
     float2 viewportDims;
     float emitSize;
     float roughThreshold;
+    float jitter;
     //float tanHalfFovY;
     //uint sampleIndex;
     //bool useDOF;
@@ -225,6 +227,11 @@ void rayGen()
     float3 lightDirY = normalize(cross(lightDirZ, lightDirX));
     float2 lightUV = float2(launchIndex.xy) / float2(launchDimension.xy);
     lightUV = lightUV * 2 - 1;
+
+    uint nw, nh, nl;
+    gUniformNoise.GetDimensions(0, nw, nh, nl);
+    float2 noise = gUniformNoise.Load(uint3(launchIndex.xy % uint2(nw, nh), 0)).rg;
+    lightUV += noise / float2(launchDimension.xy) * jitter;
 
     ray.Origin = lightOrigin + (lightDirX * lightUV.x + lightDirY * lightUV.y)* emitSize;
     ray.Direction = lightDirZ;// lightDirZ;

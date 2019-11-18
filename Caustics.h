@@ -50,6 +50,7 @@ private:
     float mEmitSize = 100.0;
     float mSplatSize = 0.2f;
     float mRoughThreshold = 0.1f;
+    float mJitter;
     float2 mLightAngle;
 
     Model::SharedPtr mpQuad;
@@ -78,6 +79,7 @@ private:
     RtProgram::SharedPtr mpPhotonTraceProgram;
     RtProgramVars::SharedPtr mpPhotonTraceVars;
     RtState::SharedPtr mpPhotonTraceState;
+    Texture::SharedPtr mpUniformNoise;
     //RtSceneRenderer::SharedPtr mpPhotonTraceRenderer;
 
     // photon scatter
