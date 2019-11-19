@@ -194,7 +194,9 @@ void Caustics::loadShader()
 Caustics::Caustics() :
     mLightAngle(0.4f, 4.2f),
     mEmitSize(65.f),
-    mJitter(1.0f)
+    mJitter(0.0f),
+    mSplatSize(1.8f),
+    mIntensity(0.26f)
 {}
 
 void Caustics::onLoad(RenderContext* pRenderContext)

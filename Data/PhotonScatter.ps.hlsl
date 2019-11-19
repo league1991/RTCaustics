@@ -92,7 +92,7 @@ PhotonVSOut photonScatterVS(VertexIn vIn)
     bitangent *= gSplatSize;
     float tangentLength = length(tangent);
     float bitangentLength = length(bitangent);
-    float maxLength = 0.5;
+    float maxLength = 10.0;
     float minLength = 0.01;
     tangent *= clamp(tangentLength, minLength, maxLength) / tangentLength;
     bitangentLength *= clamp(bitangentLength, minLength, maxLength) / bitangentLength;
