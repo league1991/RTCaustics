@@ -34,6 +34,8 @@ struct Photon
     float3 posW;
     float3 normalW;
     float3 color;
+    float3 dPdx;
+    float3 dPdy;
 };
 StructuredBuffer<Photon> gPhotonBuffer;
 
@@ -54,6 +56,7 @@ cbuffer PerFrameCB : register(b0)
     float gLightIntensity;
     float gSurfaceRoughness;
     float gSplatSize;
+    float gIntensity;
 };
 
 struct PhotonVSOut
@@ -79,14 +82,26 @@ PhotonVSOut photonScatterVS(VertexIn vIn)
 
     Photon p = gPhotonBuffer[vIn.instanceID];
     float3 normal = normalize(p.normalW);
-    float3 tangent = normalize(float3(normal.y, -normal.x, 0));
-    float3 bitangent = cross(tangent, normal);
+    float3 tangent = p.dPdx;// normalize(float3(normal.y, -normal.x, 0));
+    float3 bitangent = p.dPdy;// cross(tangent, normal);
 
-    float3 localPoint = tangent * vIn.pos.x + normal * vIn.pos.y + bitangent * vIn.pos.z;
+    float3 areaVector = cross(tangent, bitangent);
+    float3 area = length(areaVector);
+
+    tangent *= gSplatSize;
+    bitangent *= gSplatSize;
+    float tangentLength = length(tangent);
+    float bitangentLength = length(bitangent);
+    float maxLength = 0.5;
+    float minLength = 0.01;
+    tangent *= clamp(tangentLength, minLength, maxLength) / tangentLength;
+    bitangentLength *= clamp(bitangentLength, minLength, maxLength) / bitangentLength;
+
+    float3 localPoint = tangent * vIn.pos.x + bitangent * vIn.pos.z + normal * vIn.pos.y;
     vOut.texcoord = (vIn.pos.xz + 1) * 0.5;
-    vIn.pos.xyz = localPoint * gSplatSize + p.posW;
+    vIn.pos.xyz = localPoint + p.posW;
     vOut.posH = mul(vIn.pos, gWvpMat);
-    vOut.color = float4(p.color,1);
+    vOut.color = float4(p.color / area * gIntensity,1);
     return vOut;
 }
 
@@ -103,7 +118,7 @@ float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
     //}
     //color.rgb += sd.emissive;
     float depth = gDepthTex.Load(int3(vOut.posH.xy, 0)).x;
-    if (abs(depth- vOut.posH.z) > 0.0001)
+    if (abs(depth- vOut.posH.z) > 0.00001)
     {
         discard;
     }

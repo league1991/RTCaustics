@@ -72,6 +72,7 @@ void Caustics::onGuiRender(Gui* pGui)
 
     pGui->addFloatVar("Emit size", mEmitSize, 0, 1000, 5);
     pGui->addFloatVar("Splat size", mSplatSize, 0, 10, 0.01f);
+    pGui->addFloatVar("Intensity", mIntensity, 0, 1, 0.01f);
     pGui->addFloatVar("Jitter", mJitter, 0, 1, 0.01f);
     pGui->addFloatVar("Rough Threshold", mRoughThreshold, 0, 1, 0.01f);
     pGui->addFloat2Var("Light Angle", mLightAngle);
@@ -152,7 +153,7 @@ void Caustics::loadShader()
     photonTraceProgDesc.addMiss(0, "primaryMiss");
     //photonTraceProgDesc.addHitGroup(1, "", "shadowAnyHit");
     //photonTraceProgDesc.addMiss(1, "shadowMiss");
-    mpPhotonTraceProgram = RtProgram::create(photonTraceProgDesc);
+    mpPhotonTraceProgram = RtProgram::create(photonTraceProgDesc, 72U);
     mpPhotonTraceState = RtState::create();
     mpPhotonTraceState->setProgram(mpPhotonTraceProgram);
     mpPhotonTraceState->setMaxTraceRecursionDepth(3);
@@ -287,6 +288,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     pPerFrameCB["gWvpMat"] = wvp;
     pPerFrameCB["gEyePosW"] = mpCamera->getPosition();
     pPerFrameCB["gSplatSize"] = mSplatSize;
+    pPerFrameCB["gIntensity"] = mIntensity;
     mpPhotonScatterVars["gLinearSampler"] = mpLinearSampler;
     mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
     mpPhotonScatterVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());

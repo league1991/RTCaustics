@@ -36,6 +36,8 @@ struct Photon
     float3 posW;
     float3 normalW;
     float3 color;
+    float3 dPdx;
+    float3 dPdy;
 };
 RWStructuredBuffer<Photon> gPhotonBuffer;
 RWStructuredBuffer<DrawArguments> gDrawArgument;
@@ -56,6 +58,7 @@ shared cbuffer PerFrameCB
 struct PrimaryRayData
 {
     float4 color;
+    float3 dPdx, dPdy, dDdx, dDdy;  // ray differentials
     uint depth;
     float hitT;
 };
@@ -120,6 +123,107 @@ void primaryMiss(inout PrimaryRayData hitData)
 //    return reflectColor;
 //}
 
+void getVerticesAndNormals(
+    uint triangleIndex, BuiltInTriangleIntersectionAttributes attribs,
+    out float3 P0, out float3 P1, out float3 P2,
+    out float3 N0, out float3 N1, out float3 N2,
+    out float3 N)
+{
+    uint3 indices = getIndices(triangleIndex);
+    int address = (indices[0] * 3) * 4;
+    P0 = asfloat(gPositions.Load3(address)).xyz;
+    P0 = mul(float4(P0, 1.f), gWorldMat[0]).xyz;
+    N0 = asfloat(gNormals.Load3(address)).xyz;
+    N0 = normalize(mul(float4(N0, 0.f), gWorldMat[0]).xyz);
+
+    address = (indices[1] * 3) * 4;
+    P1 = asfloat(gPositions.Load3(address)).xyz;
+    P1 = mul(float4(P1, 1.f), gWorldMat[0]).xyz;
+    N1 = asfloat(gNormals.Load3(address)).xyz;
+    N1 = normalize(mul(float4(N1, 0.f), gWorldMat[0]).xyz);
+
+    address = (indices[2] * 3) * 4;
+    P2 = asfloat(gPositions.Load3(address)).xyz;
+    P2 = mul(float4(P2, 1.f), gWorldMat[0]).xyz;
+    N2 = asfloat(gNormals.Load3(address)).xyz;
+    N2 = normalize(mul(float4(N2, 0.f), gWorldMat[0]).xyz);
+
+    float3 barycentrics = float3(1.0 - attribs.barycentrics.x - attribs.barycentrics.y, attribs.barycentrics.x, attribs.barycentrics.y);
+    N = (N0 * barycentrics.x + N1 * barycentrics.y + N2 * barycentrics.z);
+}
+
+void updateTransferRayDifferential(
+    float3 N,
+    inout float3 dPdx,
+    inout float3 dDdx)
+{
+    float3 D = WorldRayDirection();
+    float t = RayTCurrent();
+    float dtdx = -1 * dot(dPdx + t * dDdx, N) / dot(D, N);
+    dPdx = dPdx + t * dDdx + dtdx * D;
+}
+
+void calculateDNdx(
+    float3 P0, float3 P1, float3 P2,
+    float3 N0, float3 N1, float3 N2,
+    float3 N,
+    float3 dPdx, out float3 dNdx)
+{
+    float3 dP1 = P1 - P0;
+    float3 dP2 = P2 - P0;
+
+    float P11 = dot(dP1, dP1);
+    float P12 = dot(dP1, dP2);
+    float P22 = dot(dP2, dP2);
+
+    float Q1 = dot(dP1, dPdx);
+    float Q2 = dot(dP2, dPdx);
+
+    float delta = P11 * P22 - P12 * P12;
+    float dudx = (Q1 * P22 - Q2 * P12) / delta;
+    float dvdx = (Q2 * P11 - Q1 * P12) / delta;
+
+    float n2 = dot(N, N);
+    float n1 = sqrt(n2);
+    dNdx = dudx * (N1 - N0) + dvdx * (N2 - N0);
+    dNdx = (n2 * dNdx - dot(N, dNdx) * N) / (n2 * n1);
+}
+
+void updateReflectRayDifferential(
+    float3 P0, float3 P1, float3 P2,
+    float3 N0, float3 N1, float3 N2, float3 N,
+    inout float3 dPdx,
+    inout float3 dDdx)
+{
+    float3 dNdx=0;
+    calculateDNdx(P0, P1, P2, N0, N1, N2, N, dPdx, dNdx);
+
+    N = normalize(N);
+    float3 D = WorldRayDirection();
+    float dDNdx = dot(dDdx, N) + dot(D, dNdx);
+    dDdx = dDdx - 2 * (dot(D, N) * dNdx + dDNdx * N);
+}
+
+//void updateRayPartialDifferential(
+//    float3 P0, float3 P1, float3 P2,
+//    float3 N0, float3 N1, float3 N2, float3 N,
+//    inout float3 dPdx, inout float3 dDdx)
+//{
+//    updateTransferRayDifferential(dPdx, dDdx, N);
+//    updateReflectRayDifferential(P0, P1, P2, N0, N1, N2, N, dPdx, dDdx);
+//}
+//
+//void updateRayDifferential(inout PrimaryRayData hitData, in BuiltInTriangleIntersectionAttributes attribs)
+//{
+//    float3 barycentrics = float3(1.0 - attribs.barycentrics.x - attribs.barycentrics.y, attribs.barycentrics.x, attribs.barycentrics.y);
+//    float3 P0, P1, P2, N0, N1, N2;
+//    getVerticesAndNormals(PrimitiveIndex(), P0, P1, P2, N0, N1, N2);
+//    float3 N = N0 * barycentrics.x + N1 * barycentrics.y + N2 * barycentrics.z;
+//
+//    updateRayPartialDifferential(P0, P1, P2, N0, N1, N2, N, hitData.dPdx, hitData.dDdx);
+//    updateRayPartialDifferential(P0, P1, P2, N0, N1, N2, N, hitData.dPdy, hitData.dDdy);
+//}
+
 [shader("closesthit")]
 void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersectionAttributes attribs)
 {
@@ -134,6 +238,17 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     VertexOut v = getVertexAttributes(triangleIndex, attribs);
     ShadingData sd = prepareShadingData(v, gMaterial, rayOrigW, 0);
 
+    PrimaryRayData hitData2;
+    hitData2.depth = hitData.depth + 1;
+    hitData2.dPdx = hitData.dPdx;
+    hitData2.dDdx = hitData.dDdx;
+    hitData2.dPdy = hitData.dPdy;
+    hitData2.dDdy = hitData.dDdy;
+    float3 P0, P1, P2, N0, N1, N2, N;
+    getVerticesAndNormals(PrimitiveIndex(), attribs, P0, P1, P2, N0, N1, N2, N);
+    updateTransferRayDifferential(N, hitData2.dPdx, hitData2.dDdx);
+    updateTransferRayDifferential(N, hitData2.dPdy, hitData2.dDdy);
+
     // Shoot a reflection ray
     float3 reflectColor = float3(0, 0, 0);
     //reflectColor = getReflectionColor(posW, v, rayDirW, hitData.depth);
@@ -141,9 +256,10 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     {
         if (hitData.depth < 1)
         {
-            PrimaryRayData hitData2;
-            hitData2.depth = hitData.depth + 1;
-            hitData2.color = hitData.color * float4(sd.specular, 1);
+            hitData2.color = hitData.color* float4(sd.specular, 1);
+            updateReflectRayDifferential(P0, P1, P2, N0, N1, N2, N, hitData2.dPdx, hitData2.dDdx);
+            updateReflectRayDifferential(P0, P1, P2, N0, N1, N2, N, hitData2.dPdy, hitData2.dDdy);
+
             RayDesc ray;
             ray.Origin = posW;
             ray.Direction = reflect(rayDirW, v.normalW);
@@ -166,7 +282,9 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         Photon photon;
         photon.posW = posW;
         photon.normalW = sd.N;
-        photon.color = dot(-rayDirW, sd.N) * sd.diffuse;//sr.color.rgb;
+        photon.color = dot(-rayDirW, sd.N)* sd.diffuse;//sr.color.rgb;
+        photon.dPdx = hitData2.dPdx;
+        photon.dPdy = hitData2.dPdy;
 
         uint instanceIdx = 0;
         InterlockedAdd(gDrawArgument[0].instanceCount, 1, instanceIdx);
@@ -231,9 +349,10 @@ void rayGen()
     uint nw, nh, nl;
     gUniformNoise.GetDimensions(0, nw, nh, nl);
     float2 noise = gUniformNoise.Load(uint3(launchIndex.xy % uint2(nw, nh), 0)).rg;
-    lightUV += noise / float2(launchDimension.xy) * jitter;
+    float2 pixelSize = emitSize / float2(launchDimension.xy);
+    lightUV += noise * pixelSize * jitter;
 
-    ray.Origin = lightOrigin + (lightDirX * lightUV.x + lightDirY * lightUV.y)* emitSize;
+    ray.Origin = lightOrigin + (lightDirX * lightUV.x + lightDirY * lightUV.y) * emitSize;
     ray.Direction = lightDirZ;// lightDirZ;
     ray.TMin = 0.0;
     ray.TMax = 1e10;
@@ -241,6 +360,12 @@ void rayGen()
     PrimaryRayData hitData;
     hitData.depth = 0;
     hitData.color = float4(1, 1, 1, 1);
+    //hitData.dPdx = 0;
+    //hitData.dPdy = 0;
+    hitData.dDdx = 0;// lightDirX* pixelSize.x * 2.0;
+    hitData.dDdy = 0;// lightDirY* pixelSize.y * 2.0;
+    hitData.dPdx = lightDirX * pixelSize.x * 2.0;
+    hitData.dPdy = -lightDirY * pixelSize.y * 2.0;
     TraceRay( gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, hitData );
     //gOutput[launchIndex.xy] = hitData.color;
     //gOutput[int2(0,0)] = hitData.color;

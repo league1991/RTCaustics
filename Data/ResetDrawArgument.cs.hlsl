@@ -39,6 +39,8 @@ struct DrawArguments
 //    float3 posW;
 //    float3 normalW;
 //    float3 color;
+//    float3 dPdx;
+//    float3 dPdy;
 //};
 
 //StructuredBuffer<Photon> gPhotonBuffer;
