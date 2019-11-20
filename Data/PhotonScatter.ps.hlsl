@@ -57,7 +57,12 @@ cbuffer PerFrameCB : register(b0)
     float gSurfaceRoughness;
     float gSplatSize;
     float gIntensity;
+    uint  gPhotonMode;
+    float gKernelPower;
 };
+#define AnisotropicPhoton 0
+#define IsotropicPhoton 1
+#define VisualizePhoton 2
 
 struct PhotonVSOut
 {
@@ -82,20 +87,40 @@ PhotonVSOut photonScatterVS(VertexIn vIn)
 
     Photon p = gPhotonBuffer[vIn.instanceID];
     float3 normal = normalize(p.normalW);
-    float3 tangent = p.dPdx;// normalize(float3(normal.y, -normal.x, 0));
-    float3 bitangent = p.dPdy;// cross(tangent, normal);
+
+    float3 tangent, bitangent;
+    if (gPhotonMode == AnisotropicPhoton)
+    {
+        tangent = p.dPdx;
+        bitangent = p.dPdy;
+        float tangentLength = length(tangent);
+        float bitangentLength = length(bitangent);
+        float maxLength = 10.0;
+        float minLength = 0.01;
+        tangent *= clamp(tangentLength, minLength, maxLength) / tangentLength;
+        bitangentLength *= clamp(bitangentLength, minLength, maxLength) / bitangentLength;
+    }
+    else if (gPhotonMode == IsotropicPhoton)
+    {
+        tangent = normalize(float3(normal.y, -normal.x, 0));
+        bitangent = cross(tangent, normal);
+        float radius = max(length(p.dPdx), length(p.dPdy));
+        tangent *= radius;
+        bitangent *= radius;
+    }
+    else
+    {
+        tangent = normalize(float3(normal.y, -normal.x, 0));
+        bitangent = cross(tangent, normal);
+    }
+
 
     float3 areaVector = cross(tangent, bitangent);
-    float3 area = length(areaVector);
+    //float area = 0.5 * (dot(tangent, tangent) + dot(bitangent, bitangent));
+    float area = length(tangent) + length(bitangent);// length(areaVector);
 
     tangent *= gSplatSize;
     bitangent *= gSplatSize;
-    float tangentLength = length(tangent);
-    float bitangentLength = length(bitangent);
-    float maxLength = 10.0;
-    float minLength = 0.01;
-    tangent *= clamp(tangentLength, minLength, maxLength) / tangentLength;
-    bitangentLength *= clamp(bitangentLength, minLength, maxLength) / bitangentLength;
 
     float3 localPoint = tangent * vIn.pos.x + bitangent * vIn.pos.z + normal * vIn.pos.y;
     vOut.texcoord = (vIn.pos.xz + 1) * 0.5;
@@ -124,5 +149,6 @@ float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
     }
 
     float alpha = gGaussianTex.Sample(gLinearSampler, vOut.texcoord).r;
+    alpha = pow(alpha, gKernelPower);
     return float4(vOut.color.rgb * alpha, 1);
 }

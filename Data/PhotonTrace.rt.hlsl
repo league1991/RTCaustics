@@ -282,7 +282,7 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         Photon photon;
         photon.posW = posW;
         photon.normalW = sd.N;
-        photon.color = dot(-rayDirW, sd.N)* sd.diffuse;//sr.color.rgb;
+        photon.color = dot(-rayDirW, sd.N)* sd.diffuse * hitData.color.rgb;//sr.color.rgb;
         photon.dPdx = hitData2.dPdx;
         photon.dPdy = hitData2.dPdy;
 
@@ -359,7 +359,7 @@ void rayGen()
 
     PrimaryRayData hitData;
     hitData.depth = 0;
-    hitData.color = float4(1, 1, 1, 1);
+    hitData.color = float4(1, 1, 1, 1) * emitSize;
     //hitData.dPdx = 0;
     //hitData.dPdy = 0;
     hitData.dDdx = 0;// lightDirX* pixelSize.x * 2.0;

@@ -51,6 +51,8 @@ private:
     float mSplatSize = 0.2f;
     float mIntensity = 1.0f;
     float mRoughThreshold = 0.1f;
+    float mKernelPower;
+    uint32_t mPhotonMode;
     float mJitter;
     float2 mLightAngle;
 

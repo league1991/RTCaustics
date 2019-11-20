@@ -44,17 +44,27 @@ void Caustics::onGuiRender(Gui* pGui)
 {
     pGui->addCheckBox("Ray Trace", mRayTrace);
 
-    Gui::DropdownList debugModeList;
-    debugModeList.push_back({ 0, "Disabled" });
-    debugModeList.push_back({ 1, "Depth" });
-    debugModeList.push_back({ 2, "Normal" });
-    debugModeList.push_back({ 3, "Diffuse" });
-    debugModeList.push_back({ 4, "Specular" });
-    debugModeList.push_back({ 5, "Photon" });
-    debugModeList.push_back({ 6, "World" });
-    debugModeList.push_back({ 7, "Roughness" });
-    debugModeList.push_back({ 8, "Ray" });
-    pGui->addDropdown("Debug mode", debugModeList, (uint32_t&)mDebugMode);
+    {
+        Gui::DropdownList debugModeList;
+        debugModeList.push_back({ 0, "Disabled" });
+        debugModeList.push_back({ 1, "Depth" });
+        debugModeList.push_back({ 2, "Normal" });
+        debugModeList.push_back({ 3, "Diffuse" });
+        debugModeList.push_back({ 4, "Specular" });
+        debugModeList.push_back({ 5, "Photon" });
+        debugModeList.push_back({ 6, "World" });
+        debugModeList.push_back({ 7, "Roughness" });
+        debugModeList.push_back({ 8, "Ray" });
+        pGui->addDropdown("Debug mode", debugModeList, (uint32_t&)mDebugMode);
+    }
+
+    {
+        Gui::DropdownList debugModeList;
+        debugModeList.push_back({ 0, "Anisotropic" });
+        debugModeList.push_back({ 1, "Isotropic" });
+        debugModeList.push_back({ 2, "Visualize" });
+        pGui->addDropdown("Photon mode", debugModeList, (uint32_t&)mPhotonMode);
+    }
 
     if (pGui->addButton("Load Scene"))
     {
@@ -70,12 +80,13 @@ void Caustics::onGuiRender(Gui* pGui)
         loadShader();
     }
 
-    pGui->addFloatVar("Emit size", mEmitSize, 0, 1000, 5);
+    pGui->addFloatVar("Emit size", mEmitSize, 0, 1000, 1);
+    pGui->addFloatVar("Kernel Power", mKernelPower, 0, 10, 0.01f);
     pGui->addFloatVar("Splat size", mSplatSize, 0, 10, 0.01f);
     pGui->addFloatVar("Intensity", mIntensity, 0, 1, 0.01f);
     pGui->addFloatVar("Jitter", mJitter, 0, 1, 0.01f);
     pGui->addFloatVar("Rough Threshold", mRoughThreshold, 0, 1, 0.01f);
-    pGui->addFloat2Var("Light Angle", mLightAngle);
+    pGui->addFloat2Var("Light Angle", mLightAngle, -20,20,0.01f);
     if (mpScene)
     {
         auto light0 = dynamic_cast<DirectionalLight*>(mpScene->getLight(0).get());
@@ -89,6 +100,7 @@ void Caustics::onGuiRender(Gui* pGui)
         //    mpScene->getLight(i)->renderUI(pGui, group.c_str());
         //}
     }
+
     mpCamera->renderUI(pGui);
 }
 
@@ -193,10 +205,12 @@ void Caustics::loadShader()
 
 Caustics::Caustics() :
     mLightAngle(0.4f, 4.2f),
-    mEmitSize(65.f),
+    mEmitSize(30.f),
     mJitter(0.0f),
-    mSplatSize(1.8f),
-    mIntensity(0.26f)
+    mSplatSize(2.f),
+    mIntensity(0.26f),
+    mPhotonMode(0),
+    mKernelPower(1.0)
 {}
 
 void Caustics::onLoad(RenderContext* pRenderContext)
@@ -291,6 +305,8 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     pPerFrameCB["gEyePosW"] = mpCamera->getPosition();
     pPerFrameCB["gSplatSize"] = mSplatSize;
     pPerFrameCB["gIntensity"] = mIntensity;
+    pPerFrameCB["gPhotonMode"] = mPhotonMode;
+    pPerFrameCB["gKernelPower"] = mKernelPower;
     mpPhotonScatterVars["gLinearSampler"] = mpLinearSampler;
     mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
     mpPhotonScatterVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
