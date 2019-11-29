@@ -59,6 +59,7 @@ cbuffer PerFrameCB : register(b0)
     float gIntensity;
     uint  gPhotonMode;
     float gKernelPower;
+    uint  gShowPhoton;
 };
 #define AnisotropicPhoton 0
 #define IsotropicPhoton 1
@@ -114,19 +115,19 @@ PhotonVSOut photonScatterVS(VertexIn vIn)
         bitangent = cross(tangent, normal);
     }
 
-
-    float3 areaVector = cross(tangent, bitangent);
-    //float area = 0.5 * (dot(tangent, tangent) + dot(bitangent, bitangent));
-    float area = length(tangent) + length(bitangent);// length(areaVector);
-
     tangent *= gSplatSize;
     bitangent *= gSplatSize;
+
+    float3 areaVector = cross(tangent, bitangent);
+    float area = 0.5 * (dot(tangent, tangent) + dot(bitangent, bitangent));
+    //float area = length(tangent) + length(bitangent);
+    //float area = length(areaVector);
 
     float3 localPoint = tangent * vIn.pos.x + bitangent * vIn.pos.z + normal * vIn.pos.y;
     vOut.texcoord = (vIn.pos.xz + 1) * 0.5;
     vIn.pos.xyz = localPoint + p.posW;
     vOut.posH = mul(vIn.pos, gWvpMat);
-    vOut.color = float4(p.color / area * gIntensity,1);
+    vOut.color = float4(p.color / area * gIntensity, 1);
     return vOut;
 }
 
@@ -148,7 +149,15 @@ float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
         discard;
     }
 
-    float alpha = gGaussianTex.Sample(gLinearSampler, vOut.texcoord).r;
-    alpha = pow(alpha, gKernelPower);
+    float alpha;
+    if (gShowPhoton)
+    {
+        alpha = 1;
+    }
+    else
+    {
+        alpha = gGaussianTex.Sample(gLinearSampler, vOut.texcoord).r;
+        alpha = pow(alpha, gKernelPower);
+    }
     return float4(vOut.color.rgb * alpha, 1);
 }

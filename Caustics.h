@@ -43,6 +43,7 @@ public:
     void onGuiRender(Gui* pGui) override;
 
 private:
+    int mDispatchSize;
     bool mRayTrace = true;
     uint32_t mDebugMode = 0;
     bool mUseDOF = false;
@@ -52,6 +53,7 @@ private:
     float mIntensity = 1.0f;
     float mRoughThreshold = 0.1f;
     float mKernelPower;
+    bool mShowPhoton;
     uint32_t mPhotonMode;
     float mJitter;
     float2 mLightAngle;

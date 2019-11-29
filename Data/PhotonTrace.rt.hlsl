@@ -358,8 +358,9 @@ void rayGen()
     ray.TMax = 1e10;
 
     PrimaryRayData hitData;
+    float dispatchFactor = (launchDimension.x / 512.0) * (launchDimension.y / 512.0);
     hitData.depth = 0;
-    hitData.color = float4(1, 1, 1, 1) * emitSize;
+    hitData.color = float4(1, 1, 1, 1) * emitSize / dispatchFactor;
     //hitData.dPdx = 0;
     //hitData.dPdy = 0;
     hitData.dDdx = 0;// lightDirX* pixelSize.x * 2.0;

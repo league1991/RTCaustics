@@ -27,11 +27,9 @@
 ***************************************************************************/
 #include "Caustics.h"
 
-#define CAUSTICS_MAP_SIZE 1024
 
 static const glm::vec4 kClearColor(0.f, 0.f, 0.f, 1);
 static const std::string kDefaultScene = "Caustics/ring.fscene";
-static int gDispatchSize = 512;
 
 std::string to_string(const vec3& v)
 {
@@ -62,8 +60,18 @@ void Caustics::onGuiRender(Gui* pGui)
         Gui::DropdownList debugModeList;
         debugModeList.push_back({ 0, "Anisotropic" });
         debugModeList.push_back({ 1, "Isotropic" });
-        debugModeList.push_back({ 2, "Visualize" });
         pGui->addDropdown("Photon mode", debugModeList, (uint32_t&)mPhotonMode);
+    }
+
+    {
+        Gui::DropdownList debugModeList;
+        debugModeList.push_back({ 64, "64" });
+        debugModeList.push_back({ 128, "128" });
+        debugModeList.push_back({ 256, "256" });
+        debugModeList.push_back({ 512, "512" });
+        debugModeList.push_back({ 1024, "1024" });
+        debugModeList.push_back({ 2048, "2048" });
+        pGui->addDropdown("Dispatch Size", debugModeList, (uint32_t&)mDispatchSize);
     }
 
     if (pGui->addButton("Load Scene"))
@@ -81,9 +89,10 @@ void Caustics::onGuiRender(Gui* pGui)
     }
 
     pGui->addFloatVar("Emit size", mEmitSize, 0, 1000, 1);
-    pGui->addFloatVar("Kernel Power", mKernelPower, 0, 10, 0.01f);
+    pGui->addFloatVar("Kernel Power", mKernelPower, 0.01f, 10, 0.01f);
+    pGui->addCheckBox("Show Photon", mShowPhoton);
     pGui->addFloatVar("Splat size", mSplatSize, 0, 10, 0.01f);
-    pGui->addFloatVar("Intensity", mIntensity, 0, 1, 0.01f);
+    pGui->addFloatVar("Intensity", mIntensity, 0, 10, 0.01f);
     pGui->addFloatVar("Jitter", mJitter, 0, 1, 0.01f);
     pGui->addFloatVar("Rough Threshold", mRoughThreshold, 0, 1, 0.01f);
     pGui->addFloat2Var("Light Angle", mLightAngle, -20,20,0.01f);
@@ -126,6 +135,9 @@ void Caustics::loadScene(const std::string& filename, const Fbo* pTargetFbo)
 
     // Update the controllers
     mCamController.setCameraSpeed(radius * 0.4f);
+    auto sceneBBox = mpScene->getBoundingBox();
+    float sceneRadius = sceneBBox.getSize().length() * 0.5f;
+    //mCamController.setModelParams(mpScene->getCenter(), sceneRadius, sceneRadius);
     float nearZ = std::max(0.1f, pModel->getRadius() / 750.0f);
     float farZ = radius * 10;
     mpCamera->setDepthRange(nearZ, farZ);
@@ -210,7 +222,9 @@ Caustics::Caustics() :
     mSplatSize(2.f),
     mIntensity(0.26f),
     mPhotonMode(0),
-    mKernelPower(1.0)
+    mKernelPower(1.0),
+    mShowPhoton(false),
+    mDispatchSize(512)
 {}
 
 void Caustics::onLoad(RenderContext* pRenderContext)
@@ -291,7 +305,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         hitVar->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
         hitVar->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
     }
-    mpRtRenderer->renderScene(pContext, mpPhotonTraceVars, mpPhotonTraceState, uvec3(gDispatchSize, gDispatchSize, 1), mpCamera.get());
+    mpRtRenderer->renderScene(pContext, mpPhotonTraceVars, mpPhotonTraceState, uvec3(mDispatchSize, mDispatchSize, 1), mpCamera.get());
 
     // photon scattering
     //pContext->clearTexture(mpCausticsFbo->getColorTexture(0).get());
@@ -307,6 +321,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     pPerFrameCB["gIntensity"] = mIntensity;
     pPerFrameCB["gPhotonMode"] = mPhotonMode;
     pPerFrameCB["gKernelPower"] = mKernelPower;
+    pPerFrameCB["gShowPhoton"] = uint32_t(mShowPhoton);
     mpPhotonScatterVars["gLinearSampler"] = mpLinearSampler;
     mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
     mpPhotonScatterVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
@@ -316,7 +331,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     mpPhotonScatterVars->setTexture("gGaussianTex", mpGaussianKernel);
     mpPhotonScatterState->setVao(mpQuad->getMesh(0)->getVao());
     mpPhotonScatterState->setFbo(mpCausticsFbo);
-    int instanceCount = gDispatchSize * gDispatchSize;
+    int instanceCount = mDispatchSize * mDispatchSize;
     //pContext->drawIndexedInstanced(mpPhotonScatterState.get(), mpPhotonScatterVars.get(), mpQuad->getMesh(0)->getIndexCount(), instanceCount, 0, 0, 0);
     pContext->drawIndexedIndirect(mpPhotonScatterState.get(), mpPhotonScatterVars.get(), mpDrawArgumentBuffer.get(), 0);
 
@@ -396,6 +411,7 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
         mpCamera->setAspectRatio(aspectRatio);
     }
 
+#define CAUSTICS_MAP_SIZE 2048
     mpPhotonBuffer = StructuredBuffer::create(mpPhotonTraceProgram->getHitProgram(0).get(), std::string("gPhotonBuffer"), CAUSTICS_MAP_SIZE * CAUSTICS_MAP_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpDrawArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gDrawArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg);
     mpRtOut = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
