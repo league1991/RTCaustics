@@ -29,14 +29,8 @@ __import ShaderCommon;
 __import Shading;
 __import DefaultVS;
 
-struct Photon
-{
-    float3 posW;
-    float3 normalW;
-    float3 color;
-    float3 dPdx;
-    float3 dPdy;
-};
+#include "Common.hlsl"
+
 StructuredBuffer<Photon> gPhotonBuffer;
 
 Texture2D gDepthTex;
@@ -99,7 +93,7 @@ PhotonVSOut photonScatterVS(VertexIn vIn)
         float maxLength = 10.0;
         float minLength = 0.01;
         tangent *= clamp(tangentLength, minLength, maxLength) / tangentLength;
-        bitangentLength *= clamp(bitangentLength, minLength, maxLength) / bitangentLength;
+        bitangent *= clamp(bitangentLength, minLength, maxLength) / bitangentLength;
     }
     else if (gPhotonMode == IsotropicPhoton)
     {

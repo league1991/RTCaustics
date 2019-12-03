@@ -56,6 +56,11 @@ private:
     bool mShowPhoton;
     uint32_t mPhotonMode;
     float mJitter;
+    float mNormalThreshold;
+    float mDistanceThreshold;
+    float mPlanarThreshold;
+    float mPixelLuminanceThreshold;
+    float mMinPhotonPixelSize;
     float2 mLightAngle;
 
     Model::SharedPtr mpQuad;
@@ -85,14 +90,17 @@ private:
     RtProgramVars::SharedPtr mpPhotonTraceVars;
     RtState::SharedPtr mpPhotonTraceState;
     Texture::SharedPtr mpUniformNoise;
-    //RtSceneRenderer::SharedPtr mpPhotonTraceRenderer;
+
+    // analyse trace result
+    ComputeProgram::SharedPtr mpAnalyseProgram;
+    ComputeVars::SharedPtr mpAnalyseVars;
+    ComputeState::SharedPtr mpAnalyseState;
+    StructuredBuffer::SharedPtr  mpRayArgumentBuffer;
 
     // photon scatter
-    //RasterScenePass::SharedPtr mpPhotonScatterPass;
     GraphicsProgram::SharedPtr mpPhotonScatterProgram;
     GraphicsVars::SharedPtr mpPhotonScatterVars;
     GraphicsState::SharedPtr mpPhotonScatterState;
-    //Texture::SharedPtr mpCausticsTex;
     Fbo::SharedPtr mpCausticsFbo;
     Texture::SharedPtr mpGaussianKernel;
     Sampler::SharedPtr mpLinearSampler;
@@ -109,8 +117,8 @@ private:
     FullScreenPass::SharedPtr mpCompositePass;
 
     // Caustics map
-    //Texture::SharedPtr mpCausticsMap;
     StructuredBuffer::SharedPtr  mpPhotonBuffer;
+    StructuredBuffer::SharedPtr  mpRayTaskBuffer;
 
 
     void setPerFrameVars(const Fbo* pTargetFbo);

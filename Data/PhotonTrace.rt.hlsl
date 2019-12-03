@@ -25,22 +25,17 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
+#include "Common.hlsl"
 RWTexture2D<float4> gOutput;
 __import Raytracing;
 __import ShaderCommon;
 __import Shading;
 import Helpers;
 
-struct Photon
-{
-    float3 posW;
-    float3 normalW;
-    float3 color;
-    float3 dPdx;
-    float3 dPdy;
-};
 RWStructuredBuffer<Photon> gPhotonBuffer;
 RWStructuredBuffer<DrawArguments> gDrawArgument;
+RWStructuredBuffer<RayArgument> gRayArgument;
+RWStructuredBuffer<RayTask> gRayTask;
 Texture2D gUniformNoise;
 
 shared cbuffer PerFrameCB
@@ -50,6 +45,8 @@ shared cbuffer PerFrameCB
     float emitSize;
     float roughThreshold;
     float jitter;
+    int launchRayTask;
+    int rayTaskOffset;
     //float tanHalfFovY;
     //uint sampleIndex;
     //bool useDOF;
@@ -289,6 +286,10 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         uint instanceIdx = 0;
         InterlockedAdd(gDrawArgument[0].instanceCount, 1, instanceIdx);
         gPhotonBuffer[instanceIdx] = photon;
+        uint3 dim3 = DispatchRaysDimensions();
+        uint3 idx3 = DispatchRaysIndex();
+        uint idx = idx3.y * dim3.x + idx3.x;
+        gRayTask[idx].photonIdx = instanceIdx;
     }
 
     if (hitData.depth == 0)
@@ -330,26 +331,34 @@ void rayGen()
     uint3 launchIndex = DispatchRaysIndex();
     uint3 launchDimension = DispatchRaysDimensions();
     RayDesc ray;
-    //uint randSeed = rand_init(launchIndex.x + launchIndex.y * viewportDims.x, sampleIndex, 16);
-    //if (!useDOF)
-    //{
-    //    ray = generateRay(gCamera, launchIndex.xy, viewportDims);
-    //}
-    //else
-    //{
-    //    ray = generateDOFRay(gCamera, launchIndex.xy, viewportDims, randSeed);
-    //}
     float3 lightOrigin = gLights[0].dirW * -100;// gLights[0].posW;
     float3 lightDirZ = gLights[0].dirW;
     float3 lightDirX = normalize(float3(-lightDirZ.z, 0, lightDirZ.x));
     float3 lightDirY = normalize(cross(lightDirZ, lightDirX));
-    float2 lightUV = float2(launchIndex.xy) / float2(launchDimension.xy);
+    float2 lightUV;
+    float2 pixelSize = float2(1,1);
+    uint taskIdx = launchIndex.y * launchDimension.x + launchIndex.x;
+    if (launchRayTask)
+    {
+        taskIdx += rayTaskOffset;
+        if (taskIdx >= gRayArgument[0].rayTaskCount)
+        {
+            return;
+        }
+        RayTask task = gRayTask[taskIdx];
+        lightUV = task.screenCoord / float2(launchDimension.xy);
+        pixelSize = task.pixelSize;
+    }
+    else
+    {
+        lightUV = float2(launchIndex.xy) / float2(launchDimension.xy);
+    }
     lightUV = lightUV * 2 - 1;
+    pixelSize *= emitSize / float2(launchDimension.xy);
 
     uint nw, nh, nl;
     gUniformNoise.GetDimensions(0, nw, nh, nl);
     float2 noise = gUniformNoise.Load(uint3(launchIndex.xy % uint2(nw, nh), 0)).rg;
-    float2 pixelSize = emitSize / float2(launchDimension.xy);
     lightUV += noise * pixelSize * jitter;
 
     ray.Origin = lightOrigin + (lightDirX * lightUV.x + lightDirY * lightUV.y) * emitSize;
@@ -367,6 +376,14 @@ void rayGen()
     hitData.dDdy = 0;// lightDirY* pixelSize.y * 2.0;
     hitData.dPdx = lightDirX * pixelSize.x * 2.0;
     hitData.dPdy = -lightDirY * pixelSize.y * 2.0;
+
+    gRayTask[taskIdx].photonIdx = -1;
+    if (!launchRayTask)
+    {
+        gRayTask[taskIdx].screenCoord = launchIndex.xy;
+        gRayTask[taskIdx].pixelSize = float2(1, 1);
+    }
+
     TraceRay( gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, hitData );
     //gOutput[launchIndex.xy] = hitData.color;
     //gOutput[int2(0,0)] = hitData.color;

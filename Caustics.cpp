@@ -88,13 +88,26 @@ void Caustics::onGuiRender(Gui* pGui)
         loadShader();
     }
 
-    pGui->addFloatVar("Emit size", mEmitSize, 0, 1000, 1);
-    pGui->addFloatVar("Kernel Power", mKernelPower, 0.01f, 10, 0.01f);
-    pGui->addCheckBox("Show Photon", mShowPhoton);
-    pGui->addFloatVar("Splat size", mSplatSize, 0, 10, 0.01f);
-    pGui->addFloatVar("Intensity", mIntensity, 0, 10, 0.01f);
-    pGui->addFloatVar("Jitter", mJitter, 0, 1, 0.01f);
-    pGui->addFloatVar("Rough Threshold", mRoughThreshold, 0, 1, 0.01f);
+    if (pGui->beginGroup("Photon Trace"))
+    {
+        pGui->addFloatVar("Emit size", mEmitSize, 0, 1000, 1);
+        pGui->addFloatVar("Kernel Power", mKernelPower, 0.01f, 10, 0.01f);
+        pGui->addCheckBox("Show Photon", mShowPhoton);
+        pGui->addFloatVar("Splat size", mSplatSize, 0, 10, 0.01f);
+        pGui->addFloatVar("Intensity", mIntensity, 0, 10, 0.01f);
+        pGui->addFloatVar("Jitter", mJitter, 0, 1, 0.01f);
+        pGui->addFloatVar("Rough Threshold", mRoughThreshold, 0, 1, 0.01f);
+        pGui->endGroup();
+    }
+    if(pGui->beginGroup("Refine Photon"))
+    {
+        pGui->addFloatVar("Normal Threshold", mNormalThreshold, 0.01f, 1.0, 0.01f);
+        pGui->addFloatVar("Distance Threshold", mDistanceThreshold, 0.1f, 10.0f, 0.1f);
+        pGui->addFloatVar("Planar Threshold", mPlanarThreshold, 0.01f, 10.0, 0.1f);
+        pGui->addFloatVar("Luminance Threshold", mPixelLuminanceThreshold, 0.01f, 1.0, 0.01f);
+        pGui->addFloatVar("Photon Size Threshold", mMinPhotonPixelSize, 1.f, 100.0f, 0.1f);
+        pGui->endGroup();
+    }
     pGui->addFloat2Var("Light Angle", mLightAngle, -20,20,0.01f);
     if (mpScene)
     {
@@ -184,6 +197,12 @@ void Caustics::loadShader()
     mpPhotonTraceVars = RtProgramVars::create(mpPhotonTraceProgram, mpScene);
     //mpPhotonTraceRenderer = RtSceneRenderer::create(mpScene);
 
+    // analyse trace result
+    mpAnalyseProgram = ComputeProgram::createFromFile("AnalyseTraceResult.cs.hlsl", "main");
+    mpAnalyseState = ComputeState::create();
+    mpAnalyseState->setProgram(mpAnalyseProgram);
+    mpAnalyseVars = ComputeVars::create(mpAnalyseProgram.get());
+
     // photon scatter
     BlendState::Desc scatterBlendStateDesc;
     scatterBlendStateDesc.setRtBlend(0, true);
@@ -224,7 +243,12 @@ Caustics::Caustics() :
     mPhotonMode(0),
     mKernelPower(1.0),
     mShowPhoton(false),
-    mDispatchSize(512)
+    mDispatchSize(512),
+    mNormalThreshold(0.2f),
+    mDistanceThreshold(10.0f),
+    mPlanarThreshold(2.0f),
+    mPixelLuminanceThreshold(0.5f),
+    mMinPhotonPixelSize(5.0f)
 {}
 
 void Caustics::onLoad(RenderContext* pRenderContext)
@@ -265,17 +289,7 @@ void Caustics::setPerFrameVars(const Fbo* pTargetFbo)
     }
     //setCommonVars(mpRtVars->getGlobalVars().get(), pTargetFbo);
 
-    {
-        GraphicsVars* pVars = mpPhotonTraceVars->getGlobalVars().get();
-        ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
-        pCB["invView"] = glm::inverse(mpCamera->getViewMatrix());
-        pCB["viewportDims"] = vec2(pTargetFbo->getWidth(), pTargetFbo->getHeight());
-        pCB["emitSize"] = mEmitSize;
-        pCB["roughThreshold"] = mRoughThreshold;
-        pCB["jitter"] = mJitter;
-        //setCommonVars(mpPhotonTraceVars->getGlobalVars().get(), pTargetFbo);
-        mSampleIndex++;
-    }
+    mSampleIndex++;
 }
 
 void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
@@ -284,84 +298,124 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     setPerFrameVars(pTargetFbo.get());
 
     // gpass
-    pContext->clearFbo(mpGPassFbo.get(), vec4(0, 0, 0, 1), 1.0, 0);
-    mpGPass->renderScene(pContext, mpGPassFbo);
+    {
+        pContext->clearFbo(mpGPassFbo.get(), vec4(0, 0, 0, 1), 1.0, 0);
+        mpGPass->renderScene(pContext, mpGPassFbo);
+    }
 
     // set draw argument
-    mpDrawArgumentVars->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
-    //mpDrawArgumentVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
-    pContext->dispatch(mpDrawArgumentState.get(), mpDrawArgumentVars.get(), uvec3(1, 1, 1));
-
-    // photon tracing
-    pContext->clearTexture(mpRtOut.get());
-    auto rayGenVars = mpPhotonTraceVars->getRayGenVars();
-    rayGenVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
-    rayGenVars->setTexture("gOutput", mpRtOut);
-    rayGenVars->setTexture("gUniformNoise", mpUniformNoise);
-    auto hitVars = mpPhotonTraceVars->getHitVars(0);
-    for (auto& hitVar: hitVars)
     {
-        hitVar->setTexture("gOutput", mpRtOut);
-        hitVar->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
-        hitVar->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
+        ConstantBuffer::SharedPtr pPerFrameCB = mpDrawArgumentVars["PerFrameCB"];
+        pPerFrameCB["initRayCount"] = uint(mDispatchSize * mDispatchSize);
+        mpDrawArgumentVars->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
+        mpDrawArgumentVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
+        //mpDrawArgumentVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
+        pContext->dispatch(mpDrawArgumentState.get(), mpDrawArgumentVars.get(), uvec3(1, 1, 1));
     }
-    mpRtRenderer->renderScene(pContext, mpPhotonTraceVars, mpPhotonTraceState, uvec3(mDispatchSize, mDispatchSize, 1), mpCamera.get());
+
+    // coarse photon tracing
+    {
+        pContext->clearTexture(mpRtOut.get());
+        GraphicsVars* pVars = mpPhotonTraceVars->getGlobalVars().get();
+        ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
+        pCB["invView"] = glm::inverse(mpCamera->getViewMatrix());
+        pCB["viewportDims"] = vec2(pTargetFbo->getWidth(), pTargetFbo->getHeight());
+        pCB["emitSize"] = mEmitSize;
+        pCB["roughThreshold"] = mRoughThreshold;
+        pCB["jitter"] = mJitter;
+        pCB["launchRayTask"] = 0;
+        pCB["rayTaskOffset"] = mDispatchSize * mDispatchSize;
+        auto rayGenVars = mpPhotonTraceVars->getRayGenVars();
+        rayGenVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
+        rayGenVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
+        rayGenVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
+        rayGenVars->setTexture("gOutput", mpRtOut);
+        rayGenVars->setTexture("gUniformNoise", mpUniformNoise);
+        auto hitVars = mpPhotonTraceVars->getHitVars(0);
+        for (auto& hitVar : hitVars)
+        {
+            hitVar->setTexture("gOutput", mpRtOut);
+            hitVar->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
+            hitVar->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
+            hitVar->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
+        }
+        mpRtRenderer->renderScene(pContext, mpPhotonTraceVars, mpPhotonTraceState, uvec3(mDispatchSize, mDispatchSize, 1), mpCamera.get());
+    }
+
+    // analysis output
+    {
+        ConstantBuffer::SharedPtr pPerFrameCB = mpAnalyseVars["PerFrameCB"];
+        pPerFrameCB["viewProjMat"] = mpCamera->getViewProjMatrix();
+        pPerFrameCB["taskDim"] = int2(mDispatchSize, mDispatchSize);
+        pPerFrameCB["screenDim"] = int2(mpDepthTex->getWidth(), mpDepthTex->getHeight());
+        pPerFrameCB["normalThreshold"] = mNormalThreshold;
+        pPerFrameCB["distanceThreshold"] = mDistanceThreshold;
+        pPerFrameCB["planarThreshold"] = mPlanarThreshold;
+        pPerFrameCB["pixelLuminanceThreshold"] = mPixelLuminanceThreshold;
+        pPerFrameCB["minPhotonPixelSize"] = mMinPhotonPixelSize;
+        mpAnalyseVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
+        mpAnalyseVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
+        mpAnalyseVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
+        static int groupSize = 16;
+        pContext->dispatch(mpAnalyseState.get(), mpAnalyseVars.get(), uvec3(mDispatchSize / groupSize, mDispatchSize / groupSize, 1));
+    }
+
+    // fine photon tracing
+    {
+        GraphicsVars* pVars = mpPhotonTraceVars->getGlobalVars().get();
+        ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
+        pCB["launchRayTask"] = 1;
+        pCB["rayTaskOffset"] = mDispatchSize * mDispatchSize;
+        mpRtRenderer->renderScene(pContext, mpPhotonTraceVars, mpPhotonTraceState, uvec3(mpDepthTex->getWidth(), mpDepthTex->getHeight(), 1), mpCamera.get());
+    }
 
     // photon scattering
-    //pContext->clearTexture(mpCausticsFbo->getColorTexture(0).get());
-    //pContext->clearTexture(mpCausticsFbo->getDepthStencilTexture().get(), vec4(1.f, 1.f, 1.f, 1.f));
-    //mpPhotonScatterPass->renderScene(pContext, mpCausticsFbo);
-    pContext->clearFbo(mpCausticsFbo.get(), vec4(0, 0, 0, 0), 1.0, 0);
-    glm::mat4 wvp = mpCamera->getProjMatrix() * mpCamera->getViewMatrix();
-    ConstantBuffer::SharedPtr pPerFrameCB = mpPhotonScatterVars["PerFrameCB"];
-    pPerFrameCB["gWorldMat"] = glm::mat4();
-    pPerFrameCB["gWvpMat"] = wvp;
-    pPerFrameCB["gEyePosW"] = mpCamera->getPosition();
-    pPerFrameCB["gSplatSize"] = mSplatSize;
-    pPerFrameCB["gIntensity"] = mIntensity;
-    pPerFrameCB["gPhotonMode"] = mPhotonMode;
-    pPerFrameCB["gKernelPower"] = mKernelPower;
-    pPerFrameCB["gShowPhoton"] = uint32_t(mShowPhoton);
-    mpPhotonScatterVars["gLinearSampler"] = mpLinearSampler;
-    mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
-    mpPhotonScatterVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
-    mpPhotonScatterVars->setTexture("gNormalTex", mpGPassFbo->getColorTexture(0));
-    mpPhotonScatterVars->setTexture("gDiffuseTex", mpGPassFbo->getColorTexture(1));
-    mpPhotonScatterVars->setTexture("gSpecularTex", mpGPassFbo->getColorTexture(2));
-    mpPhotonScatterVars->setTexture("gGaussianTex", mpGaussianKernel);
-    mpPhotonScatterState->setVao(mpQuad->getMesh(0)->getVao());
-    mpPhotonScatterState->setFbo(mpCausticsFbo);
-    int instanceCount = mDispatchSize * mDispatchSize;
-    //pContext->drawIndexedInstanced(mpPhotonScatterState.get(), mpPhotonScatterVars.get(), mpQuad->getMesh(0)->getIndexCount(), instanceCount, 0, 0, 0);
-    pContext->drawIndexedIndirect(mpPhotonScatterState.get(), mpPhotonScatterVars.get(), mpDrawArgumentBuffer.get(), 0);
-
-    // Render output
-    //pContext->clearUAV(mpRtOut->getUAV().get(), kClearColor);
-    //mpRtVars->getRayGenVars()->setTexture("gOutput", mpRtOut);
-    //mpRtRenderer->renderScene(pContext, mpRtVars, mpRtState, uvec3(pTargetFbo->getWidth(), pTargetFbo->getHeight(), 1), mpCamera.get());
-    mpCompositePass["gDepthTex"]   = mpGPassFbo->getDepthStencilTexture();
-    mpCompositePass["gNormalTex"]  = mpGPassFbo->getColorTexture(0);
-    mpCompositePass["gDiffuseTex"] = mpGPassFbo->getColorTexture(1);
-    mpCompositePass["gSpecularTex"]  = mpGPassFbo->getColorTexture(2);
-    mpCompositePass["gPhotonTex"] = mpCausticsFbo->getColorTexture(0);
-    mpCompositePass["gRayTex"] = mpRtOut;
-    mpCompositePass["gPointSampler"] = mpPointSampler;
-    ConstantBuffer::SharedPtr pCompCB = mpCompositePass["PerImageCB"];
-    pCompCB["gNumLights"] = mpScene->getLightCount();
-    pCompCB["gDebugMode"] = (uint32_t)mDebugMode;
-    pCompCB["gInvWvpMat"] = mpCamera->getInvViewProjMatrix();
-    pCompCB["gCameraPos"] = mpCamera->getPosition();
-    //ConstantBuffer::SharedPtr pImageCB = mpCompositePass["PerImageCB"];
-    //mpCamera->setIntoConstantBuffer(pImageCB.get(), 0);
-    for (uint32_t i = 0; i < mpScene->getLightCount(); i++)
     {
-        mpScene->getLight(i)->setIntoProgramVars(mpCompositePass->getVars().get(), pCompCB.get(), "gLightData[" + std::to_string(i) + "]");
+        pContext->clearFbo(mpCausticsFbo.get(), vec4(0, 0, 0, 0), 1.0, 0);
+        glm::mat4 wvp = mpCamera->getProjMatrix() * mpCamera->getViewMatrix();
+        ConstantBuffer::SharedPtr pPerFrameCB = mpPhotonScatterVars["PerFrameCB"];
+        pPerFrameCB["gWorldMat"] = glm::mat4();
+        pPerFrameCB["gWvpMat"] = wvp;
+        pPerFrameCB["gEyePosW"] = mpCamera->getPosition();
+        pPerFrameCB["gSplatSize"] = mSplatSize;
+        pPerFrameCB["gIntensity"] = mIntensity;
+        pPerFrameCB["gPhotonMode"] = mPhotonMode;
+        pPerFrameCB["gKernelPower"] = mKernelPower;
+        pPerFrameCB["gShowPhoton"] = uint32_t(mShowPhoton);
+        mpPhotonScatterVars["gLinearSampler"] = mpLinearSampler;
+        mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
+        mpPhotonScatterVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
+        mpPhotonScatterVars->setTexture("gNormalTex", mpGPassFbo->getColorTexture(0));
+        mpPhotonScatterVars->setTexture("gDiffuseTex", mpGPassFbo->getColorTexture(1));
+        mpPhotonScatterVars->setTexture("gSpecularTex", mpGPassFbo->getColorTexture(2));
+        mpPhotonScatterVars->setTexture("gGaussianTex", mpGaussianKernel);
+        mpPhotonScatterState->setVao(mpQuad->getMesh(0)->getVao());
+        mpPhotonScatterState->setFbo(mpCausticsFbo);
+        int instanceCount = mDispatchSize * mDispatchSize;
+        //pContext->drawIndexedInstanced(mpPhotonScatterState.get(), mpPhotonScatterVars.get(), mpQuad->getMesh(0)->getIndexCount(), instanceCount, 0, 0, 0);
+        pContext->drawIndexedIndirect(mpPhotonScatterState.get(), mpPhotonScatterVars.get(), mpDrawArgumentBuffer.get(), 0);
     }
 
-    mpCompositePass->execute(pContext, pTargetFbo);
-    //pContext->blit(mpGPassFbo->getColorTexture(0)->getSRV(), pTargetFbo->getRenderTargetView(0));
-    //pContext->blit(mpCausticsFbo->getColorTexture(0)->getSRV(), pTargetFbo->getRenderTargetView(0));
-    //pContext->blit(mpRtOut->getSRV(), pTargetFbo->getRenderTargetView(0));
+    // Render output
+    {
+        mpCompositePass["gDepthTex"] = mpGPassFbo->getDepthStencilTexture();
+        mpCompositePass["gNormalTex"] = mpGPassFbo->getColorTexture(0);
+        mpCompositePass["gDiffuseTex"] = mpGPassFbo->getColorTexture(1);
+        mpCompositePass["gSpecularTex"] = mpGPassFbo->getColorTexture(2);
+        mpCompositePass["gPhotonTex"] = mpCausticsFbo->getColorTexture(0);
+        mpCompositePass["gRayTex"] = mpRtOut;
+        mpCompositePass["gPointSampler"] = mpPointSampler;
+        ConstantBuffer::SharedPtr pCompCB = mpCompositePass["PerImageCB"];
+        pCompCB["gNumLights"] = mpScene->getLightCount();
+        pCompCB["gDebugMode"] = (uint32_t)mDebugMode;
+        pCompCB["gInvWvpMat"] = mpCamera->getInvViewProjMatrix();
+        pCompCB["gCameraPos"] = mpCamera->getPosition();
+        for (uint32_t i = 0; i < mpScene->getLightCount(); i++)
+        {
+            mpScene->getLight(i)->setIntoProgramVars(mpCompositePass->getVars().get(), pCompCB.get(), "gLightData[" + std::to_string(i) + "]");
+        }
+        mpCompositePass->execute(pContext, pTargetFbo);
+    }
 }
 
 void Caustics::onFrameRender(RenderContext* pRenderContext, const Fbo::SharedPtr& pTargetFbo)
@@ -412,8 +466,10 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
     }
 
 #define CAUSTICS_MAP_SIZE 2048
+    mpRayTaskBuffer = StructuredBuffer::create(mpAnalyseProgram.get(), std::string("gRayTask"), CAUSTICS_MAP_SIZE * CAUSTICS_MAP_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpPhotonBuffer = StructuredBuffer::create(mpPhotonTraceProgram->getHitProgram(0).get(), std::string("gPhotonBuffer"), CAUSTICS_MAP_SIZE * CAUSTICS_MAP_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpDrawArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gDrawArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg);
+    mpRayArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gRayArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg);
     mpRtOut = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     //mpCausticsFbo = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpDepthTex = Texture::create2D(width, height, ResourceFormat::D24UnormS8, 1, 1, nullptr, Resource::BindFlags::DepthStencil | Resource::BindFlags::ShaderResource);

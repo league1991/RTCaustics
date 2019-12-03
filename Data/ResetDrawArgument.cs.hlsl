@@ -25,6 +25,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
+#include "common.hlsl"
 struct DrawArguments
 {
     uint indexCountPerInstance;
@@ -34,17 +35,14 @@ struct DrawArguments
     uint startInstanceLocation;
 };
 
-//struct Photon
-//{
-//    float3 posW;
-//    float3 normalW;
-//    float3 color;
-//    float3 dPdx;
-//    float3 dPdy;
-//};
+shared cbuffer PerFrameCB
+{
+    uint initRayCount;
+};
 
 //StructuredBuffer<Photon> gPhotonBuffer;
 RWStructuredBuffer<DrawArguments> gDrawArgument;
+RWStructuredBuffer<RayArgument> gRayArgument;
 
 [numthreads(1, 1, 1)]
 void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex)
@@ -57,4 +55,6 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex)
     gDrawArgument[0].startIndexLocation = 0;
     gDrawArgument[0].baseVertexLocation = 0;
     gDrawArgument[0].startInstanceLocation = 0;
+
+    gRayArgument[0].rayTaskCount = initRayCount;
 }
