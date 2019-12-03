@@ -91,39 +91,46 @@ void Caustics::onGuiRender(Gui* pGui)
     if (pGui->beginGroup("Photon Trace"))
     {
         pGui->addFloatVar("Emit size", mEmitSize, 0, 1000, 1);
-        pGui->addFloatVar("Kernel Power", mKernelPower, 0.01f, 10, 0.01f);
-        pGui->addCheckBox("Show Photon", mShowPhoton);
-        pGui->addFloatVar("Splat size", mSplatSize, 0, 10, 0.01f);
-        pGui->addFloatVar("Intensity", mIntensity, 0, 10, 0.01f);
-        pGui->addFloatVar("Jitter", mJitter, 0, 1, 0.01f);
         pGui->addFloatVar("Rough Threshold", mRoughThreshold, 0, 1, 0.01f);
+        pGui->addFloatVar("Jitter", mJitter, 0, 1, 0.01f);
         pGui->endGroup();
     }
-    if(pGui->beginGroup("Refine Photon"))
+    if (pGui->beginGroup("Photon Splat", true))
+    {
+        pGui->addFloatVar("Splat size", mSplatSize, 0, 10, 0.01f);
+        pGui->addFloatVar("Intensity", mIntensity, 0, 10, 0.01f);
+        pGui->addFloatVar("Kernel Power", mKernelPower, 0.01f, 10, 0.01f);
+        pGui->addCheckBox("Show Photon", mShowPhoton);
+        pGui->endGroup();
+    }
+    if(pGui->beginGroup("Refine Photon", true))
     {
         pGui->addFloatVar("Normal Threshold", mNormalThreshold, 0.01f, 1.0, 0.01f);
         pGui->addFloatVar("Distance Threshold", mDistanceThreshold, 0.1f, 10.0f, 0.1f);
         pGui->addFloatVar("Planar Threshold", mPlanarThreshold, 0.01f, 10.0, 0.1f);
-        pGui->addFloatVar("Luminance Threshold", mPixelLuminanceThreshold, 0.01f, 1.0, 0.01f);
-        pGui->addFloatVar("Photon Size Threshold", mMinPhotonPixelSize, 1.f, 100.0f, 0.1f);
+        pGui->addFloatVar("Luminance Threshold", mPixelLuminanceThreshold, 0.01f, 10.0, 0.01f);
+        pGui->addFloatVar("Photon Size Threshold", mMinPhotonPixelSize, 1.f, 1000.0f, 0.1f);
         pGui->endGroup();
     }
-    pGui->addFloat2Var("Light Angle", mLightAngle, -20,20,0.01f);
-    if (mpScene)
+    if (pGui->beginGroup("Light"))
     {
-        auto light0 = dynamic_cast<DirectionalLight*>(mpScene->getLight(0).get());
-        light0->setWorldDirection(vec3(
-            cos(mLightAngle.x) * sin(mLightAngle.y),
-            cos(mLightAngle.y),
-            sin(mLightAngle.x) * sin(mLightAngle.y)));
-        //for (uint32_t i = 0; i < mpScene->getLightCount(); i++)
-        //{
-        //    std::string group = "Point Light" + std::to_string(i);
-        //    mpScene->getLight(i)->renderUI(pGui, group.c_str());
-        //}
+        pGui->addFloat2Var("Light Angle", mLightAngle, -20, 20, 0.01f);
+        if (mpScene)
+        {
+            auto light0 = dynamic_cast<DirectionalLight*>(mpScene->getLight(0).get());
+            light0->setWorldDirection(vec3(
+                cos(mLightAngle.x) * sin(mLightAngle.y),
+                cos(mLightAngle.y),
+                sin(mLightAngle.x) * sin(mLightAngle.y)));
+        }
+        pGui->endGroup();
     }
 
-    mpCamera->renderUI(pGui);
+    if (pGui->beginGroup("Camera"))
+    {
+        mpCamera->renderUI(pGui);
+        pGui->endGroup();
+    }
 }
 
 void Caustics::loadScene(const std::string& filename, const Fbo* pTargetFbo)
@@ -147,7 +154,7 @@ void Caustics::loadScene(const std::string& filename, const Fbo* pTargetFbo)
     pModel->bindSamplerToMaterials(pSampler);
 
     // Update the controllers
-    mCamController.setCameraSpeed(radius * 0.4f);
+    mCamController.setCameraSpeed(radius * 0.2f);
     auto sceneBBox = mpScene->getBoundingBox();
     float sceneRadius = sceneBBox.getSize().length() * 0.5f;
     //mCamController.setModelParams(mpScene->getCenter(), sceneRadius, sceneRadius);
@@ -238,17 +245,17 @@ Caustics::Caustics() :
     mLightAngle(0.4f, 4.2f),
     mEmitSize(30.f),
     mJitter(0.0f),
-    mSplatSize(2.f),
+    mSplatSize(0.5f),
     mIntensity(0.26f),
     mPhotonMode(0),
     mKernelPower(1.0),
     mShowPhoton(false),
-    mDispatchSize(512),
+    mDispatchSize(128),
     mNormalThreshold(0.2f),
     mDistanceThreshold(10.0f),
     mPlanarThreshold(2.0f),
     mPixelLuminanceThreshold(0.5f),
-    mMinPhotonPixelSize(5.0f)
+    mMinPhotonPixelSize(1000.0f)
 {}
 
 void Caustics::onLoad(RenderContext* pRenderContext)
@@ -325,6 +332,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pCB["jitter"] = mJitter;
         pCB["launchRayTask"] = 0;
         pCB["rayTaskOffset"] = mDispatchSize * mDispatchSize;
+        pCB["coarseDim"] = uint2(mDispatchSize, mDispatchSize);
         auto rayGenVars = mpPhotonTraceVars->getRayGenVars();
         rayGenVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
         rayGenVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
@@ -345,7 +353,8 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     // analysis output
     {
         ConstantBuffer::SharedPtr pPerFrameCB = mpAnalyseVars["PerFrameCB"];
-        pPerFrameCB["viewProjMat"] = mpCamera->getViewProjMatrix();
+        glm::mat4 wvp = mpCamera->getProjMatrix() * mpCamera->getViewMatrix();
+        pPerFrameCB["viewProjMat"] = wvp;// mpCamera->getViewProjMatrix();
         pPerFrameCB["taskDim"] = int2(mDispatchSize, mDispatchSize);
         pPerFrameCB["screenDim"] = int2(mpDepthTex->getWidth(), mpDepthTex->getHeight());
         pPerFrameCB["normalThreshold"] = mNormalThreshold;
@@ -356,6 +365,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         mpAnalyseVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
         mpAnalyseVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
         mpAnalyseVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
+        mpAnalyseVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
         static int groupSize = 16;
         pContext->dispatch(mpAnalyseState.get(), mpAnalyseVars.get(), uvec3(mDispatchSize / groupSize, mDispatchSize / groupSize, 1));
     }
@@ -364,9 +374,28 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     {
         GraphicsVars* pVars = mpPhotonTraceVars->getGlobalVars().get();
         ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
+        pCB["invView"] = glm::inverse(mpCamera->getViewMatrix());
+        pCB["viewportDims"] = vec2(pTargetFbo->getWidth(), pTargetFbo->getHeight());
+        pCB["emitSize"] = mEmitSize;
+        pCB["roughThreshold"] = mRoughThreshold;
+        pCB["jitter"] = mJitter;
         pCB["launchRayTask"] = 1;
         pCB["rayTaskOffset"] = mDispatchSize * mDispatchSize;
-        mpRtRenderer->renderScene(pContext, mpPhotonTraceVars, mpPhotonTraceState, uvec3(mpDepthTex->getWidth(), mpDepthTex->getHeight(), 1), mpCamera.get());
+        auto rayGenVars = mpPhotonTraceVars->getRayGenVars();
+        rayGenVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
+        rayGenVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
+        rayGenVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
+        rayGenVars->setTexture("gOutput", mpRtOut);
+        rayGenVars->setTexture("gUniformNoise", mpUniformNoise);
+        auto hitVars = mpPhotonTraceVars->getHitVars(0);
+        for (auto& hitVar : hitVars)
+        {
+            hitVar->setTexture("gOutput", mpRtOut);
+            hitVar->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
+            hitVar->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
+            hitVar->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
+        }
+        mpRtRenderer->renderScene(pContext, mpPhotonTraceVars, mpPhotonTraceState, uvec3(1024, 1024, 1), mpCamera.get());
     }
 
     // photon scattering

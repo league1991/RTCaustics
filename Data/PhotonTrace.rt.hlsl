@@ -42,6 +42,7 @@ shared cbuffer PerFrameCB
 {
     float4x4 invView;
     float2 viewportDims;
+    uint2 coarseDim;
     float emitSize;
     float roughThreshold;
     float jitter;
@@ -346,15 +347,17 @@ void rayGen()
             return;
         }
         RayTask task = gRayTask[taskIdx];
-        lightUV = task.screenCoord / float2(launchDimension.xy);
+        lightUV = (task.screenCoord) / float2(coarseDim);// float2(launchDimension.xy);
         pixelSize = task.pixelSize;
+        //lightUV = float2(launchIndex.xy+0.5) / float2(launchDimension.xy);
+        //pixelSize = 0.1;
     }
     else
     {
-        lightUV = float2(launchIndex.xy) / float2(launchDimension.xy);
+        lightUV = float2(launchIndex.xy) / float2(coarseDim.xy);
     }
     lightUV = lightUV * 2 - 1;
-    pixelSize *= emitSize / float2(launchDimension.xy);
+    pixelSize *= emitSize / float2(coarseDim.xy);
 
     uint nw, nh, nl;
     gUniformNoise.GetDimensions(0, nw, nh, nl);
@@ -367,7 +370,7 @@ void rayGen()
     ray.TMax = 1e10;
 
     PrimaryRayData hitData;
-    float dispatchFactor = (launchDimension.x / 512.0) * (launchDimension.y / 512.0);
+    float dispatchFactor = (coarseDim.x / 512.0) * (coarseDim.y / 512.0);
     hitData.depth = 0;
     hitData.color = float4(1, 1, 1, 1) * emitSize / dispatchFactor;
     //hitData.dPdx = 0;

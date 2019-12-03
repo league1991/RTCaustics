@@ -52,6 +52,7 @@ RWStructuredBuffer<Photon> gPhotonBuffer;
 //RWStructuredBuffer<DrawArguments> gDrawArgument;
 RWStructuredBuffer<RayArgument> gRayArgument;
 RWStructuredBuffer<RayTask> gRayTask;
+Texture2D gDepthTex;
 
 int checkPixelNeighbour(uint2 pixelCoord0, RayTask task0, Photon photon0, uint2 offset)
 {
@@ -72,31 +73,33 @@ int checkPixelNeighbour(uint2 pixelCoord0, RayTask task0, Photon photon0, uint2 
 
     float3 posW0 = photon0.posW;
     float area0 = length(cross(photon0.dPdx,photon0.dPdy));
-    float3 color0 = photon0.color / area0;
+    float3 color0 = photon0.color;// / area0;
     float3 posW1;
     float3 color1;
-    if (isContinue)
+    if (true || isContinue)
     {
         posW1 = photon1.posW;
         float area1 = length(cross(photon1.dPdx, photon1.dPdy));
-        color1 = photon1.color / area1;
+        color1 = photon1.color;// / area1;
     }
     else
     {
-        posW1 = photon0.posW + photon0.dPdx * offset.x + photon0.dPdy * offset.y;
+        posW1 = photon0.posW + photon0.dPdx* offset.x + photon0.dPdy * offset.y;
         color1 = 0;
     }
     float4 posS0 = mul(float4(posW0, 1), viewProjMat);
     float4 posS1 = mul(float4(posW1, 1), viewProjMat);
     posS0 /= posS0.w;
     posS1 /= posS1.w;
-    float2 dPosS = (posS1.xy - posS0.xy) * screenDim.xy;
+    float2 dPosS = (posS1.xy - posS0.xy) * screenDim.xy * 0.5;
     float distS = max(length(dPosS),1);
-    float dLuminancePerPixel = abs(dot(color1 - color0, float3(0.2126, 0.7152, 0.0722))) / distS;
-    float luminanceSubd = dLuminancePerPixel / pixelLuminanceThreshold;
+    float dLuminance = abs(dot(color1 - color0, float3(0.2126, 0.7152, 0.0722)));// / distS;
+    float luminanceSubd = 0;// dLuminancePerPixel / pixelLuminanceThreshold;
     float maxPixelSubd = distS / minPhotonPixelSize;
-    float subd = min(luminanceSubd, maxPixelSubd);
-    return int(subd + 0.5);
+    //return (dLuminance > pixelLuminanceThreshold) ? min(4, maxPixelSubd) : 0;
+    return min(4, maxPixelSubd);
+    //float subd = min(luminanceSubd, maxPixelSubd);
+    //return int(subd + 0.5);
 }
 
 [numthreads(16, 16, 1)]
@@ -129,13 +132,30 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 thr
     }
 
     Photon photon0 = gPhotonBuffer[idx0];
+    float4 posS0 = mul(float4(photon0.posW, 1), viewProjMat);
+    posS0 /= posS0.w;
+    if (any(abs(posS0.xy) > 1) || posS0.z < 0 || posS0.z > 1)
+    {
+        return;
+    }
+    //int2 screenPos = (posS0.xy * float2(1,-1) + 1) * 0.5 * screenDim;
+    //float depth = gDepthTex.Load(int3(screenPos.xy, 0)).x;
+    //if (posS0.w > depth + 0.1)
+    //{
+    //    return;
+    //}
+
     int subdW = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(-1,0));
     int subdE = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(1, 0));
     int subdN = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(0, -1));
     int subdS = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(0, 1));
 
-    int subdX = 2;// max(subdW, subdE);
-    int subdY = 2;// max(subdN, subdS);
+    int subdX = max(subdW, subdE);
+    int subdY = max(subdN, subdS);
+    if (subdX == 0 || subdY == 0)
+    {
+        return;
+    }
     int sampleX = subdX * 2;
     int sampleY = subdY * 2;
     gPhotonBuffer[idx0].dPdx /= (subdX + 1);
@@ -153,16 +173,13 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 thr
     //newTask.photonIdx = -1;
     //gRayTask[taskIdx] = newTask;
 
-    if (sampleCount > 1)
-    {
-        InterlockedAdd(gRayArgument[0].rayTaskCount, sampleCount-1, taskIdx);
-    }
+    InterlockedAdd(gRayArgument[0].rayTaskCount, sampleCount - 1, taskIdx);
 
     for (uint i = 0, offset = 0; i < sampleCount; i++)
     {
         uint y = i / sampleX;
         uint x = i - sampleX * y;
-        if (x == sampleX-1 && y == sampleY-1)
+        if (x == subdX+1 && y == subdY+1)
         {
             continue;
         }

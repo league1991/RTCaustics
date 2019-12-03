@@ -49,7 +49,7 @@ private:
     bool mUseDOF = false;
     uint32_t mSampleIndex = 0xdeadbeef;
     float mEmitSize = 100.0;
-    float mSplatSize = 0.2f;
+    float mSplatSize;
     float mIntensity = 1.0f;
     float mRoughThreshold = 0.1f;
     float mKernelPower;
