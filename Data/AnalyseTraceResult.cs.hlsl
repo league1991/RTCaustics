@@ -54,7 +54,7 @@ RWStructuredBuffer<RayArgument> gRayArgument;
 RWStructuredBuffer<RayTask> gRayTask;
 Texture2D gDepthTex;
 
-int checkPixelNeighbour(uint2 pixelCoord0, RayTask task0, Photon photon0, uint2 offset)
+float checkPixelNeighbour(uint2 pixelCoord0, RayTask task0, Photon photon0, uint2 offset)
 {
     uint2 pixelCoord1 = min(taskDim - 1, max(uint2(0, 0), pixelCoord0 + offset));
     uint pixelIdx1 = pixelCoord1.y * taskDim.x + pixelCoord1.x;
@@ -97,7 +97,7 @@ int checkPixelNeighbour(uint2 pixelCoord0, RayTask task0, Photon photon0, uint2 
     float luminanceSubd = 0;// dLuminancePerPixel / pixelLuminanceThreshold;
     float maxPixelSubd = distS / minPhotonPixelSize;
     //return (dLuminance > pixelLuminanceThreshold) ? min(4, maxPixelSubd) : 0;
-    return min(4, maxPixelSubd);
+    return min(8, maxPixelSubd);
     //float subd = min(luminanceSubd, maxPixelSubd);
     //return int(subd + 0.5);
 }
@@ -145,50 +145,73 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 thr
     //    return;
     //}
 
-    int subdW = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(-1,0));
-    int subdE = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(1, 0));
-    int subdN = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(0, -1));
-    int subdS = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(0, 1));
+    float subdW = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(-1,0));
+    float subdE = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(1, 0));
+    float subdN = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(0, -1));
+    float subdS = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(0, 1));
 
-    int subdX = max(subdW, subdE);
-    int subdY = max(subdN, subdS);
-    if (subdX == 0 || subdY == 0)
+    //int subdX = max(subdW, subdE);
+    //int subdY = max(subdN, subdS);
+    //if (subdX == 0 || subdY == 0)
+    //{
+    //    return;
+    //}
+    //int sampleX = subdX * 2;
+    //int sampleY = subdY * 2;
+    //int sampleCount = sampleX * sampleY;
+    //gPhotonBuffer[idx0].dPdx /= (subdX + 1);
+    //gPhotonBuffer[idx0].dPdy /= (subdY + 1);
+    //gPhotonBuffer[idx0].color /= sampleCount;
+    //float2 pixelSize = float2(1, 1) / float2(sampleX, sampleY);
+    //gRayTask[rayIdx].pixelSize = pixelSize;
+    //float2 screenCoord0 = task0.screenCoord - pixelSize * float2(subdX - 1, subdY - 1);
+
+    //int taskIdx = 0;
+    //InterlockedAdd(gRayArgument[0].rayTaskCount, sampleCount -1, taskIdx);
+
+    //for (uint i = 0, offset = 0; i < sampleCount; i++)
+    //{
+    //    uint y = i / sampleX;
+    //    uint x = i - sampleX * y;
+    //    if (x == subdX-1 && y == subdY-1)
+    //    {
+    //        continue;
+    //    }
+    //    RayTask newTask;
+    //    newTask.screenCoord = screenCoord0 + pixelSize * float2(x, y);
+    //    newTask.pixelSize = pixelSize;
+    //    newTask.photonIdx = -1;
+    //    gRayTask[taskIdx + offset] = newTask;
+    //    offset++;
+    //}
+
+    int sampleCount = (subdW + subdE) * (subdN + subdS);
+    if (sampleCount <= 1)
     {
         return;
     }
-    int sampleX = subdX * 2;
-    int sampleY = subdY * 2;
-    gPhotonBuffer[idx0].dPdx /= (subdX + 1);
-    gPhotonBuffer[idx0].dPdy /= (subdY + 1);
-    int sampleCount = sampleX * sampleY;
+    float sampleWeight = 1.0 / sqrt(float(sampleCount));
+    float2 pixelSize = float2(1, 1) * sampleWeight;
+    gPhotonBuffer[idx0].dPdx *= sampleWeight;
+    gPhotonBuffer[idx0].dPdy *= sampleWeight;
     gPhotonBuffer[idx0].color /= sampleCount;
-    float2 pixelSize = float2(1, 1) / float2(sampleX, sampleY);
-    gRayTask[rayIdx].pixelSize = pixelSize;
-    float2 screenCoord0 = task0.screenCoord - pixelSize * float2(subdX - 1, subdY - 1);
+    float2 screenCoord0 = task0.screenCoord;
 
     int taskIdx = 0;
-    //InterlockedAdd(gRayArgument[0].rayTaskCount, 1, taskIdx);
-    //RayTask newTask;
-    //newTask.screenCoord = task0.screenCoord + float2(0.5,0.5) / 512*0;
-    //newTask.pixelSize = pixelSize*5;
-    //newTask.photonIdx = -1;
-    //gRayTask[taskIdx] = newTask;
-
-    InterlockedAdd(gRayArgument[0].rayTaskCount, sampleCount -1, taskIdx);
-
-    for (uint i = 0, offset = 0; i < sampleCount; i++)
+    InterlockedAdd(gRayArgument[0].rayTaskCount, sampleCount-1, taskIdx);
+    float g = 1.32471795724474602596;
+    float a1 = 1.0 / g;
+    float a2 = 1.0 / (g * g);
+    for (uint i = 0; i < sampleCount-1; i++)
     {
-        uint y = i / sampleX;
-        uint x = i - sampleX * y;
-        if (x == subdX-1 && y == subdY-1)
-        {
-            continue;
-        }
+        float x = frac(0.5 + a1 * (i + 1));
+        float y = frac(0.5 + a2 * (i + 1));
+        x = x * 2 - 1;
+        y = y * 2 - 1;
         RayTask newTask;
-        newTask.screenCoord = screenCoord0 + pixelSize * float2(x, y);
+        newTask.screenCoord = screenCoord0 + float2(x, y);
         newTask.pixelSize = pixelSize;
         newTask.photonIdx = -1;
-        gRayTask[taskIdx + offset] = newTask;
-        offset++;
+        gRayTask[taskIdx + i] = newTask;
     }
 }
