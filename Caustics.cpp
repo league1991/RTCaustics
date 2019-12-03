@@ -255,7 +255,7 @@ Caustics::Caustics() :
     mDistanceThreshold(10.0f),
     mPlanarThreshold(2.0f),
     mPixelLuminanceThreshold(0.5f),
-    mMinPhotonPixelSize(1000.0f)
+    mMinPhotonPixelSize(10.0f)
 {}
 
 void Caustics::onLoad(RenderContext* pRenderContext)

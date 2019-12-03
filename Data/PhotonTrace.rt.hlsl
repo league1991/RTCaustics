@@ -357,6 +357,7 @@ void rayGen()
         lightUV = float2(launchIndex.xy) / float2(coarseDim.xy);
     }
     lightUV = lightUV * 2 - 1;
+    //float dispatchFactor = (coarseDim.x / 512.0) * (coarseDim.y / 512.0);
     pixelSize *= emitSize / float2(coarseDim.xy);
 
     uint nw, nh, nl;
@@ -370,9 +371,8 @@ void rayGen()
     ray.TMax = 1e10;
 
     PrimaryRayData hitData;
-    float dispatchFactor = (coarseDim.x / 512.0) * (coarseDim.y / 512.0);
     hitData.depth = 0;
-    hitData.color = float4(1, 1, 1, 1) * emitSize / dispatchFactor;
+    hitData.color = float4(1, 1, 1, 1) *pixelSize.x* pixelSize.y * 512 * 512;
     //hitData.dPdx = 0;
     //hitData.dPdy = 0;
     hitData.dDdx = 0;// lightDirX* pixelSize.x * 2.0;

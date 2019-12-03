@@ -161,9 +161,10 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 thr
     gPhotonBuffer[idx0].dPdx /= (subdX + 1);
     gPhotonBuffer[idx0].dPdy /= (subdY + 1);
     int sampleCount = sampleX * sampleY;
+    gPhotonBuffer[idx0].color /= sampleCount;
     float2 pixelSize = float2(1, 1) / float2(sampleX, sampleY);
     gRayTask[rayIdx].pixelSize = pixelSize;
-    float2 screenCoord0 = task0.screenCoord + pixelSize * float2(subdX - 1, subdY - 1);
+    float2 screenCoord0 = task0.screenCoord - pixelSize * float2(subdX - 1, subdY - 1);
 
     int taskIdx = 0;
     //InterlockedAdd(gRayArgument[0].rayTaskCount, 1, taskIdx);
@@ -173,13 +174,13 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 thr
     //newTask.photonIdx = -1;
     //gRayTask[taskIdx] = newTask;
 
-    InterlockedAdd(gRayArgument[0].rayTaskCount, sampleCount - 1, taskIdx);
+    InterlockedAdd(gRayArgument[0].rayTaskCount, sampleCount -1, taskIdx);
 
     for (uint i = 0, offset = 0; i < sampleCount; i++)
     {
         uint y = i / sampleX;
         uint x = i - sampleX * y;
-        if (x == subdX+1 && y == subdY+1)
+        if (x == subdX-1 && y == subdY-1)
         {
             continue;
         }
