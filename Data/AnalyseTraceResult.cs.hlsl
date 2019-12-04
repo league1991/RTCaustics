@@ -97,7 +97,7 @@ float checkPixelNeighbour(uint2 pixelCoord0, RayTask task0, Photon photon0, uint
     float luminanceSubd = 0;// dLuminancePerPixel / pixelLuminanceThreshold;
     float maxPixelSubd = distS / minPhotonPixelSize;
     //return (dLuminance > pixelLuminanceThreshold) ? min(4, maxPixelSubd) : 0;
-    return min(8, maxPixelSubd);
+    return min(20, maxPixelSubd);
     //float subd = min(luminanceSubd, maxPixelSubd);
     //return int(subd + 0.5);
 }
@@ -185,7 +185,17 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 thr
     //    offset++;
     //}
 
-    int sampleCount = (subdW + subdE) * (subdN + subdS);
+    float4 posSDx = mul(float4(photon0.posW + photon0.dPdx, 1), viewProjMat);
+    float4 posSDy = mul(float4(photon0.posW + photon0.dPdy, 1), viewProjMat);
+    posSDx /= posSDx.w;
+    posSDy /= posSDy.w;
+    float2 dsx = (posSDx.xy - posS0.xy) * screenDim;
+    float2 dsy = (posSDy.xy - posS0.xy) * screenDim;
+
+    float screenArea = abs(dsx.x * dsy.y - dsx.y * dsy.x);
+
+    //int sampleCount = (subdW + subdE) * (subdN + subdS);
+    int sampleCount = min(screenArea / (minPhotonPixelSize * minPhotonPixelSize),1024);
     if (sampleCount <= 1)
     {
         return;
@@ -194,22 +204,22 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 thr
     float2 pixelSize = float2(1, 1) * sampleWeight;
     gPhotonBuffer[idx0].dPdx *= sampleWeight;
     gPhotonBuffer[idx0].dPdy *= sampleWeight;
-    gPhotonBuffer[idx0].color /= sampleCount;
+    gPhotonBuffer[idx0].color *= 0;// /= sampleCount;
     float2 screenCoord0 = task0.screenCoord;
 
     int taskIdx = 0;
-    InterlockedAdd(gRayArgument[0].rayTaskCount, sampleCount-1, taskIdx);
+    InterlockedAdd(gRayArgument[0].rayTaskCount, sampleCount, taskIdx);
     float g = 1.32471795724474602596;
     float a1 = 1.0 / g;
     float a2 = 1.0 / (g * g);
-    for (uint i = 0; i < sampleCount-1; i++)
+    for (uint i = 0; i < sampleCount; i++)
     {
         float x = frac(0.5 + a1 * (i + 1));
         float y = frac(0.5 + a2 * (i + 1));
         x = x * 2 - 1;
         y = y * 2 - 1;
         RayTask newTask;
-        newTask.screenCoord = screenCoord0 + float2(x, y);
+        newTask.screenCoord = screenCoord0 + float2(x, y)*0.5;
         newTask.pixelSize = pixelSize;
         newTask.photonIdx = -1;
         gRayTask[taskIdx + i] = newTask;
