@@ -98,13 +98,14 @@ void Caustics::onGuiRender(Gui* pGui)
     if (pGui->beginGroup("Photon Splat", true))
     {
         pGui->addFloatVar("Splat size", mSplatSize, 0, 10, 0.01f);
-        pGui->addFloatVar("Intensity", mIntensity, 0, 10, 0.01f);
+        pGui->addFloatVar("Intensity", mIntensity, 0, 10, 0.0002f);
         pGui->addFloatVar("Kernel Power", mKernelPower, 0.01f, 10, 0.01f);
         pGui->addCheckBox("Show Photon", mShowPhoton);
         pGui->endGroup();
     }
     if(pGui->beginGroup("Refine Photon", true))
     {
+        pGui->addCheckBox("On", mRefinePhoton);
         pGui->addFloatVar("Normal Threshold", mNormalThreshold, 0.01f, 1.0, 0.01f);
         pGui->addFloatVar("Distance Threshold", mDistanceThreshold, 0.1f, 10.0f, 0.1f);
         pGui->addFloatVar("Planar Threshold", mPlanarThreshold, 0.01f, 10.0, 0.1f);
@@ -245,8 +246,8 @@ Caustics::Caustics() :
     mLightAngle(0.4f, 4.2f),
     mEmitSize(30.f),
     mJitter(0.0f),
-    mSplatSize(0.5f),
-    mIntensity(0.26f),
+    mSplatSize(2.8f),
+    mIntensity(0.003f),
     mPhotonMode(0),
     mKernelPower(1.0),
     mShowPhoton(false),
@@ -255,7 +256,8 @@ Caustics::Caustics() :
     mDistanceThreshold(10.0f),
     mPlanarThreshold(2.0f),
     mPixelLuminanceThreshold(0.5f),
-    mMinPhotonPixelSize(10.0f)
+    mMinPhotonPixelSize(7.0f),
+    mRefinePhoton(true)
 {}
 
 void Caustics::onLoad(RenderContext* pRenderContext)
@@ -351,6 +353,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     }
 
     // analysis output
+    if(mRefinePhoton)
     {
         ConstantBuffer::SharedPtr pPerFrameCB = mpAnalyseVars["PerFrameCB"];
         glm::mat4 wvp = mpCamera->getProjMatrix() * mpCamera->getViewMatrix();
@@ -371,6 +374,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     }
 
     // fine photon tracing
+    if (mRefinePhoton)
     {
         GraphicsVars* pVars = mpPhotonTraceVars->getGlobalVars().get();
         ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
@@ -395,7 +399,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             hitVar->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
             hitVar->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
         }
-        mpRtRenderer->renderScene(pContext, mpPhotonTraceVars, mpPhotonTraceState, uvec3(1024, 1024, 1), mpCamera.get());
+        mpRtRenderer->renderScene(pContext, mpPhotonTraceVars, mpPhotonTraceState, uvec3(4096, 4096, 1), mpCamera.get());
     }
 
     // photon scattering
@@ -495,8 +499,9 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
     }
 
 #define CAUSTICS_MAP_SIZE 2048
-    mpRayTaskBuffer = StructuredBuffer::create(mpAnalyseProgram.get(), std::string("gRayTask"), CAUSTICS_MAP_SIZE * CAUSTICS_MAP_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
-    mpPhotonBuffer = StructuredBuffer::create(mpPhotonTraceProgram->getHitProgram(0).get(), std::string("gPhotonBuffer"), CAUSTICS_MAP_SIZE * CAUSTICS_MAP_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
+#define TASK_SIZE 4096*4096
+    mpRayTaskBuffer = StructuredBuffer::create(mpAnalyseProgram.get(), std::string("gRayTask"), TASK_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
+    mpPhotonBuffer = StructuredBuffer::create(mpPhotonTraceProgram->getHitProgram(0).get(), std::string("gPhotonBuffer"), TASK_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpDrawArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gDrawArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg);
     mpRayArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gRayArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg);
     mpRtOut = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);

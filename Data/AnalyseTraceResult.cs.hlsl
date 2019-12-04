@@ -54,6 +54,16 @@ RWStructuredBuffer<RayArgument> gRayArgument;
 RWStructuredBuffer<RayTask> gRayTask;
 Texture2D gDepthTex;
 
+float getNeighbourArea(uint2 pixelCoord0, uint2 offset, out int isInFrustum)
+{
+    uint2 pixelCoord1 = min(taskDim - 1, max(uint2(0, 0), pixelCoord0 + offset));
+    uint pixelIdx1 = pixelCoord1.y * taskDim.x + pixelCoord1.x;
+
+    RayTask task1 = gRayTask[pixelIdx1];
+    isInFrustum = task1.inFrustum;
+    return task1.pixelArea;
+}
+
 float checkPixelNeighbour(uint2 pixelCoord0, RayTask task0, Photon photon0, uint2 offset)
 {
     uint2 pixelCoord1 = min(taskDim - 1, max(uint2(0, 0), pixelCoord0 + offset));
@@ -126,18 +136,18 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 thr
     uint rayIdx = threadIdx.y * taskDim.x + threadIdx.x;
     RayTask task0 = gRayTask[rayIdx];
     int idx0 = task0.photonIdx;
-    if (idx0 == -1)
-    {
-        return;
-    }
+    //if (idx0 == -1)
+    //{
+    //    return;
+    //}
 
-    Photon photon0 = gPhotonBuffer[idx0];
-    float4 posS0 = mul(float4(photon0.posW, 1), viewProjMat);
-    posS0 /= posS0.w;
-    if (any(abs(posS0.xy) > 1) || posS0.z < 0 || posS0.z > 1)
-    {
-        return;
-    }
+    //Photon photon0 = gPhotonBuffer[idx0];
+    //float4 posS0 = mul(float4(photon0.posW, 1), viewProjMat);
+    //posS0 /= posS0.w;
+    //if (any(abs(posS0.xy) > 1) || posS0.z < 0 || posS0.z > 1)
+    //{
+    //    return;
+    //}
     //int2 screenPos = (posS0.xy * float2(1,-1) + 1) * 0.5 * screenDim;
     //float depth = gDepthTex.Load(int3(screenPos.xy, 0)).x;
     //if (posS0.w > depth + 0.1)
@@ -145,10 +155,10 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 thr
     //    return;
     //}
 
-    float subdW = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(-1,0));
-    float subdE = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(1, 0));
-    float subdN = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(0, -1));
-    float subdS = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(0, 1));
+    //float subdW = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(-1,0));
+    //float subdE = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(1, 0));
+    //float subdN = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(0, -1));
+    //float subdS = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(0, 1));
 
     //int subdX = max(subdW, subdE);
     //int subdY = max(subdN, subdS);
@@ -185,17 +195,39 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 thr
     //    offset++;
     //}
 
-    float4 posSDx = mul(float4(photon0.posW + photon0.dPdx, 1), viewProjMat);
-    float4 posSDy = mul(float4(photon0.posW + photon0.dPdy, 1), viewProjMat);
-    posSDx /= posSDx.w;
-    posSDy /= posSDy.w;
-    float2 dsx = (posSDx.xy - posS0.xy) * screenDim;
-    float2 dsy = (posSDy.xy - posS0.xy) * screenDim;
-
-    float screenArea = abs(dsx.x * dsy.y - dsx.y * dsy.x);
+    int inF0, inFW, inFE, inFN, inFS;
+    uint2 dir[9] = {
+        uint2(-1,-1),
+        uint2(-1,0),
+        uint2(-1,1),
+        uint2(0,-1),
+        uint2(0,0),
+        uint2(0,1),
+        uint2(1,-1),
+        uint2(1,0),
+        uint2(1,1),
+    };
+    float screenArea = 0;
+    int isAnyIn = 0;
+    for (int i = 0; i < 9; i++)
+    {
+        int inF;
+        float area = getNeighbourArea(threadIdx.xy, dir[i], inF);
+        if (inF)screenArea = max(screenArea, area);
+        isAnyIn |= inF;
+    }
+    if (!isAnyIn)
+        return;
+    //float4 posSDx = mul(float4(photon0.posW + photon0.dPdx, 1), viewProjMat);
+    //float4 posSDy = mul(float4(photon0.posW + photon0.dPdy, 1), viewProjMat);
+    //posSDx /= posSDx.w;
+    //posSDy /= posSDy.w;
+    //float2 dsx = (posSDx.xy - posS0.xy) * screenDim;
+    //float2 dsy = (posSDy.xy - posS0.xy) * screenDim;
+    //float screenArea = abs(dsx.x * dsy.y - dsx.y * dsy.x);
 
     //int sampleCount = (subdW + subdE) * (subdN + subdS);
-    int sampleCount = min(screenArea / (minPhotonPixelSize * minPhotonPixelSize),1024);
+    int sampleCount = min(screenArea / (minPhotonPixelSize * minPhotonPixelSize),1024*8);
     if (sampleCount <= 1)
     {
         return;

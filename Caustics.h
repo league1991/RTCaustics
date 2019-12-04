@@ -45,6 +45,7 @@ public:
 private:
     int mDispatchSize;
     bool mRayTrace = true;
+    bool mRefinePhoton;
     uint32_t mDebugMode = 0;
     bool mUseDOF = false;
     uint32_t mSampleIndex = 0xdeadbeef;

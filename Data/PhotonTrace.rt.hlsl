@@ -222,6 +222,22 @@ void updateReflectRayDifferential(
 //    updateRayPartialDifferential(P0, P1, P2, N0, N1, N2, N, hitData.dPdy, hitData.dDdy);
 //}
 
+float getPhotonScreenArea(Photon p, out bool isInfrustum)
+{
+    float4 s0 = mul(float4(p.posW, 1), gCamera.viewProjMat);
+    float4 sx = mul(float4(p.posW + p.dPdx, 1), gCamera.viewProjMat);
+    float4 sy = mul(float4(p.posW + p.dPdy, 1), gCamera.viewProjMat);
+    s0 /= s0.w;
+    sx /= sx.w;
+    sy /= sy.w;
+    isInfrustum = all(abs(s0.xy) < 1) && s0.z > 0 && s0.z < 1;
+    float2 dx = (sx.xy - s0.xy) * viewportDims;
+    float2 dy = (sy.xy - s0.xy) * viewportDims;
+    float area = abs(dx.x * dy.y - dy.x * dx.y);
+    //float area = 0.5 * (dx.x * dx.y + dy.x * dy.y);
+    return area;
+}
+
 [shader("closesthit")]
 void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersectionAttributes attribs)
 {
@@ -290,7 +306,10 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         uint3 dim3 = DispatchRaysDimensions();
         uint3 idx3 = DispatchRaysIndex();
         uint idx = idx3.y * dim3.x + idx3.x;
+        bool isInFrustum;
         gRayTask[idx].photonIdx = instanceIdx;
+        gRayTask[idx].pixelArea = getPhotonScreenArea(photon, isInFrustum);
+        gRayTask[idx].inFrustum = isInFrustum ? 1 : 0;
     }
 
     if (hitData.depth == 0)
@@ -385,6 +404,8 @@ void rayGen()
     {
         gRayTask[taskIdx].screenCoord = launchIndex.xy;
         gRayTask[taskIdx].pixelSize = float2(1, 1);
+        gRayTask[taskIdx].pixelArea = 0;
+        gRayTask[taskIdx].inFrustum = 0;
     }
 
     TraceRay( gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, hitData );
