@@ -139,7 +139,7 @@ void calculateDNdx(
 void updateReflectRayDifferential(
     float3 P0, float3 P1, float3 P2,
     float3 N0, float3 N1, float3 N2, float3 N,
-    inout float3 dPdx,
+    float3 dPdx,
     inout float3 dDdx)
 {
     float3 dNdx=0;
@@ -150,26 +150,6 @@ void updateReflectRayDifferential(
     float dDNdx = dot(dDdx, N) + dot(D, dNdx);
     dDdx = dDdx - 2 * (dot(D, N) * dNdx + dDNdx * N);
 }
-
-//void updateRayPartialDifferential(
-//    float3 P0, float3 P1, float3 P2,
-//    float3 N0, float3 N1, float3 N2, float3 N,
-//    inout float3 dPdx, inout float3 dDdx)
-//{
-//    updateTransferRayDifferential(dPdx, dDdx, N);
-//    updateReflectRayDifferential(P0, P1, P2, N0, N1, N2, N, dPdx, dDdx);
-//}
-//
-//void updateRayDifferential(inout PrimaryRayData hitData, in BuiltInTriangleIntersectionAttributes attribs)
-//{
-//    float3 barycentrics = float3(1.0 - attribs.barycentrics.x - attribs.barycentrics.y, attribs.barycentrics.x, attribs.barycentrics.y);
-//    float3 P0, P1, P2, N0, N1, N2;
-//    getVerticesAndNormals(PrimitiveIndex(), P0, P1, P2, N0, N1, N2);
-//    float3 N = N0 * barycentrics.x + N1 * barycentrics.y + N2 * barycentrics.z;
-//
-//    updateRayPartialDifferential(P0, P1, P2, N0, N1, N2, N, hitData.dPdx, hitData.dDdx);
-//    updateRayPartialDifferential(P0, P1, P2, N0, N1, N2, N, hitData.dPdy, hitData.dDdy);
-//}
 
 float getPhotonScreenArea(Photon p, out bool isInfrustum)
 {
@@ -187,19 +167,60 @@ float getPhotonScreenArea(Photon p, out bool isInfrustum)
     return area;
 }
 
+// eta = eta i / eta o
+bool isRefraction(float3 I, float3 N, float eta)
+{
+    // detect total internal reflection
+    float cosI = dot(I, N);
+    return cosI * cosI > (1 - 1 / (eta * eta));
+}
+
+void getRefractVector(float3 I, float3 N, out float3 R, float eta)
+{
+    float IN = dot(I, N);
+    float RN = -sqrt(1 - eta * eta * (1 - IN * IN));
+    float mu = eta * IN - RN;
+    R = eta * I - mu * N;
+}
+
+void updateRefractRayDifferential(
+    float3 P0, float3 P1, float3 P2,
+    float3 N0, float3 N1, float3 N2,
+    float3 D, float3 R, float3 N, float eta,
+    float3 dPdx,
+    inout float3 dDdx)
+{
+    float3 dNdx = 0;
+    calculateDNdx(P0, P1, P2, N0, N1, N2, N, dPdx, dNdx);
+
+    N = normalize(N);
+    float DN = dot(D, N);
+    float RN = dot(R, N);
+    float mu = eta * DN - RN;
+    float dDNdx = dot(dDdx, N) + dot(D, dNdx);
+    float dmudx = (eta - eta * eta * DN / RN) * dDNdx;
+    dDdx = eta * dDdx - (mu * dNdx + dmudx * N);
+}
+
 [shader("closesthit")]
 void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersectionAttributes attribs)
 {
+    int maxDepth = 2;
+    if (hitData.depth >= maxDepth)
+    {
+        return;
+    }
     // Get the hit-point data
     float3 rayOrigW = WorldRayOrigin();
     float3 rayDirW = WorldRayDirection(); 
     float hitT = RayTCurrent();
     uint triangleIndex = PrimitiveIndex();
-
     float3 posW = rayOrigW + hitT * rayDirW;
+
     // prepare the shading data
     VertexOut v = getVertexAttributes(triangleIndex, attribs);
     ShadingData sd = prepareShadingData(v, gMaterial, rayOrigW, 0);
+    hitData.hitT = hitT;
 
     PrimaryRayData hitData2;
     hitData2.depth = hitData.depth + 1;
@@ -212,36 +233,40 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     updateTransferRayDifferential(N, hitData2.dPdx, hitData2.dDdx);
     updateTransferRayDifferential(N, hitData2.dPdy, hitData2.dDdy);
 
-    // Shoot a reflection ray
-    float3 reflectColor = float3(0, 0, 0);
-    //reflectColor = getReflectionColor(posW, v, rayDirW, hitData.depth);
-    if (sd.linearRoughness > roughThreshold)
+    bool isSpecular = (sd.linearRoughness > roughThreshold || sd.opacity < 1);
+    if (isSpecular)
     {
-        if (hitData.depth < 1)
+        bool isReflect = (sd.opacity == 1);
+        float3 R;
+        float eta = dot(N, rayDirW) < 0 ? sd.IoR : 1.0 / sd.IoR;
+        if (!isReflect)
         {
-            hitData2.color = hitData.color* float4(sd.specular, 1);
+            isReflect = !isRefraction(rayDirW, v.normalW, eta);
+        }
+
+        if (isReflect)
+        {
             updateReflectRayDifferential(P0, P1, P2, N0, N1, N2, N, hitData2.dPdx, hitData2.dDdx);
             updateReflectRayDifferential(P0, P1, P2, N0, N1, N2, N, hitData2.dPdy, hitData2.dDdy);
-
-            RayDesc ray;
-            ray.Origin = posW;
-            ray.Direction = reflect(rayDirW, v.normalW);
-            ray.TMin = 0.01;
-            ray.TMax = 100000;
-            TraceRay(gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, hitData2);
-            //reflectColor = hitData2.hitT == -1 ? 0 : hitData2.color.rgb;
-            //float falloff = max(1, (hitData2.hitT * hitData2.hitT));
-            //reflectColor *= 20 / falloff;
+            R = reflect(rayDirW, v.normalW);
         }
+        else
+        {
+            getRefractVector(rayDirW, v.normalW, R, eta);
+            updateRefractRayDifferential(P0, P1, P2, N0, N1, N2, rayDirW, R, N, eta, hitData2.dPdx, hitData2.dDdx);
+            updateRefractRayDifferential(P0, P1, P2, N0, N1, N2, rayDirW, R, N, eta, hitData2.dPdy, hitData2.dDdy);
+        }
+
+        hitData2.color = hitData.color * float4(sd.specular, 1);
+        RayDesc ray;
+        ray.Origin = posW;
+        ray.Direction = R;
+        ray.TMin = 0.01;
+        ray.TMax = 100000;
+        TraceRay(gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, hitData2);
     }
     else if(hitData.depth > 0)
     {
-        //LightData ld;
-        //ld.type = 1;
-        //ld.dirW = rayDirW;
-        //ld.intensity = hitData.color.rgb;
-        //ShadingResult sr = evalMaterial(sd, ld, 1);
-
         Photon photon;
         photon.posW = posW;
         photon.normalW = sd.N;
@@ -273,25 +298,6 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         screenPosI = DispatchRaysIndex().xy;
         gOutput[screenPosI.xy] = float4(abs(sd.N), 1);
     }
-    //float3 color = 0;
-
-    //[unroll]
-    //for (int i = 0; i < gLightsCount; i++)
-    //{
-    //    if (checkLightHit(i, posW) == false)
-    //    {
-    //        color += evalMaterial(sd, gLights[i], 1).color.xyz;
-    //    }
-    //}
-
-    //hitData.color = float4(sd.N, 1.0);
-    hitData.hitT = hitT;
-    //hitData.color.rgb = color;
-    // A very non-PBR inaccurate way to do reflections
-    //float roughness = min(0.5, max(1e-8, sd.roughness));
-    //hitData.color.rgb += sd.specular * reflectColor * (roughness * roughness);
-    //hitData.color.rgb += sd.emissive;
-    //hitData.color.a = 1;
 }
 
 [shader("raygeneration")]
