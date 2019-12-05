@@ -48,9 +48,6 @@ shared cbuffer PerFrameCB
     float jitter;
     int launchRayTask;
     int rayTaskOffset;
-    //float tanHalfFovY;
-    //uint sampleIndex;
-    //bool useDOF;
 };
 
 struct PrimaryRayData
@@ -66,60 +63,12 @@ struct ShadowRayData
     bool hit;
 };
 
-//[shader("miss")]
-//void shadowMiss(inout ShadowRayData hitData)
-//{
-//    hitData.hit = false;
-//}
-
-//[shader("anyhit")]
-//void shadowAnyHit(inout ShadowRayData hitData, in BuiltInTriangleIntersectionAttributes attribs)
-//{
-//    hitData.hit = true;
-//}
-
 [shader("miss")]
 void primaryMiss(inout PrimaryRayData hitData)
 {
     hitData.color = float4(1, 0, 0, 1);
     hitData.hitT = -1;
 }
-
-//bool checkLightHit(uint lightIndex, float3 origin)
-//{
-//    float3 direction = gLights[lightIndex].posW - origin;
-//    RayDesc ray;
-//    float epsilon = 0.01;
-//    ray.Origin = origin;
-//    ray.Direction = normalize(direction);
-//    ray.TMin = epsilon;
-//    ray.TMax = max(0.01, length(direction)- epsilon);
-//
-//    ShadowRayData rayData;
-//    rayData.hit = true;
-//    TraceRay(gRtScene, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xFF, 1 /* ray index */, hitProgramCount, 1, ray, rayData);
-//    return rayData.hit;
-//}
-
-//float3 getReflectionColor(float3 worldOrigin, VertexOut v, float3 worldRayDir, uint hitDepth)
-//{
-//    float3 reflectColor = float3(0, 0, 0);
-//    if (hitDepth == 0)
-//    {
-//        PrimaryRayData secondaryRay;
-//        secondaryRay.depth = 1;
-//        RayDesc ray;
-//        ray.Origin = worldOrigin;
-//        ray.Direction = reflect(worldRayDir, v.normalW);
-//        ray.TMin = 0.001;
-//        ray.TMax = 100000;
-//        TraceRay(gRtScene, 0 /*rayFlags*/, 0xFF, 0 /* ray index*/, hitProgramCount, 0, ray, secondaryRay);
-//        reflectColor = secondaryRay.hitT == -1 ? 0 : secondaryRay.color.rgb;
-//        float falloff = max(1, (secondaryRay.hitT * secondaryRay.hitT));
-//        reflectColor *= 20 / falloff;
-//    }
-//    return reflectColor;
-//}
 
 void getVerticesAndNormals(
     uint triangleIndex, BuiltInTriangleIntersectionAttributes attribs,

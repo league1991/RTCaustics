@@ -33,6 +33,9 @@
     <FxCompile Include="Data\AnalyseTraceResult.cs.hlsl">
       <Filter>Data</Filter>
     </FxCompile>
+    <FxCompile Include="Data\SmoothPhoton.cs.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Caustics.h" />

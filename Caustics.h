@@ -46,6 +46,7 @@ private:
     int mDispatchSize;
     bool mRayTrace = true;
     bool mRefinePhoton;
+    bool mSmoothPhoton;
     uint32_t mDebugMode = 0;
     bool mUseDOF = false;
     uint32_t mSampleIndex = 0xdeadbeef;
@@ -97,6 +98,11 @@ private:
     ComputeVars::SharedPtr mpAnalyseVars;
     ComputeState::SharedPtr mpAnalyseState;
     StructuredBuffer::SharedPtr  mpRayArgumentBuffer;
+
+    // smooth photon
+    ComputeProgram::SharedPtr mpSmoothProgram;
+    ComputeVars::SharedPtr mpSmoothVars;
+    ComputeState::SharedPtr mpSmoothState;
 
     // photon scatter
     GraphicsProgram::SharedPtr mpPhotonScatterProgram;

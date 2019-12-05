@@ -105,12 +105,17 @@ void Caustics::onGuiRender(Gui* pGui)
     }
     if(pGui->beginGroup("Refine Photon", true))
     {
-        pGui->addCheckBox("On", mRefinePhoton);
+        pGui->addCheckBox("Enable Refine", mRefinePhoton);
+        pGui->addFloatVar("Luminance Threshold", mPixelLuminanceThreshold, 0.01f, 10.0, 0.01f);
+        pGui->addFloatVar("Photon Size Threshold", mMinPhotonPixelSize, 1.f, 1000.0f, 0.1f);
+        pGui->endGroup();
+    }
+    if (pGui->beginGroup("Smooth Photon", true))
+    {
+        pGui->addCheckBox("Enable Smooth", mSmoothPhoton);
         pGui->addFloatVar("Normal Threshold", mNormalThreshold, 0.01f, 1.0, 0.01f);
         pGui->addFloatVar("Distance Threshold", mDistanceThreshold, 0.1f, 10.0f, 0.1f);
         pGui->addFloatVar("Planar Threshold", mPlanarThreshold, 0.01f, 10.0, 0.1f);
-        pGui->addFloatVar("Luminance Threshold", mPixelLuminanceThreshold, 0.01f, 10.0, 0.01f);
-        pGui->addFloatVar("Photon Size Threshold", mMinPhotonPixelSize, 1.f, 1000.0f, 0.1f);
         pGui->endGroup();
     }
     if (pGui->beginGroup("Light"))
@@ -211,6 +216,12 @@ void Caustics::loadShader()
     mpAnalyseState->setProgram(mpAnalyseProgram);
     mpAnalyseVars = ComputeVars::create(mpAnalyseProgram.get());
 
+    // smooth photon
+    mpSmoothProgram = ComputeProgram::createFromFile("SmoothPhoton.cs.hlsl", "main");
+    mpSmoothState = ComputeState::create();
+    mpSmoothState->setProgram(mpSmoothProgram);
+    mpSmoothVars = ComputeVars::create(mpSmoothProgram.get());
+
     // photon scatter
     BlendState::Desc scatterBlendStateDesc;
     scatterBlendStateDesc.setRtBlend(0, true);
@@ -257,7 +268,8 @@ Caustics::Caustics() :
     mPlanarThreshold(2.0f),
     mPixelLuminanceThreshold(0.5f),
     mMinPhotonPixelSize(7.0f),
-    mRefinePhoton(true)
+    mRefinePhoton(true),
+    mSmoothPhoton(false)
 {}
 
 void Caustics::onLoad(RenderContext* pRenderContext)
@@ -400,6 +412,27 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             hitVar->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
         }
         mpRtRenderer->renderScene(pContext, mpPhotonTraceVars, mpPhotonTraceState, uvec3(4096, 4096, 1), mpCamera.get());
+    }
+
+    // smooth photon
+    if (mSmoothPhoton)
+    {
+        ConstantBuffer::SharedPtr pPerFrameCB = mpSmoothVars["PerFrameCB"];
+        glm::mat4 wvp = mpCamera->getProjMatrix() * mpCamera->getViewMatrix();
+        pPerFrameCB["viewProjMat"] = wvp;// mpCamera->getViewProjMatrix();
+        pPerFrameCB["taskDim"] = int2(mDispatchSize, mDispatchSize);
+        pPerFrameCB["screenDim"] = int2(mpDepthTex->getWidth(), mpDepthTex->getHeight());
+        pPerFrameCB["normalThreshold"] = mNormalThreshold;
+        pPerFrameCB["distanceThreshold"] = mDistanceThreshold;
+        pPerFrameCB["planarThreshold"] = mPlanarThreshold;
+        pPerFrameCB["pixelLuminanceThreshold"] = mPixelLuminanceThreshold;
+        pPerFrameCB["minPhotonPixelSize"] = mMinPhotonPixelSize;
+        mpSmoothVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
+        mpSmoothVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
+        mpSmoothVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
+        mpSmoothVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
+        static int groupSize = 16;
+        pContext->dispatch(mpSmoothState.get(), mpSmoothVars.get(), uvec3(mDispatchSize / groupSize, mDispatchSize / groupSize, 1));
     }
 
     // photon scattering
