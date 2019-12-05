@@ -88,11 +88,13 @@ void Caustics::onGuiRender(Gui* pGui)
         loadShader();
     }
 
-    if (pGui->beginGroup("Photon Trace"))
+    if (pGui->beginGroup("Photon Trace", true))
     {
         pGui->addFloatVar("Emit size", mEmitSize, 0, 1000, 1);
         pGui->addFloatVar("Rough Threshold", mRoughThreshold, 0, 1, 0.01f);
         pGui->addFloatVar("Jitter", mJitter, 0, 1, 0.01f);
+        pGui->addIntVar("Max Trace Depth", mMaxTraceDepth, 0, 50);
+        pGui->addFloatVar("IOR Override", mIOROveride, 0, 3, 0.01f);
         pGui->endGroup();
     }
     if (pGui->beginGroup("Photon Splat", true))
@@ -103,14 +105,14 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addCheckBox("Show Photon", mShowPhoton);
         pGui->endGroup();
     }
-    if(pGui->beginGroup("Refine Photon", true))
+    if(pGui->beginGroup("Refine Photon", false))
     {
         pGui->addCheckBox("Enable Refine", mRefinePhoton);
         pGui->addFloatVar("Luminance Threshold", mPixelLuminanceThreshold, 0.01f, 10.0, 0.01f);
         pGui->addFloatVar("Photon Size Threshold", mMinPhotonPixelSize, 1.f, 1000.0f, 0.1f);
         pGui->endGroup();
     }
-    if (pGui->beginGroup("Smooth Photon", true))
+    if (pGui->beginGroup("Smooth Photon", false))
     {
         pGui->addCheckBox("Enable Smooth", mSmoothPhoton);
         pGui->addFloatVar("Normal Threshold", mNormalThreshold, 0.01f, 1.0, 0.01f);
@@ -118,7 +120,7 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addFloatVar("Planar Threshold", mPlanarThreshold, 0.01f, 10.0, 0.1f);
         pGui->endGroup();
     }
-    if (pGui->beginGroup("Light"))
+    if (pGui->beginGroup("Light", true))
     {
         pGui->addFloat2Var("Light Angle", mLightAngle, -20, 20, 0.01f);
         if (mpScene)
@@ -206,7 +208,6 @@ void Caustics::loadShader()
     mpPhotonTraceProgram = RtProgram::create(photonTraceProgDesc, 72U);
     mpPhotonTraceState = RtState::create();
     mpPhotonTraceState->setProgram(mpPhotonTraceProgram);
-    mpPhotonTraceState->setMaxTraceRecursionDepth(3);
     mpPhotonTraceVars = RtProgramVars::create(mpPhotonTraceProgram, mpScene);
     //mpPhotonTraceRenderer = RtSceneRenderer::create(mpScene);
 
@@ -262,14 +263,16 @@ Caustics::Caustics() :
     mPhotonMode(0),
     mKernelPower(1.0),
     mShowPhoton(false),
-    mDispatchSize(128),
+    mDispatchSize(512),
     mNormalThreshold(0.2f),
     mDistanceThreshold(10.0f),
     mPlanarThreshold(2.0f),
     mPixelLuminanceThreshold(0.5f),
     mMinPhotonPixelSize(7.0f),
-    mRefinePhoton(true),
-    mSmoothPhoton(false)
+    mMaxTraceDepth(10),
+    mRefinePhoton(false),
+    mSmoothPhoton(false),
+    mIOROveride(1.5)
 {}
 
 void Caustics::onLoad(RenderContext* pRenderContext)
@@ -347,6 +350,8 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pCB["launchRayTask"] = 0;
         pCB["rayTaskOffset"] = mDispatchSize * mDispatchSize;
         pCB["coarseDim"] = uint2(mDispatchSize, mDispatchSize);
+        pCB["maxDepth"] = mMaxTraceDepth;
+        pCB["iorOverride"] = mIOROveride;
         auto rayGenVars = mpPhotonTraceVars->getRayGenVars();
         rayGenVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
         rayGenVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
@@ -361,6 +366,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             hitVar->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
             hitVar->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
         }
+        mpPhotonTraceState->setMaxTraceRecursionDepth(mMaxTraceDepth + 1);
         mpRtRenderer->renderScene(pContext, mpPhotonTraceVars, mpPhotonTraceState, uvec3(mDispatchSize, mDispatchSize, 1), mpCamera.get());
     }
 

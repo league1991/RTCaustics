@@ -44,6 +44,7 @@ public:
 
 private:
     int mDispatchSize;
+    int mMaxTraceDepth;
     bool mRayTrace = true;
     bool mRefinePhoton;
     bool mSmoothPhoton;
@@ -63,6 +64,7 @@ private:
     float mPlanarThreshold;
     float mPixelLuminanceThreshold;
     float mMinPhotonPixelSize;
+    float mIOROveride;
     float2 mLightAngle;
 
     Model::SharedPtr mpQuad;

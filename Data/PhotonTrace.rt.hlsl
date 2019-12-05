@@ -48,6 +48,8 @@ shared cbuffer PerFrameCB
     float jitter;
     int launchRayTask;
     int rayTaskOffset;
+    int maxDepth;
+    float iorOverride;
 };
 
 struct PrimaryRayData
@@ -205,7 +207,6 @@ void updateRefractRayDifferential(
 [shader("closesthit")]
 void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersectionAttributes attribs)
 {
-    int maxDepth = 2;
     if (hitData.depth >= maxDepth)
     {
         return;
@@ -236,11 +237,20 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     bool isSpecular = (sd.linearRoughness > roughThreshold || sd.opacity < 1);
     if (isSpecular)
     {
-        bool isReflect = (sd.opacity == 1);
+        bool isReflect = false;// (sd.opacity == 1);
         float3 R;
-        float eta = dot(N, rayDirW) < 0 ? sd.IoR : 1.0 / sd.IoR;
+        float eta = iorOverride > 0 ? iorOverride : sd.IoR;
         if (!isReflect)
         {
+            if (dot(v.normalW, rayDirW) > 0)
+            {
+                eta = 1.0 / eta;
+                N0 *= -1;
+                N1 *= -1;
+                N2 *= -1;
+                N *= -1;
+                v.normalW *= -1;
+            }
             isReflect = !isRefraction(rayDirW, v.normalW, eta);
         }
 
@@ -253,11 +263,12 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         else
         {
             getRefractVector(rayDirW, v.normalW, R, eta);
+            //R = reflect(rayDirW, v.normalW);
             updateRefractRayDifferential(P0, P1, P2, N0, N1, N2, rayDirW, R, N, eta, hitData2.dPdx, hitData2.dDdx);
             updateRefractRayDifferential(P0, P1, P2, N0, N1, N2, rayDirW, R, N, eta, hitData2.dPdy, hitData2.dDdy);
         }
 
-        hitData2.color = hitData.color * float4(sd.specular, 1);
+        hitData2.color = hitData.color;// *float4(sd.specular, 1);
         RayDesc ray;
         ray.Origin = posW;
         ray.Direction = R;
@@ -346,7 +357,7 @@ void rayGen()
 
     PrimaryRayData hitData;
     hitData.depth = 0;
-    hitData.color = float4(1, 1, 1, 1) *pixelSize.x* pixelSize.y * 512 * 512;
+    hitData.color = float4(1, 1, 1, 1) *pixelSize.x* pixelSize.y * 512 * 512 * 0.5;
     //hitData.dPdx = 0;
     //hitData.dPdy = 0;
     hitData.dDdx = 0;// lightDirX* pixelSize.x * 2.0;
