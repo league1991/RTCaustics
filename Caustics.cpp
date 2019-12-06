@@ -122,7 +122,7 @@ void Caustics::onGuiRender(Gui* pGui)
     }
     if (pGui->beginGroup("Light", true))
     {
-        pGui->addFloat2Var("Light Angle", mLightAngle, -20, 20, 0.01f);
+        pGui->addFloat2Var("Light Angle", mLightAngle, -FLT_MAX, FLT_MAX, 0.01f);
         if (mpScene)
         {
             auto light0 = dynamic_cast<DirectionalLight*>(mpScene->getLight(0).get());
@@ -131,6 +131,8 @@ void Caustics::onGuiRender(Gui* pGui)
                 cos(mLightAngle.y),
                 sin(mLightAngle.x) * sin(mLightAngle.y)));
         }
+        pGui->addFloat2Var("Light Angle Speed", mLightAngleSpeed, -FLT_MAX, FLT_MAX, 0.01f);
+        mLightAngle += mLightAngleSpeed;
         pGui->endGroup();
     }
 
@@ -260,6 +262,7 @@ void Caustics::loadShader()
 
 Caustics::Caustics() :
     mLightAngle(0.4f, 4.2f),
+    mLightAngleSpeed(0,0),
     mEmitSize(30.f),
     mJitter(0.0f),
     mSplatSize(2.8f),

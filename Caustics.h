@@ -66,6 +66,7 @@ private:
     float mMinPhotonPixelSize;
     float mIOROveride;
     float2 mLightAngle;
+    float2 mLightAngleSpeed;
 
     Model::SharedPtr mpQuad;
     RtScene::SharedPtr mpScene;
