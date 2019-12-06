@@ -237,7 +237,7 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     bool isSpecular = (sd.linearRoughness > roughThreshold || sd.opacity < 1);
     if (isSpecular)
     {
-        bool isReflect = false;// (sd.opacity == 1);
+        bool isReflect = (sd.opacity == 1);
         float3 R;
         float eta = iorOverride > 0 ? 1.0 / iorOverride : 1.0 / sd.IoR;
         if (!isReflect)
