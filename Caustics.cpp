@@ -232,10 +232,14 @@ void Caustics::loadShader()
     DepthStencilState::Desc scatterDSDesc;
     scatterDSDesc.setDepthEnabled(false);
     auto depthStencilState = DepthStencilState::create(scatterDSDesc);
+    RasterizerState::Desc rasterDesc;
+    rasterDesc.setCullMode(RasterizerState::CullMode::Front);
+    auto rasterState = RasterizerState::create(rasterDesc);
     mpPhotonScatterState = GraphicsState::create();
     mpPhotonScatterState->setProgram(mpPhotonScatterProgram);
     mpPhotonScatterState->setBlendState(scatterBlendState);
     mpPhotonScatterState->setDepthStencilState(depthStencilState);
+    mpPhotonScatterState->setRasterizerState(rasterState);
     mpPhotonScatterVars = GraphicsVars::create(mpPhotonScatterProgram->getReflector());
     //mpPhotonScatterPass = RasterScenePass::create(mpScene, "PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
 

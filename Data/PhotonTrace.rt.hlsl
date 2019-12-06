@@ -170,11 +170,11 @@ float getPhotonScreenArea(Photon p, out bool isInfrustum)
 }
 
 // eta = eta i / eta o
-bool isRefraction(float3 I, float3 N, float eta)
+bool isTotalInternalReflection(float3 I, float3 N, float eta)
 {
     // detect total internal reflection
     float cosI = dot(I, N);
-    return cosI * cosI > (1 - 1 / (eta * eta));
+    return cosI * cosI < (1 - 1 / (eta * eta));
 }
 
 void getRefractVector(float3 I, float3 N, out float3 R, float eta)
@@ -239,7 +239,7 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     {
         bool isReflect = false;// (sd.opacity == 1);
         float3 R;
-        float eta = iorOverride > 0 ? iorOverride : sd.IoR;
+        float eta = iorOverride > 0 ? 1.0 / iorOverride : 1.0 / sd.IoR;
         if (!isReflect)
         {
             if (dot(v.normalW, rayDirW) > 0)
@@ -251,7 +251,7 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
                 N *= -1;
                 v.normalW *= -1;
             }
-            isReflect = !isRefraction(rayDirW, v.normalW, eta);
+            isReflect = isTotalInternalReflection(rayDirW, v.normalW, eta);
         }
 
         if (isReflect)
@@ -263,7 +263,6 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         else
         {
             getRefractVector(rayDirW, v.normalW, R, eta);
-            //R = reflect(rayDirW, v.normalW);
             updateRefractRayDifferential(P0, P1, P2, N0, N1, N2, rayDirW, R, N, eta, hitData2.dPdx, hitData2.dDdx);
             updateRefractRayDifferential(P0, P1, P2, N0, N1, N2, rayDirW, R, N, eta, hitData2.dPdy, hitData2.dDdy);
         }

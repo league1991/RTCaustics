@@ -88,12 +88,12 @@ PhotonVSOut photonScatterVS(VertexIn vIn)
     {
         tangent = p.dPdx;
         bitangent = p.dPdy;
-        float tangentLength = length(tangent);
-        float bitangentLength = length(bitangent);
-        float maxLength = 10.0;
-        float minLength = 0.01;
-        tangent *= clamp(tangentLength, minLength, maxLength) / tangentLength;
-        bitangent *= clamp(bitangentLength, minLength, maxLength) / bitangentLength;
+        //float tangentLength = length(tangent);
+        //float bitangentLength = length(bitangent);
+        //float maxLength = 1.0;
+        //float minLength = 0.1;
+        //tangent *= clamp(tangentLength, minLength, maxLength) / tangentLength;
+        //bitangent *= clamp(bitangentLength, minLength, maxLength) / bitangentLength;
     }
     else if (gPhotonMode == IsotropicPhoton)
     {
