@@ -48,7 +48,7 @@ private:
     bool mRayTrace = true;
     bool mRefinePhoton;
     bool mSmoothPhoton;
-    uint32_t mDebugMode = 0;
+    uint32_t mDebugMode;
     bool mUseDOF = false;
     uint32_t mSampleIndex = 0xdeadbeef;
     float mEmitSize = 100.0;
@@ -125,6 +125,11 @@ private:
     // composite pass
     Sampler::SharedPtr mpPointSampler;
     FullScreenPass::SharedPtr mpCompositePass;
+
+    // RT composite pass
+    RtProgram::SharedPtr mpCompositeRTProgram;
+    RtProgramVars::SharedPtr mpCompositeRTVars;
+    RtState::SharedPtr mpCompositeRTState;
 
     // Caustics map
     StructuredBuffer::SharedPtr  mpPhotonBuffer;

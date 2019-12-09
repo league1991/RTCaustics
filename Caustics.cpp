@@ -26,7 +26,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
 #include "Caustics.h"
-
+#include "Scene/Model/Model.h"
 
 static const glm::vec4 kClearColor(0.f, 0.f, 0.f, 1);
 static const std::string kDefaultScene = "Caustics/ring.fscene";
@@ -53,6 +53,7 @@ void Caustics::onGuiRender(Gui* pGui)
         debugModeList.push_back({ 6, "World" });
         debugModeList.push_back({ 7, "Roughness" });
         debugModeList.push_back({ 8, "Ray" });
+        debugModeList.push_back({ 9, "Raytrace" });
         pGui->addDropdown("Debug mode", debugModeList, (uint32_t&)mDebugMode);
     }
 
@@ -131,8 +132,8 @@ void Caustics::onGuiRender(Gui* pGui)
                 cos(mLightAngle.y),
                 sin(mLightAngle.x) * sin(mLightAngle.y)));
         }
-        pGui->addFloat2Var("Light Angle Speed", mLightAngleSpeed, -FLT_MAX, FLT_MAX, 0.01f);
-        mLightAngle += mLightAngleSpeed;
+        pGui->addFloat2Var("Light Angle Speed", mLightAngleSpeed, -FLT_MAX, FLT_MAX, 0.001f);
+        mLightAngle += mLightAngleSpeed*0.01f;
         pGui->endGroup();
     }
 
@@ -200,18 +201,35 @@ void Caustics::loadShader()
     mpDrawArgumentVars = ComputeVars::create(mpDrawArgumentProgram.get());
 
     // photon trace
-    RtProgram::Desc photonTraceProgDesc;
-    photonTraceProgDesc.addShaderLibrary("PhotonTrace.rt.hlsl");
-    photonTraceProgDesc.setRayGen("rayGen");
-    photonTraceProgDesc.addHitGroup(0, "primaryClosestHit", "");
-    photonTraceProgDesc.addMiss(0, "primaryMiss");
-    //photonTraceProgDesc.addHitGroup(1, "", "shadowAnyHit");
-    //photonTraceProgDesc.addMiss(1, "shadowMiss");
-    mpPhotonTraceProgram = RtProgram::create(photonTraceProgDesc, 72U);
-    mpPhotonTraceState = RtState::create();
-    mpPhotonTraceState->setProgram(mpPhotonTraceProgram);
-    mpPhotonTraceVars = RtProgramVars::create(mpPhotonTraceProgram, mpScene);
-    //mpPhotonTraceRenderer = RtSceneRenderer::create(mpScene);
+    {
+        RtProgram::Desc desc;
+        desc.addShaderLibrary("PhotonTrace.rt.hlsl");
+        desc.setRayGen("rayGen");
+        desc.addHitGroup(0, "primaryClosestHit", "");
+        desc.addMiss(0, "primaryMiss");
+        //photonTraceProgDesc.addHitGroup(1, "", "shadowAnyHit");
+        //photonTraceProgDesc.addMiss(1, "shadowMiss");
+        mpPhotonTraceProgram = RtProgram::create(desc, 72U);
+        mpPhotonTraceState = RtState::create();
+        mpPhotonTraceState->setProgram(mpPhotonTraceProgram);
+        mpPhotonTraceVars = RtProgramVars::create(mpPhotonTraceProgram, mpScene);
+        //mpPhotonTraceRenderer = RtSceneRenderer::create(mpScene);
+    }
+
+    // composite rt
+    {
+        RtProgram::Desc desc;
+        desc.addShaderLibrary("CompositeRT.rt.hlsl");
+        desc.setRayGen("rayGen");
+        desc.addHitGroup(0, "primaryClosestHit", "");
+        desc.addHitGroup(1, "", "shadowAnyHit").addMiss(1, "shadowMiss");
+        desc.addMiss(0, "primaryMiss");
+        desc.addMiss(1, "shadowMiss");
+        mpCompositeRTProgram = RtProgram::create(desc);
+        mpCompositeRTState = RtState::create();
+        mpCompositeRTState->setProgram(mpCompositeRTProgram);
+        mpCompositeRTVars = RtProgramVars::create(mpCompositeRTProgram, mpScene);
+    }
 
     // analyse trace result
     mpAnalyseProgram = ComputeProgram::createFromFile("AnalyseTraceResult.cs.hlsl", "main");
@@ -226,24 +244,26 @@ void Caustics::loadShader()
     mpSmoothVars = ComputeVars::create(mpSmoothProgram.get());
 
     // photon scatter
-    BlendState::Desc scatterBlendStateDesc;
-    scatterBlendStateDesc.setRtBlend(0, true);
-    scatterBlendStateDesc.setRtParams(0, BlendState::BlendOp::Add, BlendState::BlendOp::Add, BlendState::BlendFunc::One, BlendState::BlendFunc::One, BlendState::BlendFunc::One, BlendState::BlendFunc::One);
-    BlendState::SharedPtr scatterBlendState = BlendState::create(scatterBlendStateDesc);
-    mpPhotonScatterProgram = GraphicsProgram::createFromFile("PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
-    DepthStencilState::Desc scatterDSDesc;
-    scatterDSDesc.setDepthEnabled(false);
-    auto depthStencilState = DepthStencilState::create(scatterDSDesc);
-    RasterizerState::Desc rasterDesc;
-    rasterDesc.setCullMode(RasterizerState::CullMode::None);
-    auto rasterState = RasterizerState::create(rasterDesc);
-    mpPhotonScatterState = GraphicsState::create();
-    mpPhotonScatterState->setProgram(mpPhotonScatterProgram);
-    mpPhotonScatterState->setBlendState(scatterBlendState);
-    mpPhotonScatterState->setDepthStencilState(depthStencilState);
-    mpPhotonScatterState->setRasterizerState(rasterState);
-    mpPhotonScatterVars = GraphicsVars::create(mpPhotonScatterProgram->getReflector());
-    //mpPhotonScatterPass = RasterScenePass::create(mpScene, "PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
+    {
+        BlendState::Desc blendDesc;
+        blendDesc.setRtBlend(0, true);
+        blendDesc.setRtParams(0, BlendState::BlendOp::Add, BlendState::BlendOp::Add, BlendState::BlendFunc::One, BlendState::BlendFunc::One, BlendState::BlendFunc::One, BlendState::BlendFunc::One);
+        BlendState::SharedPtr scatterBlendState = BlendState::create(blendDesc);
+        mpPhotonScatterProgram = GraphicsProgram::createFromFile("PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
+        DepthStencilState::Desc dsDesc;
+        dsDesc.setDepthEnabled(false);
+        auto depthStencilState = DepthStencilState::create(dsDesc);
+        RasterizerState::Desc rasterDesc;
+        rasterDesc.setCullMode(RasterizerState::CullMode::None);
+        auto rasterState = RasterizerState::create(rasterDesc);
+        mpPhotonScatterState = GraphicsState::create();
+        mpPhotonScatterState->setProgram(mpPhotonScatterProgram);
+        mpPhotonScatterState->setBlendState(scatterBlendState);
+        mpPhotonScatterState->setDepthStencilState(depthStencilState);
+        mpPhotonScatterState->setRasterizerState(rasterState);
+        mpPhotonScatterVars = GraphicsVars::create(mpPhotonScatterProgram->getReflector());
+        //mpPhotonScatterPass = RasterScenePass::create(mpScene, "PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
+    }
 
     mpRtRenderer = RtSceneRenderer::create(mpScene);
 
@@ -279,7 +299,8 @@ Caustics::Caustics() :
     mMaxTraceDepth(10),
     mRefinePhoton(false),
     mSmoothPhoton(false),
-    mIOROveride(1.5)
+    mIOROveride(1.5),
+    mDebugMode(9)
 {}
 
 void Caustics::onLoad(RenderContext* pRenderContext)
@@ -476,6 +497,24 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     }
 
     // Render output
+    if (mDebugMode == 9)
+    {
+        pContext->clearUAV(mpRtOut->getUAV().get(), kClearColor);
+        GraphicsVars* pVars = mpCompositeRTVars->getGlobalVars().get();
+        ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
+        pCB["invView"] = glm::inverse(mpCamera->getViewMatrix());
+        pCB["viewportDims"] = vec2(pTargetFbo->getWidth(), pTargetFbo->getHeight());
+        float fovY = focalLengthToFovY(mpCamera->getFocalLength(), Camera::kDefaultFrameHeight);
+        pCB["tanHalfFovY"] = tanf(fovY * 0.5f);
+        pCB["sampleIndex"] = mSampleIndex++;
+        pCB["useDOF"] = mUseDOF;
+        auto rayGenVars = mpCompositeRTVars->getRayGenVars();
+        rayGenVars->setTexture("gOutput", mpRtOut);
+        mpCompositeRTState->setMaxTraceRecursionDepth(mMaxTraceDepth + 1);
+        mpRtRenderer->renderScene(pContext, mpCompositeRTVars, mpCompositeRTState, uvec3(pTargetFbo->getWidth(), pTargetFbo->getHeight(), 1), mpCamera.get());
+        pContext->blit(mpRtOut->getSRV(), pTargetFbo->getRenderTargetView(0));
+    }
+    else
     {
         mpCompositePass["gDepthTex"] = mpGPassFbo->getDepthStencilTexture();
         mpCompositePass["gNormalTex"] = mpGPassFbo->getColorTexture(0);

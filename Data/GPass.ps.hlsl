@@ -40,6 +40,10 @@ GPassPsOut gpassPS(VertexOut vOut) : SV_TARGET
 {
     ShadingData sd = prepareShadingData(vOut, gMaterial, gCamera.posW);
 
+    if (sd.opacity < 1)
+    {
+        discard;
+    }
     GPassPsOut output;
     output.normal = float4(normalize(vOut.normalW.xyz), 1);
     output.diffuse = float4(sd.diffuse, sd.linearRoughness);
