@@ -94,7 +94,7 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addFloatVar("Emit size", mEmitSize, 0, 1000, 1);
         pGui->addFloatVar("Rough Threshold", mRoughThreshold, 0, 1, 0.01f);
         pGui->addFloatVar("Jitter", mJitter, 0, 1, 0.01f);
-        pGui->addIntVar("Max Trace Depth", mMaxTraceDepth, 0, 50);
+        pGui->addIntVar("Max Trace Depth", mMaxTraceDepth, 0, 30);
         pGui->addFloatVar("IOR Override", mIOROveride, 0, 3, 0.01f);
         pGui->endGroup();
     }
@@ -296,7 +296,7 @@ Caustics::Caustics() :
     mPlanarThreshold(2.0f),
     mPixelLuminanceThreshold(0.5f),
     mMinPhotonPixelSize(7.0f),
-    mMaxTraceDepth(10),
+    mMaxTraceDepth(5),
     mRefinePhoton(false),
     mSmoothPhoton(false),
     mIOROveride(1.5),
@@ -508,6 +508,9 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pCB["tanHalfFovY"] = tanf(fovY * 0.5f);
         pCB["sampleIndex"] = mSampleIndex++;
         pCB["useDOF"] = mUseDOF;
+        pCB["roughThreshold"] = mRoughThreshold;
+        pCB["maxDepth"] = mMaxTraceDepth;
+        pCB["iorOverride"] = mIOROveride;
         auto rayGenVars = mpCompositeRTVars->getRayGenVars();
         rayGenVars->setTexture("gOutput", mpRtOut);
         mpCompositeRTState->setMaxTraceRecursionDepth(mMaxTraceDepth + 1);

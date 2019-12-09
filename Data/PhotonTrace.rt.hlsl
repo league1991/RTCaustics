@@ -169,21 +169,6 @@ float getPhotonScreenArea(Photon p, out bool isInfrustum)
     return area;
 }
 
-// eta = eta i / eta o
-bool isTotalInternalReflection(float3 I, float3 N, float eta)
-{
-    // detect total internal reflection
-    float cosI = dot(I, N);
-    return cosI * cosI < (1 - 1 / (eta * eta));
-}
-
-void getRefractVector(float3 I, float3 N, out float3 R, float eta)
-{
-    float IN = dot(I, N);
-    float RN = -sqrt(1 - eta * eta * (1 - IN * IN));
-    float mu = eta * IN - RN;
-    R = eta * I - mu * N;
-}
 
 void updateRefractRayDifferential(
     float3 P0, float3 P1, float3 P2,

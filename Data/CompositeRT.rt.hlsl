@@ -25,6 +25,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
+#include "Common.hlsl"
 RWTexture2D<float4> gOutput;
 __import Raytracing;
 import Helpers;
@@ -36,6 +37,9 @@ shared cbuffer PerFrameCB
     float tanHalfFovY;
     uint sampleIndex;
     bool useDOF;
+    float roughThreshold;
+    int maxDepth;
+    float iorOverride;
 };
 
 struct PrimaryRayData
@@ -107,20 +111,63 @@ float3 getReflectionColor(float3 worldOrigin, VertexOut v, float3 worldRayDir, u
 [shader("closesthit")]
 void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersectionAttributes attribs)
 {
+    if (hitData.depth >= maxDepth)
+    {
+        hitData.color = float4(0, 0, 0, 1);
+        return;
+    }
     // Get the hit-point data
     float3 rayOrigW = WorldRayOrigin();
     float3 rayDirW = WorldRayDirection();
     float hitT = RayTCurrent();
     uint triangleIndex = PrimitiveIndex();
 
-    float3 posW = rayOrigW + hitT * rayDirW;
     // prepare the shading data
+    float3 posW = rayOrigW + hitT * rayDirW;
     VertexOut v = getVertexAttributes(triangleIndex, attribs);
     ShadingData sd = prepareShadingData(v, gMaterial, rayOrigW, 0);
 
     // Shoot a reflection ray
-    float3 reflectColor = getReflectionColor(posW, v, rayDirW, hitData.depth.r);
+    //float3 reflectColor = getReflectionColor(posW, v, rayDirW, hitData.depth.r);
     float3 color = 0;
+    if(sd.linearRoughness > roughThreshold || sd.opacity < 1)
+    {
+        bool isReflect = (sd.opacity == 1);
+        float3 R;
+        float eta = iorOverride > 0 ? 1.0 / iorOverride : 1.0 / sd.IoR;
+        float3 N = v.normalW;
+        if (!isReflect)
+        {
+            if (dot(N, rayDirW) > 0)
+            {
+                eta = 1.0 / eta;
+                N *= -1;
+            }
+            isReflect = isTotalInternalReflection(rayDirW, N, eta);
+        }
+
+        if (isReflect)
+        {
+            R = reflect(rayDirW, N);
+        }
+        else
+        {
+            getRefractVector(rayDirW, N, R, eta);
+        }
+
+        PrimaryRayData secondaryRay;
+        secondaryRay.depth.r = hitData.depth +1;
+        RayDesc ray;
+        ray.Origin = posW;
+        ray.Direction = R;
+        ray.TMin = 0.001;
+        ray.TMax = 100000;
+        TraceRay(gRtScene, 0 /*rayFlags*/, 0xFF, 0 /* ray index*/, hitProgramCount, 0, ray, secondaryRay);
+        float3 reflectColor = secondaryRay.hitT == -1 ? 0 : secondaryRay.color.rgb;
+        color = reflectColor;// sd.specular* reflectColor;
+        //float falloff = max(1, (secondaryRay.hitT * secondaryRay.hitT));
+        //reflectColor *= 20 / falloff;
+    }
 
     [unroll]
     for (int i = 0; i < gLightsCount; i++)
@@ -135,7 +182,7 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     hitData.hitT = hitT;
     // A very non-PBR inaccurate way to do reflections
     float roughness = min(0.5, max(1e-8, sd.roughness));
-    hitData.color.rgb += sd.specular * reflectColor * (roughness * roughness);
+    //hitData.color.rgb += sd.specular * reflectColor;// *(roughness * roughness);
     hitData.color.rgb += sd.emissive;
     hitData.color.a = 1;
 }
