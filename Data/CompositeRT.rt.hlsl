@@ -27,6 +27,8 @@
 ***************************************************************************/
 #include "Common.hlsl"
 RWTexture2D<float4> gOutput;
+Texture2D<float4> gCausticsTex;
+SamplerState gLinearSampler;
 __import Raytracing;
 import Helpers;
 
@@ -167,6 +169,17 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         color = reflectColor;// sd.specular* reflectColor;
         //float falloff = max(1, (secondaryRay.hitT * secondaryRay.hitT));
         //reflectColor *= 20 / falloff;
+    }
+    else
+    {
+        float4 posS = mul(float4(posW,1), gCamera.viewProjMat);
+        posS /= posS.w;
+        if (all(posS.xy < 1))
+        {
+            posS.y *= -1;
+            float2 texCoord = (posS.xy + 1) * 0.5;
+            color += gCausticsTex.SampleLevel(gLinearSampler, texCoord, 0).rgb;
+        }
     }
 
     [unroll]

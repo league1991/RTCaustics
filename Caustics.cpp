@@ -511,6 +511,12 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pCB["roughThreshold"] = mRoughThreshold;
         pCB["maxDepth"] = mMaxTraceDepth;
         pCB["iorOverride"] = mIOROveride;
+        auto hitVars = mpCompositeRTVars->getHitVars(0);
+        for (auto& hitVar : hitVars)
+        {
+            hitVar->setTexture("gCausticsTex", mpCausticsFbo->getColorTexture(0));
+            hitVar["gLinearSampler"] = mpLinearSampler;
+        }
         auto rayGenVars = mpCompositeRTVars->getRayGenVars();
         rayGenVars->setTexture("gOutput", mpRtOut);
         mpCompositeRTState->setMaxTraceRecursionDepth(mMaxTraceDepth + 1);
@@ -593,11 +599,8 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
     mpDrawArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gDrawArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg);
     mpRayArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gRayArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg);
     mpRtOut = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
-    //mpCausticsFbo = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpDepthTex = Texture::create2D(width, height, ResourceFormat::D24UnormS8, 1, 1, nullptr, Resource::BindFlags::DepthStencil | Resource::BindFlags::ShaderResource);
-    //mpCausticsTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
     mpCausticsFbo = Fbo::create2D(width, height, ResourceFormat::RGBA16Float, ResourceFormat::D24UnormS8);
-    //Fbo::create2D(width, height, ResourceFormat::RGBA16Float);
 
     mpNormalTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
     mpDiffuseTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
