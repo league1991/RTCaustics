@@ -50,6 +50,9 @@ shared cbuffer PerFrameCB
     int rayTaskOffset;
     int maxDepth;
     float iorOverride;
+    uint colorPhotonID;
+    int photonIDScale;
+    float traceColorThreshold;
 };
 
 struct PrimaryRayData
@@ -252,13 +255,17 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
             updateRefractRayDifferential(P0, P1, P2, N0, N1, N2, rayDirW, R, N, eta, hitData2.dPdy, hitData2.dDdy);
         }
 
-        hitData2.color = hitData.color;// *float4(sd.specular, 1);
-        RayDesc ray;
-        ray.Origin = posW;
-        ray.Direction = R;
-        ray.TMin = 0.01;
-        ray.TMax = 100000;
-        TraceRay(gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, hitData2);
+        float3 baseColor = lerp(1, sd.diffuse, sd.opacity);
+        hitData2.color = float4(baseColor,1) * hitData.color;// *float4(sd.specular, 1);
+        if (dot(hitData2.color.rgb, float3(0.299, 0.587, 0.114)) > traceColorThreshold)
+        {
+            RayDesc ray;
+            ray.Origin = posW;
+            ray.Direction = R;
+            ray.TMin = 0.01;
+            ray.TMax = 100000;
+            TraceRay(gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, hitData2);
+        }
     }
     else if(hitData.depth > 0)
     {
@@ -340,8 +347,13 @@ void rayGen()
     ray.TMax = 1e10;
 
     PrimaryRayData hitData;
+    float4 color0 = 1;
+    if (colorPhotonID)
+    {
+        color0.xyz = frac(launchIndex.xyz / float(photonIDScale));
+    }
+    hitData.color = color0 *pixelSize.x* pixelSize.y * 512 * 512 * 0.5;
     hitData.depth = 0;
-    hitData.color = float4(1, 1, 1, 1) *pixelSize.x* pixelSize.y * 512 * 512 * 0.5;
     //hitData.dPdx = 0;
     //hitData.dPdy = 0;
     hitData.dDdx = 0;// lightDirX* pixelSize.x * 2.0;

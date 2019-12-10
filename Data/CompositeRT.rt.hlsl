@@ -166,7 +166,8 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         ray.TMax = 100000;
         TraceRay(gRtScene, 0 /*rayFlags*/, 0xFF, 0 /* ray index*/, hitProgramCount, 0, ray, secondaryRay);
         float3 reflectColor = secondaryRay.hitT == -1 ? 0 : secondaryRay.color.rgb;
-        color = reflectColor;// sd.specular* reflectColor;
+        float3 baseColor = lerp(1, sd.diffuse, sd.opacity);
+        color = baseColor * reflectColor;
         //float falloff = max(1, (secondaryRay.hitT * secondaryRay.hitT));
         //reflectColor *= 20 / falloff;
     }
@@ -180,16 +181,16 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
             float2 texCoord = (posS.xy + 1) * 0.5;
             color += sd.diffuse * gCausticsTex.SampleLevel(gLinearSampler, texCoord, 0).rgb;
         }
-    }
-
-    [unroll]
-    for (int i = 0; i < gLightsCount; i++)
-    {
-        if (checkLightHit(i, posW) == false)
+        [unroll]
+        for (int i = 0; i < gLightsCount; i++)
         {
-            color += evalMaterial(sd, gLights[i], 1).color.xyz;
+            if (checkLightHit(i, posW) == false)
+            {
+                color += evalMaterial(sd, gLights[i], 1).color.xyz;
+            }
         }
     }
+
 
     hitData.color.rgb = color;
     hitData.hitT = hitT;

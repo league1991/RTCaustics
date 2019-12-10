@@ -88,6 +88,9 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addFloatVar("Jitter", mJitter, 0, 1, 0.01f);
         pGui->addIntVar("Max Trace Depth", mMaxTraceDepth, 0, 30);
         pGui->addFloatVar("IOR Override", mIOROveride, 0, 3, 0.01f);
+        pGui->addCheckBox("ID As Color", mColorPhoton);
+        pGui->addIntVar("Photon ID Scale", mPhotonIDScale);
+        pGui->addFloatVar("Min Trace Luminance", mTraceColorThreshold, 0, 10000,1);
         pGui->endGroup();
     }
     if (pGui->beginGroup("Photon Splat", true))
@@ -288,30 +291,7 @@ void Caustics::loadShader()
     mpPointSampler = Sampler::create(samplerDesc);
 }
 
-Caustics::Caustics() :
-    mLightAngle(0.4f, 4.2f),
-    mLightAngleSpeed(0,0),
-    mEmitSize(30.f),
-    mJitter(0.0f),
-    mSplatSize(2.8f),
-    mIntensity(0.003f),
-    mPhotonMode(0),
-    mKernelPower(1.0),
-    mShowPhoton(false),
-    mDispatchSize(512),
-    mNormalThreshold(0.2f),
-    mDistanceThreshold(10.0f),
-    mPlanarThreshold(2.0f),
-    mPixelLuminanceThreshold(0.5f),
-    mMinPhotonPixelSize(7.0f),
-    trimDirectionThreshold(0.5f),
-    mMaxTraceDepth(5),
-    mRefinePhoton(false),
-    mSmoothPhoton(false),
-    mIOROveride(1.5),
-    mDebugMode(9),
-    mAreaType(0)
-{}
+Caustics::Caustics() {}
 
 void Caustics::onLoad(RenderContext* pRenderContext)
 {
@@ -390,6 +370,9 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pCB["coarseDim"] = uint2(mDispatchSize, mDispatchSize);
         pCB["maxDepth"] = mMaxTraceDepth;
         pCB["iorOverride"] = mIOROveride;
+        pCB["colorPhotonID"] = (uint32_t)mColorPhoton;
+        pCB["photonIDScale"] = mPhotonIDScale;
+        pCB["traceColorThreshold"] = mTraceColorThreshold * (512*512)/(mDispatchSize* mDispatchSize);
         auto rayGenVars = mpPhotonTraceVars->getRayGenVars();
         rayGenVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
         rayGenVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
