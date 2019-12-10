@@ -178,7 +178,7 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         {
             posS.y *= -1;
             float2 texCoord = (posS.xy + 1) * 0.5;
-            color += gCausticsTex.SampleLevel(gLinearSampler, texCoord, 0).rgb;
+            color += sd.diffuse * gCausticsTex.SampleLevel(gLinearSampler, texCoord, 0).rgb;
         }
     }
 
