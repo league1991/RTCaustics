@@ -58,6 +58,7 @@ private:
     float mKernelPower;
     bool mShowPhoton;
     uint32_t mPhotonMode;
+    uint32_t mAreaType;
     float mJitter;
     float mNormalThreshold;
     float mDistanceThreshold;
@@ -65,6 +66,7 @@ private:
     float mPixelLuminanceThreshold;
     float mMinPhotonPixelSize;
     float mIOROveride;
+    float trimDirectionThreshold;
     float2 mLightAngle;
     float2 mLightAngleSpeed;
 

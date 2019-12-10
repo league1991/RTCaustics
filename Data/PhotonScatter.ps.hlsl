@@ -54,6 +54,7 @@ cbuffer PerFrameCB : register(b0)
     uint  gPhotonMode;
     float gKernelPower;
     uint  gShowPhoton;
+    uint  gAreaType;
 };
 #define AnisotropicPhoton 0
 #define IsotropicPhoton 1
@@ -113,9 +114,19 @@ PhotonVSOut photonScatterVS(VertexIn vIn)
     bitangent *= gSplatSize;
 
     float3 areaVector = cross(tangent, bitangent);
-    float area = 0.5 * (dot(tangent, tangent) + dot(bitangent, bitangent));
-    //float area = length(tangent) + length(bitangent);
-    //float area = length(areaVector);
+    float area;
+    if (gAreaType == 0)
+    {
+        area = 0.5 * (dot(tangent, tangent) + dot(bitangent, bitangent));
+    }
+    else if (gAreaType == 1)
+    {
+        area = length(tangent) + length(bitangent);
+    }
+    else
+    {
+        area = length(areaVector);
+    }
 
     float3 localPoint = tangent * vIn.pos.x + bitangent * vIn.pos.z + normal * vIn.pos.y;
     vOut.texcoord = (vIn.pos.xz + 1) * 0.5;

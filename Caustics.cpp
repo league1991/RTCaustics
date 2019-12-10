@@ -57,24 +57,6 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addDropdown("Debug mode", debugModeList, (uint32_t&)mDebugMode);
     }
 
-    {
-        Gui::DropdownList debugModeList;
-        debugModeList.push_back({ 0, "Anisotropic" });
-        debugModeList.push_back({ 1, "Isotropic" });
-        pGui->addDropdown("Photon mode", debugModeList, (uint32_t&)mPhotonMode);
-    }
-
-    {
-        Gui::DropdownList debugModeList;
-        debugModeList.push_back({ 64, "64" });
-        debugModeList.push_back({ 128, "128" });
-        debugModeList.push_back({ 256, "256" });
-        debugModeList.push_back({ 512, "512" });
-        debugModeList.push_back({ 1024, "1024" });
-        debugModeList.push_back({ 2048, "2048" });
-        pGui->addDropdown("Dispatch Size", debugModeList, (uint32_t&)mDispatchSize);
-    }
-
     if (pGui->addButton("Load Scene"))
     {
         std::string filename;
@@ -91,6 +73,16 @@ void Caustics::onGuiRender(Gui* pGui)
 
     if (pGui->beginGroup("Photon Trace", true))
     {
+        {
+            Gui::DropdownList debugModeList;
+            debugModeList.push_back({ 64, "64" });
+            debugModeList.push_back({ 128, "128" });
+            debugModeList.push_back({ 256, "256" });
+            debugModeList.push_back({ 512, "512" });
+            debugModeList.push_back({ 1024, "1024" });
+            debugModeList.push_back({ 2048, "2048" });
+            pGui->addDropdown("Dispatch Size", debugModeList, (uint32_t&)mDispatchSize);
+        }
         pGui->addFloatVar("Emit size", mEmitSize, 0, 1000, 1);
         pGui->addFloatVar("Rough Threshold", mRoughThreshold, 0, 1, 0.01f);
         pGui->addFloatVar("Jitter", mJitter, 0, 1, 0.01f);
@@ -104,6 +96,21 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addFloatVar("Intensity", mIntensity, 0, 10, 0.0002f);
         pGui->addFloatVar("Kernel Power", mKernelPower, 0.01f, 10, 0.01f);
         pGui->addCheckBox("Show Photon", mShowPhoton);
+
+        {
+            Gui::DropdownList debugModeList;
+            debugModeList.push_back({ 0, "Anisotropic" });
+            debugModeList.push_back({ 1, "Isotropic" });
+            pGui->addDropdown("Photon mode", debugModeList, (uint32_t&)mPhotonMode);
+        }
+
+        {
+            Gui::DropdownList debugModeList;
+            debugModeList.push_back({ 0, "Avg. Square" });
+            debugModeList.push_back({ 1, "Avg. Length" });
+            debugModeList.push_back({ 2, "Exact Area" });
+            pGui->addDropdown("Area Type", debugModeList, (uint32_t&)mAreaType);
+        }
         pGui->endGroup();
     }
     if(pGui->beginGroup("Refine Photon", false))
@@ -119,6 +126,7 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addFloatVar("Normal Threshold", mNormalThreshold, 0.01f, 1.0, 0.01f);
         pGui->addFloatVar("Distance Threshold", mDistanceThreshold, 0.1f, 10.0f, 0.1f);
         pGui->addFloatVar("Planar Threshold", mPlanarThreshold, 0.01f, 10.0, 0.1f);
+        pGui->addFloatVar("Trim Direction Threshold", trimDirectionThreshold, 0, 1);
         pGui->endGroup();
     }
     if (pGui->beginGroup("Light", true))
@@ -296,11 +304,13 @@ Caustics::Caustics() :
     mPlanarThreshold(2.0f),
     mPixelLuminanceThreshold(0.5f),
     mMinPhotonPixelSize(7.0f),
+    trimDirectionThreshold(0.5f),
     mMaxTraceDepth(5),
     mRefinePhoton(false),
     mSmoothPhoton(false),
     mIOROveride(1.5),
-    mDebugMode(9)
+    mDebugMode(9),
+    mAreaType(0)
 {}
 
 void Caustics::onLoad(RenderContext* pRenderContext)
@@ -461,6 +471,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pPerFrameCB["planarThreshold"] = mPlanarThreshold;
         pPerFrameCB["pixelLuminanceThreshold"] = mPixelLuminanceThreshold;
         pPerFrameCB["minPhotonPixelSize"] = mMinPhotonPixelSize;
+        pPerFrameCB["trimDirectionThreshold"] = trimDirectionThreshold;
         mpSmoothVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
         mpSmoothVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
         mpSmoothVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
@@ -480,6 +491,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pPerFrameCB["gSplatSize"] = mSplatSize;
         pPerFrameCB["gIntensity"] = mIntensity;
         pPerFrameCB["gPhotonMode"] = mPhotonMode;
+        pPerFrameCB["gAreaType"] = mAreaType;
         pPerFrameCB["gKernelPower"] = mKernelPower;
         pPerFrameCB["gShowPhoton"] = uint32_t(mShowPhoton);
         mpPhotonScatterVars["gLinearSampler"] = mpLinearSampler;
