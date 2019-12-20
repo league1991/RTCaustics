@@ -56,7 +56,7 @@ private:
     float mIntensity = 0.02f;
     float mRoughThreshold = 0.1f;
     float mKernelPower = 1.f;
-    bool mShowPhoton = false;
+    int mPhotonDisplayMode = 0;
     uint32_t mPhotonMode = 0;
     uint32_t mAreaType = 0;
     float mJitter = 0.f;
@@ -70,7 +70,9 @@ private:
     int mColorPhoton = 0;
     int mPhotonIDScale = 50;
     float mTraceColorThreshold = 40.f;
+    float mCullColorThreshold = 0.04f;
     float2 mLightAngle{0.4f,2.f};
+    float3 mLightDirection;
     float2 mLightAngleSpeed{0,0};
 
     Model::SharedPtr mpQuad;
@@ -115,7 +117,8 @@ private:
     // photon scatter
     GraphicsProgram::SharedPtr mpPhotonScatterProgram;
     GraphicsVars::SharedPtr mpPhotonScatterVars;
-    GraphicsState::SharedPtr mpPhotonScatterState;
+    GraphicsState::SharedPtr mpPhotonScatterBlendState;
+    GraphicsState::SharedPtr mpPhotonScatterNoBlendState;
     Fbo::SharedPtr mpCausticsFbo;
     Texture::SharedPtr mpGaussianKernel;
     Sampler::SharedPtr mpLinearSampler;

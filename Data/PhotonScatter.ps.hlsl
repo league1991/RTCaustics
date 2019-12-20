@@ -32,6 +32,7 @@ __import DefaultVS;
 #include "Common.hlsl"
 
 StructuredBuffer<Photon> gPhotonBuffer;
+StructuredBuffer<RayTask> gRayTask;
 
 Texture2D gDepthTex;
 Texture2D gNormalTex;
@@ -46,45 +47,55 @@ cbuffer PerFrameCB : register(b0)
 {
     float4x4 gWvpMat;
     float4x4 gWorldMat;
+
     float3 gEyePosW;
     float gLightIntensity;
+
     float gSurfaceRoughness;
     float gSplatSize;
     float gIntensity;
     uint  gPhotonMode;
+
+    float3 gLightDir;
     float gKernelPower;
     uint  gShowPhoton;
     uint  gAreaType;
+
+    int2 taskDim;
 };
 #define AnisotropicPhoton 0
 #define IsotropicPhoton 1
-#define VisualizePhoton 2
+#define PhotonMesh 2
+
+struct PhotonVSIn
+{
+    float4 pos         : POSITION;
+    float2 texC        : TEXCOORD;
+    uint instanceID : SV_INSTANCEID;
+    uint vertexID: SV_VERTEXID;
+};
 
 struct PhotonVSOut
 {
-    //INTERPOLATION_MODE float3 normalW    : NORMAL;
-    //INTERPOLATION_MODE float3 bitangentW : BITANGENT;
-    //INTERPOLATION_MODE float2 texC       : TEXCRD;
-    //INTERPOLATION_MODE float3 posW       : POSW;
-    //INTERPOLATION_MODE float4 prevPosH   : PREVPOSH;
-    //INTERPOLATION_MODE float2 lightmapC  : LIGHTMAPUV;
     float4 posH : SV_POSITION;
     float2 texcoord: TEXCOORD0;
     float4 color     : COLOR;
 };
 
-PhotonVSOut photonScatterVS(VertexIn vIn)
+PhotonVSOut photonScatterVS(PhotonVSIn vIn)
 {
     PhotonVSOut vOut;
+    vOut.texcoord = (vIn.pos.xz + 1) * 0.5;
     //float4x4 worldMat = getWorldMat(vIn);
     //float4 posW = mul(vIn.pos, worldMat);
     ////vOut.posW = posW.xyz;
     //vOut.posH = mul(posW, gCamera.viewProjMat);
+    float3 inPos;
+    float3 tangent, bitangent, color;
 
     Photon p = gPhotonBuffer[vIn.instanceID];
     float3 normal = normalize(p.normalW);
 
-    float3 tangent, bitangent;
     if (gPhotonMode == AnisotropicPhoton)
     {
         tangent = p.dPdx;
@@ -128,11 +139,26 @@ PhotonVSOut photonScatterVS(VertexIn vIn)
         area = length(areaVector);
     }
 
-    float3 localPoint = tangent * vIn.pos.x + bitangent * vIn.pos.z + normal * vIn.pos.y;
-    vOut.texcoord = (vIn.pos.xz + 1) * 0.5;
-    vIn.pos.xyz = localPoint + p.posW;
+    if (gPhotonMode == PhotonMesh)
+    {
+        vIn.pos.xyz = inPos;
+    }
+    else
+    {
+        float3 localPoint = tangent * vIn.pos.x + bitangent * vIn.pos.z + normal * vIn.pos.y;
+        vIn.pos.xyz = localPoint + p.posW;
+    }
     vOut.posH = mul(vIn.pos, gWvpMat);
-    vOut.color = float4(p.color / area * gIntensity, 1);
+
+    color = p.color;
+    if (gShowPhoton == 2)
+    {
+        float3 normal = normalize(areaVector);
+        vOut.color = float4(abs(dot(gLightDir, normal)), 1);
+    }
+    else
+        vOut.color = float4(color / area * gIntensity, 1);
+
     return vOut;
 }
 
@@ -149,13 +175,22 @@ float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
     //}
     //color.rgb += sd.emissive;
     float depth = gDepthTex.Load(int3(vOut.posH.xy, 0)).x;
+    if (gShowPhoton == 2)
+    {
+        if (vOut.posH.z - depth > 0.0001)
+        {
+            discard;
+        }
+        return float4(1, 0, 0, 1)* vOut.color;
+    }
+
     if (abs(depth- vOut.posH.z) > 0.00001)
     {
         discard;
     }
 
     float alpha;
-    if (gShowPhoton)
+    if (gShowPhoton == 1)
     {
         alpha = 1;
     }

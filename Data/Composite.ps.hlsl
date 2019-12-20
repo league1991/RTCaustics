@@ -77,8 +77,6 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
         color = gDiffuseTex.Sample(gPointSampler, texC);
     else if (gDebugMode == ShowSpecular)
         color = gSpecularTex.Sample(gPointSampler, texC);
-    else if (gDebugMode == ShowPhoton)
-        color = gPhotonTex.Sample(gPointSampler, texC);
     else if (gDebugMode == ShowWorld)
         color = frac(worldPnt * 0.01 + 0.01);
     else if (gDebugMode == ShowRoughness)
@@ -104,7 +102,15 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
             color.rgb += sr.color.rgb;
         }
 
-        color.rgb += gPhotonTex.Sample(gPointSampler, texC).rgb;
+        float4 photonClr = gPhotonTex.Sample(gPointSampler, texC);
+        if (gDebugMode == ShowPhoton)
+        {
+            color.rgb = lerp(color.rgb, photonClr.rgb, photonClr.a);
+        }
+        else
+        {
+            color.rgb += photonClr.rgb;
+        }
     }
 
     return color;

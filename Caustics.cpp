@@ -44,7 +44,7 @@ void Caustics::onGuiRender(Gui* pGui)
 
     {
         Gui::DropdownList debugModeList;
-        debugModeList.push_back({ 0, "Disabled" });
+        debugModeList.push_back({ 0, "Rasterize" });
         debugModeList.push_back({ 1, "Depth" });
         debugModeList.push_back({ 2, "Normal" });
         debugModeList.push_back({ 3, "Diffuse" });
@@ -91,6 +91,7 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addCheckBox("ID As Color", mColorPhoton);
         pGui->addIntVar("Photon ID Scale", mPhotonIDScale);
         pGui->addFloatVar("Min Trace Luminance", mTraceColorThreshold, 0, 10000,1);
+        pGui->addFloatVar("Min Cull Luminance", mCullColorThreshold, 0, 10000, 0.005f);
         pGui->endGroup();
     }
     if (pGui->beginGroup("Photon Splat", true))
@@ -98,12 +99,20 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addFloatVar("Splat size", mSplatSize, 0, 10, 0.01f);
         pGui->addFloatVar("Intensity", mIntensity, 0, 10, 0.0002f);
         pGui->addFloatVar("Kernel Power", mKernelPower, 0.01f, 10, 0.01f);
-        pGui->addCheckBox("Show Photon", mShowPhoton);
+
+        {
+            Gui::DropdownList debugModeList;
+            debugModeList.push_back({ 0, "Kernel" });
+            debugModeList.push_back({ 1, "Solid" });
+            debugModeList.push_back({ 2, "Shaded" });
+            pGui->addDropdown("Photon Display Mode", debugModeList, (uint32_t&)mPhotonDisplayMode);
+        }
 
         {
             Gui::DropdownList debugModeList;
             debugModeList.push_back({ 0, "Anisotropic" });
             debugModeList.push_back({ 1, "Isotropic" });
+            debugModeList.push_back({ 2, "Photon Mesh" });
             pGui->addDropdown("Photon mode", debugModeList, (uint32_t&)mPhotonMode);
         }
 
@@ -132,16 +141,17 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addFloatVar("Trim Direction Threshold", trimDirectionThreshold, 0, 1);
         pGui->endGroup();
     }
+    mLightDirection = vec3(
+        cos(mLightAngle.x) * sin(mLightAngle.y),
+        cos(mLightAngle.y),
+        sin(mLightAngle.x) * sin(mLightAngle.y));
     if (pGui->beginGroup("Light", true))
     {
         pGui->addFloat2Var("Light Angle", mLightAngle, -FLT_MAX, FLT_MAX, 0.01f);
         if (mpScene)
         {
             auto light0 = dynamic_cast<DirectionalLight*>(mpScene->getLight(0).get());
-            light0->setWorldDirection(vec3(
-                cos(mLightAngle.x) * sin(mLightAngle.y),
-                cos(mLightAngle.y),
-                sin(mLightAngle.x) * sin(mLightAngle.y)));
+            light0->setWorldDirection(mLightDirection);
         }
         pGui->addFloat2Var("Light Angle Speed", mLightAngleSpeed, -FLT_MAX, FLT_MAX, 0.001f);
         mLightAngle += mLightAngleSpeed*0.01f;
@@ -267,11 +277,15 @@ void Caustics::loadShader()
         RasterizerState::Desc rasterDesc;
         rasterDesc.setCullMode(RasterizerState::CullMode::None);
         auto rasterState = RasterizerState::create(rasterDesc);
-        mpPhotonScatterState = GraphicsState::create();
-        mpPhotonScatterState->setProgram(mpPhotonScatterProgram);
-        mpPhotonScatterState->setBlendState(scatterBlendState);
-        mpPhotonScatterState->setDepthStencilState(depthStencilState);
-        mpPhotonScatterState->setRasterizerState(rasterState);
+        mpPhotonScatterBlendState = GraphicsState::create();
+        mpPhotonScatterBlendState->setProgram(mpPhotonScatterProgram);
+        mpPhotonScatterBlendState->setBlendState(scatterBlendState);
+        mpPhotonScatterBlendState->setDepthStencilState(depthStencilState);
+        mpPhotonScatterBlendState->setRasterizerState(rasterState);
+        mpPhotonScatterNoBlendState = GraphicsState::create();
+        mpPhotonScatterNoBlendState->setProgram(mpPhotonScatterProgram);
+        mpPhotonScatterBlendState->setDepthStencilState(depthStencilState);
+        mpPhotonScatterNoBlendState->setRasterizerState(rasterState);
         mpPhotonScatterVars = GraphicsVars::create(mpPhotonScatterProgram->getReflector());
         //mpPhotonScatterPass = RasterScenePass::create(mpScene, "PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
     }
@@ -372,7 +386,8 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pCB["iorOverride"] = mIOROveride;
         pCB["colorPhotonID"] = (uint32_t)mColorPhoton;
         pCB["photonIDScale"] = mPhotonIDScale;
-        pCB["traceColorThreshold"] = mTraceColorThreshold * (512*512)/(mDispatchSize* mDispatchSize);
+        pCB["traceColorThreshold"] = mTraceColorThreshold * (512 * 512) / (mDispatchSize * mDispatchSize);
+        pCB["cullColorThreshold"] = mCullColorThreshold / 255;
         auto rayGenVars = mpPhotonTraceVars->getRayGenVars();
         rayGenVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
         rayGenVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
@@ -476,19 +491,31 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pPerFrameCB["gPhotonMode"] = mPhotonMode;
         pPerFrameCB["gAreaType"] = mAreaType;
         pPerFrameCB["gKernelPower"] = mKernelPower;
-        pPerFrameCB["gShowPhoton"] = uint32_t(mShowPhoton);
+        pPerFrameCB["gShowPhoton"] = uint32_t(mPhotonDisplayMode);
+        pPerFrameCB["gLightDir"] = mLightDirection;
+        pPerFrameCB["taskDim"] = int2(mDispatchSize, mDispatchSize);
         mpPhotonScatterVars["gLinearSampler"] = mpLinearSampler;
         mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
+        mpPhotonScatterVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
         mpPhotonScatterVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
         mpPhotonScatterVars->setTexture("gNormalTex", mpGPassFbo->getColorTexture(0));
         mpPhotonScatterVars->setTexture("gDiffuseTex", mpGPassFbo->getColorTexture(1));
         mpPhotonScatterVars->setTexture("gSpecularTex", mpGPassFbo->getColorTexture(2));
         mpPhotonScatterVars->setTexture("gGaussianTex", mpGaussianKernel);
-        mpPhotonScatterState->setVao(mpQuad->getMesh(0)->getVao());
-        mpPhotonScatterState->setFbo(mpCausticsFbo);
         int instanceCount = mDispatchSize * mDispatchSize;
         //pContext->drawIndexedInstanced(mpPhotonScatterState.get(), mpPhotonScatterVars.get(), mpQuad->getMesh(0)->getIndexCount(), instanceCount, 0, 0, 0);
-        pContext->drawIndexedIndirect(mpPhotonScatterState.get(), mpPhotonScatterVars.get(), mpDrawArgumentBuffer.get(), 0);
+        if (mPhotonDisplayMode == 2)
+        {
+            mpPhotonScatterNoBlendState->setVao(mpQuad->getMesh(0)->getVao());
+            mpPhotonScatterNoBlendState->setFbo(mpCausticsFbo);
+            pContext->drawIndexedIndirect(mpPhotonScatterNoBlendState.get(), mpPhotonScatterVars.get(), mpDrawArgumentBuffer.get(), 0);
+        }
+        else
+        {
+            mpPhotonScatterBlendState->setVao(mpQuad->getMesh(0)->getVao());
+            mpPhotonScatterBlendState->setFbo(mpCausticsFbo);
+            pContext->drawIndexedIndirect(mpPhotonScatterBlendState.get(), mpPhotonScatterVars.get(), mpDrawArgumentBuffer.get(), 0);
+        }
     }
 
     // Render output

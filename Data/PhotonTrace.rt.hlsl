@@ -53,6 +53,7 @@ shared cbuffer PerFrameCB
     uint colorPhotonID;
     int photonIDScale;
     float traceColorThreshold;
+    float cullColorThreshold;
 };
 
 struct PrimaryRayData
@@ -269,23 +270,29 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     }
     else if(hitData.depth > 0)
     {
-        Photon photon;
-        photon.posW = posW;
-        photon.normalW = sd.N;
-        photon.color = dot(-rayDirW, sd.N)* sd.diffuse * hitData.color.rgb;//sr.color.rgb;
-        photon.dPdx = hitData2.dPdx;
-        photon.dPdy = hitData2.dPdy;
+        float area = (dot(hitData2.dPdx, hitData2.dPdx) + dot(hitData2.dPdy, hitData2.dPdy)) * 0.5;
+        float area0 = emitSize * emitSize / (coarseDim.x * coarseDim.y);
+        if (area0 / area > cullColorThreshold)
+        {
+            uint instanceIdx = 0;
+            InterlockedAdd(gDrawArgument[0].instanceCount, 1, instanceIdx);
 
-        uint instanceIdx = 0;
-        InterlockedAdd(gDrawArgument[0].instanceCount, 1, instanceIdx);
-        gPhotonBuffer[instanceIdx] = photon;
-        uint3 dim3 = DispatchRaysDimensions();
-        uint3 idx3 = DispatchRaysIndex();
-        uint idx = idx3.y * dim3.x + idx3.x;
-        bool isInFrustum;
-        gRayTask[idx].photonIdx = instanceIdx;
-        gRayTask[idx].pixelArea = getPhotonScreenArea(photon, isInFrustum);
-        gRayTask[idx].inFrustum = isInFrustum ? 1 : 0;
+            Photon photon;
+            photon.posW = posW;
+            photon.normalW = sd.N;
+            photon.color = dot(-rayDirW, sd.N) * sd.diffuse * hitData.color.rgb;//sr.color.rgb;
+            photon.dPdx = hitData2.dPdx;
+            photon.dPdy = hitData2.dPdy;
+            gPhotonBuffer[instanceIdx] = photon;
+
+            uint3 dim3 = DispatchRaysDimensions();
+            uint3 idx3 = DispatchRaysIndex();
+            uint idx = idx3.y * dim3.x + idx3.x;
+            bool isInFrustum;
+            gRayTask[idx].photonIdx = instanceIdx;
+            gRayTask[idx].pixelArea = getPhotonScreenArea(photon, isInFrustum);
+            gRayTask[idx].inFrustum = isInFrustum ? 1 : 0;
+        }
     }
 
     if (hitData.depth == 0)
