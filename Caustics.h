@@ -71,6 +71,7 @@ private:
     float mPixelLuminanceThreshold = 0.5f;
     float mMinPhotonPixelSize = 7.0f;
     float mIOROveride = 1.5f;
+    float mMaxAnisotropy = 20.0f;
     float trimDirectionThreshold = 0.5f;
     int mColorPhoton = 0;
     int mPhotonIDScale = 50;

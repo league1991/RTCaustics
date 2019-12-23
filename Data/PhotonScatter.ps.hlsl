@@ -60,10 +60,11 @@ cbuffer PerFrameCB : register(b0)
 
     float distanceThreshold;
     float planarThreshold;
-
     float gSurfaceRoughness;
     float gSplatSize;
+
     uint  gPhotonMode;
+    float gMaxAnisotropy;
 };
 #define AnisotropicPhoton 0
 #define IsotropicPhoton 1
@@ -207,6 +208,15 @@ bool meshScatter(int instanceID, float2 vertex, out float4 posH, out float3 colo
     return true;
 }
 
+float3 scaleVector(float3 vec, float3 axis, float2 factor)
+{
+    axis = normalize(axis);
+    float proj = dot(vec, axis);
+    vec *= factor.y;
+    vec += axis * proj * (factor.x - factor.y);
+    return vec;
+}
+
 PhotonVSOut photonScatterVS(PhotonVSIn vIn)
 {
     PhotonVSOut vOut;
@@ -230,6 +240,22 @@ PhotonVSOut photonScatterVS(PhotonVSIn vIn)
     {
         tangent = p.dPdx;
         bitangent = p.dPdy;
+        if (dot(tangent, bitangent) < 0)
+        {
+            bitangent *= -1;
+        }
+
+        float3 areaVector = cross(tangent, bitangent);
+        float3 sideVector = tangent + bitangent;
+        float area = length(areaVector);
+        float side = length(sideVector);
+        float height = area / side;
+        float aniso = side / height;
+        if (aniso > gMaxAnisotropy)
+        {
+            tangent = scaleVector(tangent, sideVector, float2(gMaxAnisotropy/ aniso, 1));
+            bitangent = scaleVector(bitangent, sideVector, float2(gMaxAnisotropy/aniso, 1));
+        }
     }
     else if (gPhotonMode == IsotropicPhoton)
     {

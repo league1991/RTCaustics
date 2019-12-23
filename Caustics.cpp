@@ -100,7 +100,7 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addCheckBox("ID As Color", mColorPhoton);
         pGui->addIntVar("Photon ID Scale", mPhotonIDScale);
         pGui->addFloatVar("Min Trace Luminance", mTraceColorThreshold, 0, 10,0.005f);
-        pGui->addFloatVar("Min Cull Luminance", mCullColorThreshold, 0, 10000, 0.005f);
+        pGui->addFloatVar("Min Cull Luminance", mCullColorThreshold, 0, 10000, 0.001f);
         pGui->endGroup();
     }
     if (pGui->beginGroup("Photon Splat", true))
@@ -110,6 +110,7 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addFloatVar("Scatter Normal Threshold", mScatterNormalThreshold, 0.01f, 1.0, 0.01f);
         pGui->addFloatVar("Scatter Distance Threshold", mScatterDistanceThreshold, 0.1f, 10.0f, 0.1f);
         pGui->addFloatVar("Scatter Planar Threshold", mScatterPlanarThreshold, 0.01f, 10.0, 0.1f);
+        pGui->addFloatVar("Max Anisotropy", mMaxAnisotropy, 1, 100, 0.1f);
         {
             Gui::DropdownList debugModeList;
             debugModeList.push_back({ 0, "Kernel" });
@@ -508,6 +509,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pPerFrameCB["normalThreshold"] = mScatterNormalThreshold;
         pPerFrameCB["distanceThreshold"] = mScatterDistanceThreshold;
         pPerFrameCB["planarThreshold"] = mScatterPlanarThreshold;
+        pPerFrameCB["gMaxAnisotropy"] = mMaxAnisotropy;
         mpPhotonScatterVars["gLinearSampler"] = mpLinearSampler;
         mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", photonBuffer);
         mpPhotonScatterVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
