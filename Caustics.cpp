@@ -83,6 +83,13 @@ void Caustics::onGuiRender(Gui* pGui)
             debugModeList.push_back({ 2048, "2048" });
             pGui->addDropdown("Dispatch Size", debugModeList, (uint32_t&)mDispatchSize);
         }
+        {
+            Gui::DropdownList debugModeList;
+            debugModeList.push_back({ 0, "Avg. Square" });
+            debugModeList.push_back({ 1, "Avg. Length" });
+            debugModeList.push_back({ 2, "Exact Area" });
+            pGui->addDropdown("Area Type", debugModeList, (uint32_t&)mAreaType);
+        }
         pGui->addFloatVar("Emit size", mEmitSize, 0, 1000, 1);
         pGui->addFloatVar("Rough Threshold", mRoughThreshold, 0, 1, 0.01f);
         pGui->addFloatVar("Jitter", mJitter, 0, 1, 0.01f);
@@ -116,13 +123,6 @@ void Caustics::onGuiRender(Gui* pGui)
             pGui->addDropdown("Photon mode", debugModeList, (uint32_t&)mPhotonMode);
         }
 
-        {
-            Gui::DropdownList debugModeList;
-            debugModeList.push_back({ 0, "Avg. Square" });
-            debugModeList.push_back({ 1, "Avg. Length" });
-            debugModeList.push_back({ 2, "Exact Area" });
-            pGui->addDropdown("Area Type", debugModeList, (uint32_t&)mAreaType);
-        }
         pGui->endGroup();
     }
     if(pGui->beginGroup("Refine Photon", false))
@@ -388,6 +388,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pCB["photonIDScale"] = mPhotonIDScale;
         pCB["traceColorThreshold"] = mTraceColorThreshold * (512 * 512) / (mDispatchSize * mDispatchSize);
         pCB["cullColorThreshold"] = mCullColorThreshold / 255;
+        pCB["gAreaType"] = mAreaType;
         auto rayGenVars = mpPhotonTraceVars->getRayGenVars();
         rayGenVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
         rayGenVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
@@ -489,11 +490,13 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pPerFrameCB["gSplatSize"] = mSplatSize;
         pPerFrameCB["gIntensity"] = mIntensity;
         pPerFrameCB["gPhotonMode"] = mPhotonMode;
-        pPerFrameCB["gAreaType"] = mAreaType;
         pPerFrameCB["gKernelPower"] = mKernelPower;
         pPerFrameCB["gShowPhoton"] = uint32_t(mPhotonDisplayMode);
         pPerFrameCB["gLightDir"] = mLightDirection;
         pPerFrameCB["taskDim"] = int2(mDispatchSize, mDispatchSize);
+        pPerFrameCB["normalThreshold"] = mNormalThreshold;
+        pPerFrameCB["distanceThreshold"] = mDistanceThreshold;
+        pPerFrameCB["planarThreshold"] = mPlanarThreshold;
         mpPhotonScatterVars["gLinearSampler"] = mpLinearSampler;
         mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
         mpPhotonScatterVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
@@ -504,17 +507,24 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         mpPhotonScatterVars->setTexture("gGaussianTex", mpGaussianKernel);
         int instanceCount = mDispatchSize * mDispatchSize;
         //pContext->drawIndexedInstanced(mpPhotonScatterState.get(), mpPhotonScatterVars.get(), mpQuad->getMesh(0)->getIndexCount(), instanceCount, 0, 0, 0);
+        GraphicsState::SharedPtr scatterState;
         if (mPhotonDisplayMode == 2)
         {
-            mpPhotonScatterNoBlendState->setVao(mpQuad->getMesh(0)->getVao());
-            mpPhotonScatterNoBlendState->setFbo(mpCausticsFbo);
-            pContext->drawIndexedIndirect(mpPhotonScatterNoBlendState.get(), mpPhotonScatterVars.get(), mpDrawArgumentBuffer.get(), 0);
+            scatterState = mpPhotonScatterNoBlendState;
         }
         else
         {
-            mpPhotonScatterBlendState->setVao(mpQuad->getMesh(0)->getVao());
-            mpPhotonScatterBlendState->setFbo(mpCausticsFbo);
-            pContext->drawIndexedIndirect(mpPhotonScatterBlendState.get(), mpPhotonScatterVars.get(), mpDrawArgumentBuffer.get(), 0);
+            scatterState = mpPhotonScatterBlendState;
+        }
+        scatterState->setVao(mpQuad->getMesh(0)->getVao());
+        scatterState->setFbo(mpCausticsFbo);
+        if (mPhotonMode == 2)
+        {
+            pContext->drawIndexedInstanced(scatterState.get(), mpPhotonScatterVars.get(), 6, mDispatchSize* mDispatchSize, 0, 0, 0);
+        }
+        else
+        {
+            pContext->drawIndexedIndirect(scatterState.get(), mpPhotonScatterVars.get(), mpDrawArgumentBuffer.get(), 0);
         }
     }
 

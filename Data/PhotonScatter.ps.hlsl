@@ -58,10 +58,13 @@ cbuffer PerFrameCB : register(b0)
 
     float3 gLightDir;
     float gKernelPower;
-    uint  gShowPhoton;
-    uint  gAreaType;
 
     int2 taskDim;
+    uint  gShowPhoton;
+    float normalThreshold;
+
+    float distanceThreshold;
+    float planarThreshold;
 };
 #define AnisotropicPhoton 0
 #define IsotropicPhoton 1
@@ -82,16 +85,144 @@ struct PhotonVSOut
     float4 color     : COLOR;
 };
 
+int GetPhoton(int2 screenPos, inout Photon p)
+{
+    int offset = screenPos.y * taskDim.x + screenPos.x;
+    RayTask task = gRayTask[offset];
+    if (task.photonIdx == -1)
+    {
+        return 0;
+    }
+    p = gPhotonBuffer[task.photonIdx];
+    return 1;
+}
+
+void ProcessPhoton(inout Photon p, float2 dir)
+{
+    p.dPdx *= dir.x;
+    p.dPdy *= -dir.y;
+}
+
+bool isAdjacent(Photon photon0, Photon photon1, float3 axis, float normalThreshold, float distanceThreshold, float planarThreshold)
+{
+    //float proj = abs(dot(photon1.posW - photon0.posW, axis));
+    //float dist = proj / length(axis);
+    float dist = length(photon1.posW - photon0.posW);
+    return
+        //dot(photon0.normalW, photon1.normalW) < normalThreshold &&
+        dist < distanceThreshold// &&
+        //dot(photon0.normalW, photon0.posW - photon1.posW) < planarThreshold
+        ;
+}
+
+bool GetPhotons(int instanceID, float2 vertex, inout Photon p00, inout Photon p01, inout Photon p10, inout Photon p11, out int mask)
+{
+    mask = 0;
+    int2 screenPos;
+    screenPos.y = instanceID / taskDim.x;
+    screenPos.x = instanceID - taskDim.x * screenPos.y;
+    if (!GetPhoton(screenPos, p00))
+    {
+        return false;
+    }
+
+    //int xOffset = vertex.x;// (vertexID & 0x1) * 2 - 1;
+    //int yOffset = vertex.y;// (vertexID >> 1) * 2 - 1;
+    //int2 offsetArray[] = { int2(-1,1), int2(1,-1), int2(-1,-1), int2(1,1) };
+    float2 offset = vertex;// offsetArray[vertexID];
+    
+    ProcessPhoton(p00, offset);
+    if (GetPhoton(screenPos + int2(offset.x, 0), p01))
+    {
+        ProcessPhoton(p01, offset);
+        if (isAdjacent(p00, p01, p00.dPdx, normalThreshold, distanceThreshold, planarThreshold))
+            mask |= 0x1;
+    }
+    if (GetPhoton(screenPos + int2(0, offset.y), p10))
+    {
+        ProcessPhoton(p10, offset);
+        if (isAdjacent(p00, p10, p00.dPdy, normalThreshold, distanceThreshold, planarThreshold))
+            mask |= 0x2;
+    }
+    if (GetPhoton(screenPos + offset, p11))
+    {
+        ProcessPhoton(p11, offset);
+        if (isAdjacent(p00, p11, p00.dPdx+ p00.dPdy, normalThreshold, distanceThreshold * 1.42, planarThreshold))
+            mask |= 0x4;
+    }
+
+    return true;
+}
+
+void GetVertexPosInfo(Photon p00, Photon p01, Photon p10, Photon p11, int mask, out float3 posW, out float3 color)
+{
+    if (mask ==0)
+    {
+        posW = p00.posW + gSplatSize * (p00.dPdx + p00.dPdy);
+        color = 0;// p00.color;
+    }
+    else if (mask == 1)
+    {
+        posW = 0.5 * (p00.posW + p01.posW) + gSplatSize * 0.5 * (p00.dPdy + p01.dPdy);
+        color = 0;// float3(0, 0, 100);
+    }
+    else if (mask == 2)
+    {
+        posW = 0.5 * (p00.posW + p10.posW) + gSplatSize * 0.5 * (p00.dPdx + p10.dPdx);
+        color = 0;// float3(100, 0, 100);
+    }
+    else if (mask == 3)
+    {
+        posW = 0.5 * (p10.posW + p01.posW);
+        color = 0;// float3(0, 100, 0);
+    }
+    else if (mask == 4 || mask == 5 || mask == 6)
+    {
+        posW = 0.5 * (p00.posW + p11.posW);
+        color = 0;// float3(100, 0, 0);// 0;
+    }
+    else if (mask == 7)
+    {
+        posW = 0.25 * (p00.posW + p01.posW + p10.posW + p11.posW);
+        color.rgb = 0.25 * (p00.color + p01.color + p10.color + p11.color);
+    }
+    //float newDist = length(posW - p00.posW);
+    //float oldDist = length(p00.dPdx + p00.dPdy) * 0.5;
+    //float distRatio = newDist / oldDist;
+    //float areaRatio = distRatio * distRatio;
+    //color *= areaRatio;
+}
+
+bool meshScatter(int instanceID, float2 vertex, out float4 posH, out float3 color)
+{
+    color = 0;
+    posH = float4(100, 100, 100, 1);
+    Photon p00, p01, p10, p11;
+    int mask = 0;
+    if (!GetPhotons(instanceID, vertex, p00, p01, p10, p11, mask))
+        return false;
+
+    float3 posW;
+    GetVertexPosInfo(p00, p01, p10, p11, mask, posW, color);
+    posH = mul(float4(posW, 1), gWvpMat);
+    return true;
+}
+
 PhotonVSOut photonScatterVS(PhotonVSIn vIn)
 {
     PhotonVSOut vOut;
     vOut.texcoord = (vIn.pos.xz + 1) * 0.5;
-    //float4x4 worldMat = getWorldMat(vIn);
-    //float4 posW = mul(vIn.pos, worldMat);
-    ////vOut.posW = posW.xyz;
-    //vOut.posH = mul(posW, gCamera.viewProjMat);
-    float3 inPos;
+
     float3 tangent, bitangent, color;
+    if (gPhotonMode == PhotonMesh)
+    {
+        float4 posH = 0;
+        float3 clr = 0;
+        meshScatter(vIn.instanceID, vIn.pos.xz, posH, clr);
+        vOut.posH = posH;
+        vOut.color = float4(clr * gIntensity,1);
+        return vOut;
+    }
 
     Photon p = gPhotonBuffer[vIn.instanceID];
     float3 normal = normalize(p.normalW);
@@ -100,12 +231,6 @@ PhotonVSOut photonScatterVS(PhotonVSIn vIn)
     {
         tangent = p.dPdx;
         bitangent = p.dPdy;
-        //float tangentLength = length(tangent);
-        //float bitangentLength = length(bitangent);
-        //float maxLength = 1.0;
-        //float minLength = 0.1;
-        //tangent *= clamp(tangentLength, minLength, maxLength) / tangentLength;
-        //bitangent *= clamp(bitangentLength, minLength, maxLength) / bitangentLength;
     }
     else if (gPhotonMode == IsotropicPhoton)
     {
@@ -125,29 +250,10 @@ PhotonVSOut photonScatterVS(PhotonVSIn vIn)
     bitangent *= gSplatSize;
 
     float3 areaVector = cross(tangent, bitangent);
-    float area;
-    if (gAreaType == 0)
-    {
-        area = 0.5 * (dot(tangent, tangent) + dot(bitangent, bitangent));
-    }
-    else if (gAreaType == 1)
-    {
-        area = length(tangent) + length(bitangent);
-    }
-    else
-    {
-        area = length(areaVector);
-    }
+    float area = 1;
 
-    if (gPhotonMode == PhotonMesh)
-    {
-        vIn.pos.xyz = inPos;
-    }
-    else
-    {
-        float3 localPoint = tangent * vIn.pos.x + bitangent * vIn.pos.z + normal * vIn.pos.y;
-        vIn.pos.xyz = localPoint + p.posW;
-    }
+    float3 localPoint = tangent * vIn.pos.x + bitangent * vIn.pos.z + normal * vIn.pos.y;
+    vIn.pos.xyz = localPoint + p.posW;
     vOut.posH = mul(vIn.pos, gWvpMat);
 
     color = p.color;
@@ -164,16 +270,6 @@ PhotonVSOut photonScatterVS(PhotonVSIn vIn)
 
 float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
 {
-    //ShadingData sd = prepareShadingData(vOut, gMaterial, gCamera.posW);
-    //float4 color = 0;
-    //color.a = 1;
-
-    //[unroll]
-    //for (uint i = 0; i < 3; i++)
-    //{
-    //    color += evalMaterial(sd, gLights[i], 1).color;
-    //}
-    //color.rgb += sd.emissive;
     float depth = gDepthTex.Load(int3(vOut.posH.xy, 0)).x;
     if (gShowPhoton == 2)
     {
@@ -190,7 +286,7 @@ float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
     }
 
     float alpha;
-    if (gShowPhoton == 1)
+    if (gShowPhoton == 1 || gPhotonMode == PhotonMesh)
     {
         alpha = 1;
     }

@@ -54,6 +54,7 @@ shared cbuffer PerFrameCB
     int photonIDScale;
     float traceColorThreshold;
     float cullColorThreshold;
+    uint  gAreaType;
 };
 
 struct PrimaryRayData
@@ -270,7 +271,21 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     }
     else if(hitData.depth > 0)
     {
-        float area = (dot(hitData2.dPdx, hitData2.dPdx) + dot(hitData2.dPdy, hitData2.dPdy)) * 0.5;
+        float area;
+        if (gAreaType == 0)
+        {
+            area = (dot(hitData2.dPdx, hitData2.dPdx) + dot(hitData2.dPdy, hitData2.dPdy)) * 0.5;
+        }
+        else if (gAreaType == 1)
+        {
+            area = length(hitData2.dPdx) + length(hitData2.dPdy);
+        }
+        else
+        {
+            float3 areaVector = cross(hitData2.dPdx, hitData2.dPdy);
+            area = length(areaVector);
+        }
+
         float area0 = emitSize * emitSize / (coarseDim.x * coarseDim.y);
         if (area0 / area > cullColorThreshold)
         {
@@ -280,7 +295,7 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
             Photon photon;
             photon.posW = posW;
             photon.normalW = sd.N;
-            photon.color = dot(-rayDirW, sd.N) * sd.diffuse * hitData.color.rgb;//sr.color.rgb;
+            photon.color = dot(-rayDirW, sd.N) * sd.diffuse * hitData.color.rgb / area;//sr.color.rgb;
             photon.dPdx = hitData2.dPdx;
             photon.dPdy = hitData2.dPdy;
             gPhotonBuffer[instanceIdx] = photon;

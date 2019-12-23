@@ -67,9 +67,7 @@ bool checkPixelNeighbour(uint2 pixelCoord0, RayTask task0, Photon photon0, uint2
     if (isContinue)
     {
         photon1 = gPhotonBuffer[task1.photonIdx];
-        isContinue &= dot(photon0.normalW, photon1.normalW) < normalThreshold;
-        isContinue &= length(photon0.posW - photon1.posW) < distanceThreshold;
-        isContinue &= dot(photon0.normalW, photon0.posW - photon1.posW) < planarThreshold;
+        isContinue &= isPhotonAdjecent(photon0, photon1, normalThreshold, distanceThreshold, planarThreshold);
     }
     return isContinue;
 }

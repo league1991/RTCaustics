@@ -37,3 +37,12 @@ bool isTotalInternalReflection(float3 I, float3 N, float eta)
     float cosI = dot(I, N);
     return cosI * cosI < (1 - 1 / (eta * eta));
 }
+
+bool isPhotonAdjecent(Photon photon0, Photon photon1, float normalThreshold, float distanceThreshold, float planarThreshold)
+{
+    return
+        //dot(photon0.normalW, photon1.normalW) < normalThreshold &&
+        length(photon0.posW - photon1.posW) < distanceThreshold// &&
+        //dot(photon0.normalW, photon0.posW - photon1.posW) < planarThreshold
+        ;
+}
