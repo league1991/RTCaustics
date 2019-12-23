@@ -51,11 +51,6 @@ cbuffer PerFrameCB : register(b0)
     float3 gEyePosW;
     float gLightIntensity;
 
-    float gSurfaceRoughness;
-    float gSplatSize;
-    float gIntensity;
-    uint  gPhotonMode;
-
     float3 gLightDir;
     float gKernelPower;
 
@@ -65,6 +60,10 @@ cbuffer PerFrameCB : register(b0)
 
     float distanceThreshold;
     float planarThreshold;
+
+    float gSurfaceRoughness;
+    float gSplatSize;
+    uint  gPhotonMode;
 };
 #define AnisotropicPhoton 0
 #define IsotropicPhoton 1
@@ -105,7 +104,7 @@ void ProcessPhoton(inout Photon p, float2 dir)
 
 bool isAdjacent(Photon photon0, Photon photon1, float3 axis, float normalThreshold, float distanceThreshold, float planarThreshold)
 {
-    //float proj = abs(dot(photon1.posW - photon0.posW, axis));
+    float proj = abs(dot(photon1.posW - photon0.posW, axis));
     //float dist = proj / length(axis);
     float dist = length(photon1.posW - photon0.posW);
     return
@@ -220,7 +219,7 @@ PhotonVSOut photonScatterVS(PhotonVSIn vIn)
         float3 clr = 0;
         meshScatter(vIn.instanceID, vIn.pos.xz, posH, clr);
         vOut.posH = posH;
-        vOut.color = float4(clr * gIntensity,1);
+        vOut.color = float4(clr,1);
         return vOut;
     }
 
@@ -250,7 +249,6 @@ PhotonVSOut photonScatterVS(PhotonVSIn vIn)
     bitangent *= gSplatSize;
 
     float3 areaVector = cross(tangent, bitangent);
-    float area = 1;
 
     float3 localPoint = tangent * vIn.pos.x + bitangent * vIn.pos.z + normal * vIn.pos.y;
     vIn.pos.xyz = localPoint + p.posW;
@@ -263,7 +261,7 @@ PhotonVSOut photonScatterVS(PhotonVSIn vIn)
         vOut.color = float4(abs(dot(gLightDir, normal)), 1);
     }
     else
-        vOut.color = float4(color / area * gIntensity, 1);
+        vOut.color = float4(color, 1);
 
     return vOut;
 }

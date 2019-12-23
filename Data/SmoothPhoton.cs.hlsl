@@ -30,14 +30,21 @@
 shared cbuffer PerFrameCB
 {
     float4x4 viewProjMat;
+
     int2 taskDim;
     int2 screenDim;
+
     float normalThreshold;
     float distanceThreshold;
     float planarThreshold;
     float pixelLuminanceThreshold;
+
     float minPhotonPixelSize;
     float trimDirectionThreshold;
+    uint enableMedianFilter;
+    uint removeIsolatedPhoton;
+
+    int minNeighbourCount;
 };
 
 struct DrawArguments
@@ -49,7 +56,8 @@ struct DrawArguments
     uint startInstanceLocation;
 };
 
-RWStructuredBuffer<Photon> gPhotonBuffer;
+StructuredBuffer<Photon> gSrcPhotonBuffer;
+RWStructuredBuffer<Photon> gDstPhotonBuffer;
 //RWStructuredBuffer<DrawArguments> gDrawArgument;
 RWStructuredBuffer<RayArgument> gRayArgument;
 RWStructuredBuffer<RayTask> gRayTask;
@@ -66,7 +74,7 @@ bool checkPixelNeighbour(uint2 pixelCoord0, RayTask task0, Photon photon0, uint2
     Photon photon1;
     if (isContinue)
     {
-        photon1 = gPhotonBuffer[task1.photonIdx];
+        photon1 = gSrcPhotonBuffer[task1.photonIdx];
         isContinue &= isPhotonAdjecent(photon0, photon1, normalThreshold, distanceThreshold, planarThreshold);
     }
     return isContinue;
@@ -81,7 +89,7 @@ bool getPhoton(uint2 pixelCoord, inout Photon photon)
     {
         return false;
     }
-    photon = gPhotonBuffer[task1.photonIdx];
+    photon = gSrcPhotonBuffer[task1.photonIdx];
     return true;
 }
 
@@ -106,12 +114,88 @@ void getTrimLength(float3 P1, float3 D1, float3 P2, float3 D2, inout float l)
     l = min(l, abs(proj));
 }
 
+RayTask getRayTask(uint2 pixelCoord)
+{
+    uint2 pixelCoord1 = min(taskDim - 1, max(uint2(0, 0), pixelCoord));
+    uint pixelIdx1 = pixelCoord1.y * taskDim.x + pixelCoord1.x;
+    return gRayTask[pixelIdx1];
+}
+
+float3 medianFilter(uint2 pixelCoord0)
+{
+    uint2 dir[9] = {
+        uint2(-1,-1),
+        uint2(-1,0),
+        uint2(-1,1),
+        uint2(0,-1),
+        uint2(0,0),
+        uint2(0,1),
+        uint2(1,-1),
+        uint2(1,0),
+        uint2(1,1),
+    };
+
+    half2 luminance[9];
+    for (int i = 0; i < 8; i++)
+    {
+        //bool isContinue = checkPixelNeighbour(threadIdx.xy, task0, photon0, dir[i]);
+        //uint2 pixelCoord1 = min(taskDim - 1, max(uint2(0, 0), pixelCoord0 + dir[i]));
+        //uint pixelIdx1 = pixelCoord1.y * taskDim.x + pixelCoord1.x;
+
+        RayTask task1 = getRayTask(pixelCoord0 + dir[i]);
+        if (task1.photonIdx != -1)
+        {
+            Photon photon = gSrcPhotonBuffer[task1.photonIdx];
+            luminance[i].x = dot(photon.color, float3(0.299, 0.587, 0.114));
+        }
+        else
+        {
+            luminance[i].x = 0;
+        }
+        luminance[i].y = i;
+    }
+
+    for (int i = 0; i < 9; i++)
+    {
+        for (int j = 0; j < i; j++)
+        {
+            if (luminance[j].x > luminance[j+1].x)
+            {
+                half2 a = luminance[j + 1];
+                luminance[j + 1] = luminance[j];
+                luminance[j] = a;
+            }
+        }
+    }
+
+    int idx = luminance[4].y;
+    RayTask task1 = getRayTask(pixelCoord0 + dir[idx]);
+    if (task1.photonIdx != -1)
+    {
+        Photon photon = gSrcPhotonBuffer[task1.photonIdx];
+        return photon.color;
+    }
+    return 0;
+}
+
+bool isPhotonContinue(Photon photon0, Photon photon1)
+{
+    bool isContinue = true;
+    isContinue &= dot(photon0.normalW, photon1.normalW) > normalThreshold;
+
+    float distanceFactor = 0.5 * (length(photon0.dPdx) + length(photon0.dPdx));
+    isContinue &= length(photon0.posW - photon1.posW) / distanceFactor < distanceThreshold;
+
+    isContinue &= dot(photon0.normalW, photon0.posW - photon1.posW) < planarThreshold;
+    return isContinue;
+}
+
 [numthreads(16, 16, 1)]
 void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 threadIdx : SV_DispatchThreadID)
 {
 
     //uint length, stride;
-    //gPhotonBuffer.GetDimensions(length, stride);
+    //gSrcPhotonBuffer.GetDimensions(length, stride);
     uint2 pixelCoord0 = threadIdx.xy;
     uint rayIdx = threadIdx.y * taskDim.x + threadIdx.x;
     RayTask task0 = gRayTask[rayIdx];
@@ -121,7 +205,7 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 thr
         return;
     }
 
-    Photon photon0 = gPhotonBuffer[idx0];
+    Photon photon0 = gSrcPhotonBuffer[idx0];
 
     uint2 dir[8] = {
         uint2(-1,-1),
@@ -148,10 +232,8 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 thr
         Photon photon1;
         if (isContinue)
         {
-            photon1 = gPhotonBuffer[task1.photonIdx];
-            isContinue &= dot(photon0.normalW, photon1.normalW) > normalThreshold;
-            isContinue &= length(photon0.posW - photon1.posW) < distanceThreshold;
-            isContinue &= dot(photon0.normalW, photon0.posW - photon1.posW) < planarThreshold;
+            photon1 = gSrcPhotonBuffer[task1.photonIdx];
+            isContinue &= isPhotonContinue(photon0, photon1);
         }
         if (isContinue)
         {
@@ -160,12 +242,13 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 thr
             continueFlag |= (1 << i);
         }
     }
-    //if (continueCount < 5)
+    if (removeIsolatedPhoton && continueCount < minNeighbourCount)
     {
-        float w = saturate((continueCount - 0.0) / (8.0 - 0.0));
-        color *= lerp(0.0,1,w);
+        //float w = saturate((continueCount - 0.0) / (8.0 - 0.0));
+        //color *= lerp(0.0,1,w);
+        photon0.color = 0;
     }
-    //gPhotonBuffer[idx0].color = color;
+    //gSrcPhotonBuffer[idx0].color = color;
 
     //Photon photon1;
     //float trimmedLength = length(photon0.dPdx);
@@ -196,15 +279,19 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 thr
     //    photon0.color = 0;
     //}
 
-    float width = length(photon0.dPdx);
-    float height = length(photon0.dPdy);
-    float area0 = width * height;
-    float area = length(cross(photon0.dPdx, photon0.dPdy));
-    float ratio = area / area0;
-    if (ratio < trimDirectionThreshold)
-    {
-        photon0.color = 0;
-    }
+    //float width = length(photon0.dPdx);
+    //float height = length(photon0.dPdy);
+    //float area0 = width * height;
+    //float area = length(cross(photon0.dPdx, photon0.dPdy));
+    //float ratio = area / area0;
+    //if (ratio < trimDirectionThreshold)
+    //{
+    //    photon0.color = 0;
+    //}
 
-    gPhotonBuffer[idx0] = photon0;
+    if (enableMedianFilter)
+    {
+        photon0.color = medianFilter(pixelCoord0);
+    }
+    gDstPhotonBuffer[idx0] = photon0;
 }

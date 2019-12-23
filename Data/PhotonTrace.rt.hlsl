@@ -55,6 +55,7 @@ shared cbuffer PerFrameCB
     float traceColorThreshold;
     float cullColorThreshold;
     uint  gAreaType;
+    float gIntensity;
 };
 
 struct PrimaryRayData
@@ -280,6 +281,10 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         {
             area = length(hitData2.dPdx) + length(hitData2.dPdy);
         }
+        else if (gAreaType == 2)
+        {
+            area = max(dot(hitData2.dPdx, hitData2.dPdx), dot(hitData2.dPdy, hitData2.dPdy));
+        }
         else
         {
             float3 areaVector = cross(hitData2.dPdx, hitData2.dPdy);
@@ -372,9 +377,9 @@ void rayGen()
     float4 color0 = 1;
     if (colorPhotonID)
     {
-        color0.xyz = frac(launchIndex.xyz / float(photonIDScale));
+        color0.xyz = frac(launchIndex.xyz / float(photonIDScale)) * 0.8 + 0.2;
     }
-    hitData.color = color0 *pixelSize.x* pixelSize.y * 512 * 512 * 0.5;
+    hitData.color = color0 *pixelSize.x* pixelSize.y * 512 * 512 * 0.5 * gIntensity;
     hitData.depth = 0;
     //hitData.dPdx = 0;
     //hitData.dPdy = 0;

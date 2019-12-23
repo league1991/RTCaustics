@@ -47,13 +47,15 @@ private:
     int mMaxTraceDepth = 10;
     bool mRayTrace = true;
     bool mRefinePhoton = false;
-    bool mSmoothPhoton = false;
+    bool mRemoveIsolatedPhoton = true;
+    int mMinNeighbourCount = 2;
+    bool mMedianFilter = false;
     uint32_t mDebugMode = 9;
     bool mUseDOF = false;
     uint32_t mSampleIndex = 0xdeadbeef;
     float mEmitSize = 30.0;
     float mSplatSize = 2.8f;
-    float mIntensity = 0.02f;
+    float mIntensity = 3.f;
     float mRoughThreshold = 0.1f;
     float mKernelPower = 1.f;
     int mPhotonDisplayMode = 0;
@@ -63,13 +65,16 @@ private:
     float mNormalThreshold = 0.2f;
     float mDistanceThreshold = 10.0f;
     float mPlanarThreshold = 2.0f;
+    float mScatterNormalThreshold = 0.2f;
+    float mScatterDistanceThreshold = 10.0f;
+    float mScatterPlanarThreshold = 2.0f;
     float mPixelLuminanceThreshold = 0.5f;
     float mMinPhotonPixelSize = 7.0f;
     float mIOROveride = 1.5f;
     float trimDirectionThreshold = 0.5f;
     int mColorPhoton = 0;
     int mPhotonIDScale = 50;
-    float mTraceColorThreshold = 40.f;
+    float mTraceColorThreshold = 0.04f;
     float mCullColorThreshold = 0.04f;
     float2 mLightAngle{0.4f,2.f};
     float3 mLightDirection;
@@ -141,6 +146,7 @@ private:
 
     // Caustics map
     StructuredBuffer::SharedPtr  mpPhotonBuffer;
+    StructuredBuffer::SharedPtr  mpPhotonBuffer2;
     StructuredBuffer::SharedPtr  mpRayTaskBuffer;
 
 

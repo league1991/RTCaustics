@@ -85,11 +85,13 @@ void Caustics::onGuiRender(Gui* pGui)
         }
         {
             Gui::DropdownList debugModeList;
-            debugModeList.push_back({ 0, "Avg. Square" });
-            debugModeList.push_back({ 1, "Avg. Length" });
-            debugModeList.push_back({ 2, "Exact Area" });
+            debugModeList.push_back({ 0, "Avg Square" });
+            debugModeList.push_back({ 1, "Avg Length" });
+            debugModeList.push_back({ 2, "Max Square" });
+            debugModeList.push_back({ 3, "Exact Area" });
             pGui->addDropdown("Area Type", debugModeList, (uint32_t&)mAreaType);
         }
+        pGui->addFloatVar("Intensity", mIntensity, 0, 10, 0.1f);
         pGui->addFloatVar("Emit size", mEmitSize, 0, 1000, 1);
         pGui->addFloatVar("Rough Threshold", mRoughThreshold, 0, 1, 0.01f);
         pGui->addFloatVar("Jitter", mJitter, 0, 1, 0.01f);
@@ -97,16 +99,17 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addFloatVar("IOR Override", mIOROveride, 0, 3, 0.01f);
         pGui->addCheckBox("ID As Color", mColorPhoton);
         pGui->addIntVar("Photon ID Scale", mPhotonIDScale);
-        pGui->addFloatVar("Min Trace Luminance", mTraceColorThreshold, 0, 10000,1);
+        pGui->addFloatVar("Min Trace Luminance", mTraceColorThreshold, 0, 10,0.005f);
         pGui->addFloatVar("Min Cull Luminance", mCullColorThreshold, 0, 10000, 0.005f);
         pGui->endGroup();
     }
     if (pGui->beginGroup("Photon Splat", true))
     {
         pGui->addFloatVar("Splat size", mSplatSize, 0, 10, 0.01f);
-        pGui->addFloatVar("Intensity", mIntensity, 0, 10, 0.0002f);
         pGui->addFloatVar("Kernel Power", mKernelPower, 0.01f, 10, 0.01f);
-
+        pGui->addFloatVar("Scatter Normal Threshold", mScatterNormalThreshold, 0.01f, 1.0, 0.01f);
+        pGui->addFloatVar("Scatter Distance Threshold", mScatterDistanceThreshold, 0.1f, 10.0f, 0.1f);
+        pGui->addFloatVar("Scatter Planar Threshold", mScatterPlanarThreshold, 0.01f, 10.0, 0.1f);
         {
             Gui::DropdownList debugModeList;
             debugModeList.push_back({ 0, "Kernel" });
@@ -134,11 +137,13 @@ void Caustics::onGuiRender(Gui* pGui)
     }
     if (pGui->beginGroup("Smooth Photon", false))
     {
-        pGui->addCheckBox("Enable Smooth", mSmoothPhoton);
+        pGui->addCheckBox("Remove Isolated Photon", mRemoveIsolatedPhoton);
+        pGui->addCheckBox("Enable Median Filter", mMedianFilter);
         pGui->addFloatVar("Normal Threshold", mNormalThreshold, 0.01f, 1.0, 0.01f);
-        pGui->addFloatVar("Distance Threshold", mDistanceThreshold, 0.1f, 10.0f, 0.1f);
+        pGui->addFloatVar("Distance Threshold", mDistanceThreshold, 0.1f, 100.0f, 0.1f);
         pGui->addFloatVar("Planar Threshold", mPlanarThreshold, 0.01f, 10.0, 0.1f);
         pGui->addFloatVar("Trim Direction Threshold", trimDirectionThreshold, 0, 1);
+        pGui->addIntVar("Min Neighbour Count", mMinNeighbourCount, 0, 8);
         pGui->endGroup();
     }
     mLightDirection = vec3(
@@ -389,6 +394,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pCB["traceColorThreshold"] = mTraceColorThreshold * (512 * 512) / (mDispatchSize * mDispatchSize);
         pCB["cullColorThreshold"] = mCullColorThreshold / 255;
         pCB["gAreaType"] = mAreaType;
+        pCB["gIntensity"] = mIntensity / 1000;
         auto rayGenVars = mpPhotonTraceVars->getRayGenVars();
         rayGenVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
         rayGenVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
@@ -458,7 +464,8 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     }
 
     // smooth photon
-    if (mSmoothPhoton)
+    StructuredBuffer::SharedPtr photonBuffer = mpPhotonBuffer;
+    if (mRemoveIsolatedPhoton || mMedianFilter)
     {
         ConstantBuffer::SharedPtr pPerFrameCB = mpSmoothVars["PerFrameCB"];
         glm::mat4 wvp = mpCamera->getProjMatrix() * mpCamera->getViewMatrix();
@@ -471,12 +478,17 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pPerFrameCB["pixelLuminanceThreshold"] = mPixelLuminanceThreshold;
         pPerFrameCB["minPhotonPixelSize"] = mMinPhotonPixelSize;
         pPerFrameCB["trimDirectionThreshold"] = trimDirectionThreshold;
-        mpSmoothVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
+        pPerFrameCB["enableMedianFilter"] = uint32_t(mMedianFilter);
+        pPerFrameCB["removeIsolatedPhoton"] = uint32_t(mRemoveIsolatedPhoton);
+        pPerFrameCB["minNeighbourCount"] = mMinNeighbourCount;
+        mpSmoothVars->setStructuredBuffer("gSrcPhotonBuffer", mpPhotonBuffer);
+        mpSmoothVars->setStructuredBuffer("gDstPhotonBuffer", mpPhotonBuffer2);
         mpSmoothVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
         mpSmoothVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
         mpSmoothVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
         static int groupSize = 16;
         pContext->dispatch(mpSmoothState.get(), mpSmoothVars.get(), uvec3(mDispatchSize / groupSize, mDispatchSize / groupSize, 1));
+        photonBuffer = mpPhotonBuffer2;
     }
 
     // photon scattering
@@ -488,17 +500,16 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pPerFrameCB["gWvpMat"] = wvp;
         pPerFrameCB["gEyePosW"] = mpCamera->getPosition();
         pPerFrameCB["gSplatSize"] = mSplatSize;
-        pPerFrameCB["gIntensity"] = mIntensity;
         pPerFrameCB["gPhotonMode"] = mPhotonMode;
         pPerFrameCB["gKernelPower"] = mKernelPower;
         pPerFrameCB["gShowPhoton"] = uint32_t(mPhotonDisplayMode);
         pPerFrameCB["gLightDir"] = mLightDirection;
         pPerFrameCB["taskDim"] = int2(mDispatchSize, mDispatchSize);
-        pPerFrameCB["normalThreshold"] = mNormalThreshold;
-        pPerFrameCB["distanceThreshold"] = mDistanceThreshold;
-        pPerFrameCB["planarThreshold"] = mPlanarThreshold;
+        pPerFrameCB["normalThreshold"] = mScatterNormalThreshold;
+        pPerFrameCB["distanceThreshold"] = mScatterDistanceThreshold;
+        pPerFrameCB["planarThreshold"] = mScatterPlanarThreshold;
         mpPhotonScatterVars["gLinearSampler"] = mpLinearSampler;
-        mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
+        mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", photonBuffer);
         mpPhotonScatterVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
         mpPhotonScatterVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
         mpPhotonScatterVars->setTexture("gNormalTex", mpGPassFbo->getColorTexture(0));
@@ -628,6 +639,7 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
 #define TASK_SIZE 4096*4096
     mpRayTaskBuffer = StructuredBuffer::create(mpAnalyseProgram.get(), std::string("gRayTask"), TASK_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpPhotonBuffer = StructuredBuffer::create(mpPhotonTraceProgram->getHitProgram(0).get(), std::string("gPhotonBuffer"), TASK_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
+    mpPhotonBuffer2 = StructuredBuffer::create(mpPhotonTraceProgram->getHitProgram(0).get(), std::string("gPhotonBuffer"), TASK_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpDrawArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gDrawArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg);
     mpRayArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gRayArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg);
     mpRtOut = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
