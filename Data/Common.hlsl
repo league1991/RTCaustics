@@ -1,3 +1,6 @@
+
+#define GATHER_TILE_SIZE 16
+
 struct Photon
 {
     float3 posW;
@@ -21,6 +24,11 @@ struct RayArgument
     int rayTaskCount;
 };
 
+struct IDBlock
+{
+    int address;
+    int count;
+};
 
 void getRefractVector(float3 I, float3 N, out float3 R, float eta)
 {
@@ -46,3 +54,4 @@ bool isPhotonAdjecent(Photon photon0, Photon photon1, float normalThreshold, flo
         //dot(photon0.normalW, photon0.posW - photon1.posW) < planarThreshold
         ;
 }
+

@@ -44,6 +44,8 @@ public:
 
 private:
     int mDispatchSize=512;
+    int mTileSize = 16;
+    int2 mTileDim = int2(1, 1);
     int mMaxTraceDepth = 10;
     bool mRayTrace = true;
     bool mRefinePhoton = false;
@@ -55,6 +57,7 @@ private:
     uint32_t mSampleIndex = 0xdeadbeef;
     float mEmitSize = 30.0;
     float mSplatSize = 2.8f;
+    float mDepthRadius = 0.1f;
     float mIntensity = 3.f;
     float mRoughThreshold = 0.1f;
     float mKernelPower = 1.f;
@@ -77,6 +80,7 @@ private:
     int mPhotonIDScale = 50;
     float mTraceColorThreshold = 0.04f;
     float mCullColorThreshold = 0.04f;
+    int   mScatterOrGather = 1;
     float2 mLightAngle{0.4f,2.f};
     float3 mLightDirection;
     float2 mLightAngleSpeed{0,0};
@@ -101,6 +105,7 @@ private:
     Texture::SharedPtr mpDiffuseTex;
     Texture::SharedPtr mpSpecularTex;
     Texture::SharedPtr mpDepthTex;
+    Texture::SharedPtr mpPhotonMapTex;
     Fbo::SharedPtr mpGPassFbo;
 
     // photon trace
@@ -128,6 +133,17 @@ private:
     Fbo::SharedPtr mpCausticsFbo;
     Texture::SharedPtr mpGaussianKernel;
     Sampler::SharedPtr mpLinearSampler;
+
+    // photon gather
+    ComputeProgram::SharedPtr   mpAllocateTileProgram[3];
+    ComputeVars::SharedPtr      mpAllocateTileVars[3];
+    ComputeState::SharedPtr     mpAllocateTileState[3];
+    ComputeProgram::SharedPtr   mpPhotonGatherProgram;
+    ComputeVars::SharedPtr      mpPhotonGatherVars;
+    ComputeState::SharedPtr     mpPhotonGatherState;
+    StructuredBuffer::SharedPtr mpTileIDInfoBuffer;
+    Buffer::SharedPtr           mpIDBuffer;
+    Buffer::SharedPtr           mpIDCounterBuffer;
 
     // raytrace
     RtProgram::SharedPtr mpRaytraceProgram;

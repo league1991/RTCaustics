@@ -105,6 +105,13 @@ void Caustics::onGuiRender(Gui* pGui)
     }
     if (pGui->beginGroup("Photon Splat", true))
     {
+        {
+            Gui::DropdownList debugModeList;
+            debugModeList.push_back({ 0, "Scatter" });
+            debugModeList.push_back({ 1, "Gather" });
+            debugModeList.push_back({ 2, "None" });
+            pGui->addDropdown("Density Estimation", debugModeList, (uint32_t&)mScatterOrGather);
+        }
         pGui->addFloatVar("Splat size", mSplatSize, 0, 10, 0.01f);
         pGui->addFloatVar("Kernel Power", mKernelPower, 0.01f, 10, 0.01f);
         pGui->addFloatVar("Scatter Normal Threshold", mScatterNormalThreshold, 0.01f, 1.0, 0.01f);
@@ -269,6 +276,22 @@ void Caustics::loadShader()
     mpSmoothState = ComputeState::create();
     mpSmoothState->setProgram(mpSmoothProgram);
     mpSmoothVars = ComputeVars::create(mpSmoothProgram.get());
+
+    // allocate tile
+    const char* shaderEntries[] = { "CountTilePhoton","AllocateMemory","StoreTilePhoton" };
+    for (int i = 0; i < 3; i++)
+    {
+        mpAllocateTileProgram[i] = ComputeProgram::createFromFile("AllocateTilePhoton.cs.hlsl", shaderEntries[i]);
+        mpAllocateTileState[i] = ComputeState::create();
+        mpAllocateTileState[i]->setProgram(mpAllocateTileProgram[i]);
+        mpAllocateTileVars[i] = ComputeVars::create(mpAllocateTileProgram[i].get());
+    }
+
+    // photon gather
+    mpPhotonGatherProgram = ComputeProgram::createFromFile("PhotonGather.cs.hlsl", "main");
+    mpPhotonGatherState = ComputeState::create();
+    mpPhotonGatherState->setProgram(mpPhotonGatherProgram);
+    mpPhotonGatherVars = ComputeVars::create(mpPhotonGatherProgram.get());
 
     // photon scatter
     {
@@ -493,6 +516,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     }
 
     // photon scattering
+    if(mScatterOrGather == 0)
     {
         pContext->clearFbo(mpCausticsFbo.get(), vec4(0, 0, 0, 0), 1.0, 0);
         glm::mat4 wvp = mpCamera->getProjMatrix() * mpCamera->getViewMatrix();
@@ -540,6 +564,55 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             pContext->drawIndexedIndirect(scatterState.get(), mpPhotonScatterVars.get(), mpDrawArgumentBuffer.get(), 0);
         }
     }
+    else if (mScatterOrGather == 1)
+    {
+        uvec3 dispatchDim[] = {
+            uvec3(mDispatchSize * mDispatchSize / 64,1,1),
+            uvec3(mTileDim.x / 16,mTileDim.y / 16,1),
+            uvec3(mDispatchSize * mDispatchSize / 64,1,1)
+        };
+        // build tile data
+        for (int i = 0; i < 3; i++)
+        {
+            auto vars = mpAllocateTileVars[i];
+            auto states = mpAllocateTileState[i];
+            ConstantBuffer::SharedPtr pPerFrameCB = vars["PerFrameCB"];
+            glm::mat4 wvp = mpCamera->getProjMatrix() * mpCamera->getViewMatrix();
+            pPerFrameCB["gViewProjMat"] = wvp;// mpCamera->getViewProjMatrix();
+            pPerFrameCB["screenDim"] = int2(mpRtOut->getWidth(), mpRtOut->getHeight());
+            pPerFrameCB["tileDim"] = mTileDim;
+            pPerFrameCB["gSplatSize"] = mSplatSize;
+            vars->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
+            vars->setStructuredBuffer("gPhotonBuffer", photonBuffer);
+            vars->setStructuredBuffer("gTileInfo", mpTileIDInfoBuffer);
+            vars->setRawBuffer("gIDBuffer", mpIDBuffer);
+            vars->setRawBuffer("gIDCounter", mpIDCounterBuffer);
+            pContext->dispatch(states.get(), vars.get(), dispatchDim[i]);
+        }
+        // gathering
+        ConstantBuffer::SharedPtr pPerFrameCB = mpPhotonGatherVars["PerFrameCB"];
+        glm::mat4 wvp = mpCamera->getProjMatrix() * mpCamera->getViewMatrix();
+        int2 screenSize(mpDepthTex->getWidth(), mpDepthTex->getHeight());
+        pPerFrameCB["gInvViewProjMat"] = mpCamera->getInvViewProjMatrix();
+        pPerFrameCB["screenDim"] = screenSize;
+        pPerFrameCB["tileDim"] = mTileDim;
+        pPerFrameCB["gSplatSize"] = mSplatSize;
+        pPerFrameCB["gDepthRadius"] = mDepthRadius;
+        mpPhotonGatherVars->setStructuredBuffer("gPhotonBuffer", photonBuffer);
+        mpPhotonGatherVars->setStructuredBuffer("gTileInfo", mpTileIDInfoBuffer);
+        mpPhotonGatherVars->setRawBuffer("gIDBuffer", mpIDBuffer);
+        mpPhotonGatherVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
+        mpPhotonGatherVars->setTexture("gNormalTex",mpGPassFbo->getColorTexture(0));
+        mpPhotonGatherVars->setTexture("gPhotonTex", mpCausticsFbo->getColorTexture(0));
+        static int groupSize = 16;
+        uvec3 dispatchSize(
+            (screenSize.x + groupSize - 1) / groupSize,
+            (screenSize.y + groupSize - 1) / groupSize, 1);
+        static bool isDispatch = groupSize;
+        if (isDispatch)
+            pContext->dispatch(mpPhotonGatherState.get(), mpPhotonGatherVars.get(), dispatchSize);
+    }
+
 
     // Render output
     if (mDebugMode == 9)
@@ -644,9 +717,17 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
     mpPhotonBuffer2 = StructuredBuffer::create(mpPhotonTraceProgram->getHitProgram(0).get(), std::string("gPhotonBuffer"), TASK_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpDrawArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gDrawArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg);
     mpRayArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gRayArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg);
+    mTileDim.x = (width + mTileSize - 1) / mTileSize;
+    mTileDim.y = (height + mTileSize - 1) / mTileSize;
+    int avgTileIDCount = 64;
+    mpTileIDInfoBuffer = StructuredBuffer::create(mpAllocateTileProgram[0].get(), std::string("gTileInfo"), mTileDim.x * mTileDim.y, ResourceBindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
+    mpIDBuffer = Buffer::create(mTileDim.x * mTileDim.y * avgTileIDCount * sizeof(uint32_t), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, Buffer::CpuAccess::None);
+    mpIDCounterBuffer = Buffer::create(sizeof(uint32_t), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, Buffer::CpuAccess::None);
+
     mpRtOut = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpDepthTex = Texture::create2D(width, height, ResourceFormat::D24UnormS8, 1, 1, nullptr, Resource::BindFlags::DepthStencil | Resource::BindFlags::ShaderResource);
-    mpCausticsFbo = Fbo::create2D(width, height, ResourceFormat::RGBA16Float, ResourceFormat::D24UnormS8);
+    mpPhotonMapTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
+    mpCausticsFbo = Fbo::create({ mpPhotonMapTex });
 
     mpNormalTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
     mpDiffuseTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);

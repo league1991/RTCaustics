@@ -279,7 +279,8 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         }
         else if (gAreaType == 1)
         {
-            area = length(hitData2.dPdx) + length(hitData2.dPdy);
+            area = (length(hitData2.dPdx) + length(hitData2.dPdy));
+            area *= area;
         }
         else if (gAreaType == 2)
         {

@@ -39,6 +39,12 @@
     <FxCompile Include="Data\CompositeRT.rt.hlsl">
       <Filter>Data</Filter>
     </FxCompile>
+    <FxCompile Include="Data\AllocateTilePhoton.cs.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
+    <FxCompile Include="Data\PhotonGather.cs.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Caustics.h" />
