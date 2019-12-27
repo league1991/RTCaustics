@@ -40,7 +40,7 @@ shared cbuffer PerFrameCB
 
 
 RWStructuredBuffer<DrawArguments> gDrawArgument;
-RWStructuredBuffer<Photon> gPhotonBuffer;
+StructuredBuffer<Photon> gPhotonBuffer;
 RWStructuredBuffer<IDBlock> gTileInfo;
 RWByteAddressBuffer gIDBuffer;
 RWByteAddressBuffer gIDCounter;
@@ -53,10 +53,12 @@ int getTileOffset(int x, int y)
 void GetPhotonScreenRange(Photon photon, out int2 minTileID, out int2 maxTileID)
 {
     // get screen position
-    float4 px0 = mul(float4(photon.posW + photon.dPdx * gSplatSize, 1), gViewProjMat);
-    float4 px1 = mul(float4(photon.posW - photon.dPdx * gSplatSize, 1), gViewProjMat);
-    float4 py0 = mul(float4(photon.posW + photon.dPdy * gSplatSize, 1), gViewProjMat);
-    float4 py1 = mul(float4(photon.posW - photon.dPdy * gSplatSize, 1), gViewProjMat);
+    float3 corner0 = photon.dPdx + photon.dPdy;
+    float3 corner1 = photon.dPdx - photon.dPdy;
+    float4 px0 = mul(float4(photon.posW + corner0 * gSplatSize, 1), gViewProjMat);
+    float4 px1 = mul(float4(photon.posW - corner0 * gSplatSize, 1), gViewProjMat);
+    float4 py0 = mul(float4(photon.posW + corner1 * gSplatSize, 1), gViewProjMat);
+    float4 py1 = mul(float4(photon.posW - corner1 * gSplatSize, 1), gViewProjMat);
     px0.xyz /= px0.w;
     px1.xyz /= px1.w;
     py0.xyz /= py0.w;
@@ -78,6 +80,12 @@ void GetPhotonScreenRange(Photon photon, out int2 minTileID, out int2 maxTileID)
     maxCoord = max(maxCoord, py0.xy);
     maxCoord = max(maxCoord, py1.xy);
 
+    if (any(minCoord > 1) || any(maxCoord < -1))
+    {
+        minTileID = 1;
+        maxTileID = -1;
+        return;
+    }
     minCoord = (minCoord + 1) * 0.5;
     maxCoord = (maxCoord + 1) * 0.5;
     minCoord = clamp(minCoord, 0, 1);
@@ -151,7 +159,7 @@ void StoreTilePhoton(uint3 threadIdx : SV_DispatchThreadID)
             int address = gTileInfo[offset].address;
             int idx = 0;
             InterlockedAdd(gTileInfo[offset].count, 1, idx);
-            gIDBuffer.Store(address + idx, photonID);
+            gIDBuffer.Store((address + idx)*4, photonID);
         }
     }
 }

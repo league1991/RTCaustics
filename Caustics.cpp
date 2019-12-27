@@ -567,9 +567,9 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     else if (mScatterOrGather == 1)
     {
         uvec3 dispatchDim[] = {
-            uvec3(mDispatchSize * mDispatchSize / 64,1,1),
-            uvec3(mTileDim.x / 16,mTileDim.y / 16,1),
-            uvec3(mDispatchSize * mDispatchSize / 64,1,1)
+            uvec3((mDispatchSize * mDispatchSize + 63) / 64,1,1),
+            uvec3((mTileDim.x+15) / 16,(mTileDim.y+15) / 16,1),
+            uvec3((mDispatchSize * mDispatchSize + 63) / 64,1,1)
         };
         // build tile data
         for (int i = 0; i < 3; i++)
@@ -608,9 +608,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         uvec3 dispatchSize(
             (screenSize.x + groupSize - 1) / groupSize,
             (screenSize.y + groupSize - 1) / groupSize, 1);
-        static bool isDispatch = groupSize;
-        if (isDispatch)
-            pContext->dispatch(mpPhotonGatherState.get(), mpPhotonGatherVars.get(), dispatchSize);
+        pContext->dispatch(mpPhotonGatherState.get(), mpPhotonGatherVars.get(), dispatchSize);
     }
 
 
@@ -715,11 +713,11 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
     mpRayTaskBuffer = StructuredBuffer::create(mpAnalyseProgram.get(), std::string("gRayTask"), TASK_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpPhotonBuffer = StructuredBuffer::create(mpPhotonTraceProgram->getHitProgram(0).get(), std::string("gPhotonBuffer"), TASK_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpPhotonBuffer2 = StructuredBuffer::create(mpPhotonTraceProgram->getHitProgram(0).get(), std::string("gPhotonBuffer"), TASK_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
-    mpDrawArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gDrawArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg);
+    mpDrawArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gDrawArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg | Resource::BindFlags::ShaderResource);
     mpRayArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gRayArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg);
     mTileDim.x = (width + mTileSize - 1) / mTileSize;
     mTileDim.y = (height + mTileSize - 1) / mTileSize;
-    int avgTileIDCount = 64;
+    int avgTileIDCount = 1024;
     mpTileIDInfoBuffer = StructuredBuffer::create(mpAllocateTileProgram[0].get(), std::string("gTileInfo"), mTileDim.x * mTileDim.y, ResourceBindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
     mpIDBuffer = Buffer::create(mTileDim.x * mTileDim.y * avgTileIDCount * sizeof(uint32_t), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, Buffer::CpuAccess::None);
     mpIDCounterBuffer = Buffer::create(sizeof(uint32_t), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, Buffer::CpuAccess::None);

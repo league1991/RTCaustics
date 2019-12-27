@@ -119,7 +119,7 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID, ui
     float3 totalLight = 0;
     for (int i = 0; i < count; i++)
     {
-        int id = gIDBuffer.Load(beginAddress + i);
+        int id = gIDBuffer.Load((beginAddress + i)*4);
         Photon photon = gPhotonBuffer[id];
         float lightFactor = getLightFactor(worldPnt.xyz, photon.posW, photon.dPdx, photon.dPdy);
         totalLight += lightFactor * photon.color;

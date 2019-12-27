@@ -43,7 +43,7 @@ public:
     void onGuiRender(Gui* pGui) override;
 
 private:
-    int mDispatchSize=512;
+    int mDispatchSize=64;
     int mTileSize = 16;
     int2 mTileDim = int2(1, 1);
     int mMaxTraceDepth = 10;
