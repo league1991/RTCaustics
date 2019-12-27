@@ -330,18 +330,6 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         }
     }
 
-    //if (hitData.depth == 0)
-    //{
-    //    float4 cameraPnt = mul(float4(posW, 1), gCamera.viewProjMat);
-    //    cameraPnt.xyz /= cameraPnt.w;
-    //    float2 screenPosF = saturate((cameraPnt.xy * float2(1, -1) + 1.0) * 0.5);
-    //    uint2 screenDim;
-    //    gOutput.GetDimensions(screenDim.x, screenDim.y);
-
-    //    int2 screenPosI = screenPosF * screenDim;
-    //    screenPosI = DispatchRaysIndex().xy;
-    //    gOutput[screenPosI.xy] = float4(abs(sd.N), 1);
-    //}
 }
 
 [shader("raygeneration")]
@@ -414,11 +402,4 @@ void rayGen()
     }
 
     TraceRay( gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, hitData );
-    //gOutput[int2(0,0)] = hitData.color;
-
-    //Photon photon;
-    //photon.posW = float3(0, 0, 0);
-    //photon.normalW = float3(0, 0, 0);
-    //photon.color = float3(0, 0, 0);
-    //gPhotonBuffer[0] = photon;
 }

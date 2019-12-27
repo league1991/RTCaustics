@@ -115,24 +115,6 @@ float checkPixelNeighbour(uint2 pixelCoord0, RayTask task0, Photon photon0, uint
 [numthreads(16, 16, 1)]
 void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 threadIdx : SV_DispatchThreadID)
 {
-    //struct RayTask
-    //{
-    //    float2 screenCoord;
-    //    float2 pixelSize;
-    //    int    PhotonIdx;
-    //};
-
-    /*struct Photon
-    {
-        float3 posW;
-        float3 normalW;
-        float3 color;
-        float3 dPdx;
-        float3 dPdy;
-    };*/
-
-    //uint length, stride;
-    //gPhotonBuffer.GetDimensions(length, stride);
     uint rayIdx = threadIdx.y * taskDim.x + threadIdx.x;
     RayTask task0 = gRayTask[rayIdx];
     int idx0 = task0.photonIdx;
@@ -155,69 +137,6 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 thr
         return;
     }
 
-    //float subdW = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(-1,0));
-    //float subdE = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(1, 0));
-    //float subdN = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(0, -1));
-    //float subdS = checkPixelNeighbour(threadIdx.xy, task0, photon0, uint2(0, 1));
-
-    //int subdX = max(subdW, subdE);
-    //int subdY = max(subdN, subdS);
-    //if (subdX == 0 || subdY == 0)
-    //{
-    //    return;
-    //}
-    //int sampleX = subdX * 2;
-    //int sampleY = subdY * 2;
-    //int sampleCount = sampleX * sampleY;
-    //gPhotonBuffer[idx0].dPdx /= (subdX + 1);
-    //gPhotonBuffer[idx0].dPdy /= (subdY + 1);
-    //gPhotonBuffer[idx0].color /= sampleCount;
-    //float2 pixelSize = float2(1, 1) / float2(sampleX, sampleY);
-    //gRayTask[rayIdx].pixelSize = pixelSize;
-    //float2 screenCoord0 = task0.screenCoord - pixelSize * float2(subdX - 1, subdY - 1);
-
-    //int taskIdx = 0;
-    //InterlockedAdd(gRayArgument[0].rayTaskCount, sampleCount -1, taskIdx);
-
-    //for (uint i = 0, offset = 0; i < sampleCount; i++)
-    //{
-    //    uint y = i / sampleX;
-    //    uint x = i - sampleX * y;
-    //    if (x == subdX-1 && y == subdY-1)
-    //    {
-    //        continue;
-    //    }
-    //    RayTask newTask;
-    //    newTask.screenCoord = screenCoord0 + pixelSize * float2(x, y);
-    //    newTask.pixelSize = pixelSize;
-    //    newTask.photonIdx = -1;
-    //    gRayTask[taskIdx + offset] = newTask;
-    //    offset++;
-    //}
-
-    //int inF0, inFW, inFE, inFN, inFS;
-    //uint2 dir[9] = {
-    //    uint2(-1,-1),
-    //    uint2(-1,0),
-    //    uint2(-1,1),
-    //    uint2(0,-1),
-    //    uint2(0,0),
-    //    uint2(0,1),
-    //    uint2(1,-1),
-    //    uint2(1,0),
-    //    uint2(1,1),
-    //};
-    //float screenArea = 0;
-    //int isAnyIn = 0;
-    //for (int i = 0; i < 9; i++)
-    //{
-    //    int inF;
-    //    float area = getNeighbourArea(threadIdx.xy, dir[i], inF);
-    //    if (inF)screenArea = max(screenArea, area);
-    //    isAnyIn |= inF;
-    //}
-    //if (!isAnyIn)
-    //    return;
     float4 posSDx = mul(float4(photon0.posW + photon0.dPdx, 1), viewProjMat);
     float4 posSDy = mul(float4(photon0.posW + photon0.dPdy, 1), viewProjMat);
     posSDx /= posSDx.w;
