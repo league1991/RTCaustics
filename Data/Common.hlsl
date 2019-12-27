@@ -60,3 +60,8 @@ float smoothKernel(float x)
     x = saturate(x);
     return x * x * (2 * x - 3) + 1;
 }
+
+bool isInFrustum(float4 p)
+{
+    return (p.x >= -p.w) && (p.x <= p.w) && (p.y >= -p.w) && (p.y <= p.w) && (p.z >= 0) && (p.z <= p.w);
+}

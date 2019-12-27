@@ -53,9 +53,14 @@ cbuffer PerImageCB
     // Lighting params
     LightData gLightData[16];
     float4x4 gInvWvpMat;
+
     float3 gCameraPos;
     uint gNumLights;
+
+    int2 screenDim;
+    int2 dispatchSize;
     uint gDebugMode;
+    float gMaxPixelArea;
 };
 
 float4 main(float2 texC  : TEXCOORD) : SV_TARGET
@@ -82,7 +87,12 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
     else if (gDebugMode == ShowRoughness)
         color = diffuseVal.a;
     else if (gDebugMode == ShowRayTex)
-        color = gRayTex.Sample(gPointSampler, texC);
+    {
+        float2 screenPixel = texC * screenDim;
+        float2 uv = clamp(screenPixel / 2048, 0, 1);
+        color = gRayTex.Sample(gPointSampler, uv);
+        color.r /= gMaxPixelArea;
+    }
     else
     {
         ShadingData sd = initShadingData();

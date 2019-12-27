@@ -56,6 +56,7 @@ shared cbuffer PerFrameCB
     float cullColorThreshold;
     uint  gAreaType;
     float gIntensity;
+    float gSplatSize;
 };
 
 struct PrimaryRayData
@@ -159,17 +160,21 @@ void updateReflectRayDifferential(
     dDdx = dDdx - 2 * (dot(D, N) * dNdx + dDNdx * N);
 }
 
-float getPhotonScreenArea(Photon p, out bool isInfrustum)
+float getPhotonScreenArea(float3 posW, float3 dPdx, float3 dPdy, out bool inFrustum)
 {
-    float4 s0 = mul(float4(p.posW, 1), gCamera.viewProjMat);
-    float4 sx = mul(float4(p.posW + p.dPdx, 1), gCamera.viewProjMat);
-    float4 sy = mul(float4(p.posW + p.dPdy, 1), gCamera.viewProjMat);
+    dPdx = dPdx * gSplatSize;
+    dPdy = dPdy * gSplatSize;
+    float4 s0 = mul(float4(posW, 1), gCamera.viewProjMat);
+    float4 s00 = mul(float4(posW + dPdx + dPdy, 1), gCamera.viewProjMat);
+    float4 s01 = mul(float4(posW + dPdx - dPdy, 1), gCamera.viewProjMat);
+    float4 s10 = mul(float4(posW - dPdx + dPdy, 1), gCamera.viewProjMat);
+    float4 s11 = mul(float4(posW - dPdx - dPdy, 1), gCamera.viewProjMat);
+    inFrustum = isInFrustum(s00) || isInFrustum(s01) || isInFrustum(s10) || isInFrustum(s11);
     s0 /= s0.w;
-    sx /= sx.w;
-    sy /= sy.w;
-    isInfrustum = all(abs(s0.xy) < 1) && s0.z > 0 && s0.z < 1;
-    float2 dx = (sx.xy - s0.xy) * viewportDims;
-    float2 dy = (sy.xy - s0.xy) * viewportDims;
+    s00 /= s00.w;
+    s01 /= s01.w;
+    float2 dx = (s00.xy - s0.xy) * viewportDims;
+    float2 dy = (s01.xy - s0.xy) * viewportDims;
     float area = abs(dx.x * dy.y - dy.x * dx.y);
     //float area = 0.5 * (dx.x * dx.y + dy.x * dy.y);
     return area;
@@ -296,7 +301,9 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
 
         //float area0 = emitSize * emitSize / (coarseDim.x * coarseDim.y);
         float3 color = dot(-rayDirW, sd.N)* sd.diffuse* hitData.color.rgb / area;
-        if (dot(color, float3(0.299, 0.587, 0.114)) > cullColorThreshold)
+        bool isInFrustum;
+        float pixelArea = getPhotonScreenArea(posW, hitData2.dPdx, hitData2.dPdy, isInFrustum);
+        if (dot(color, float3(0.299, 0.587, 0.114)) > cullColorThreshold && isInFrustum)
         {
             uint instanceIdx = 0;
             InterlockedAdd(gDrawArgument[0].instanceCount, 1, instanceIdx);
@@ -304,7 +311,7 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
             Photon photon;
             photon.posW = posW;
             photon.normalW = sd.N;
-            photon.color = color;//sr.color.rgb;
+            photon.color = color;
             photon.dPdx = hitData2.dPdx;
             photon.dPdy = hitData2.dPdy;
             gPhotonBuffer[instanceIdx] = photon;
@@ -312,25 +319,29 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
             uint3 dim3 = DispatchRaysDimensions();
             uint3 idx3 = DispatchRaysIndex();
             uint idx = idx3.y * dim3.x + idx3.x;
-            bool isInFrustum;
             gRayTask[idx].photonIdx = instanceIdx;
-            gRayTask[idx].pixelArea = getPhotonScreenArea(photon, isInFrustum);
+            gRayTask[idx].pixelArea = pixelArea;
             gRayTask[idx].inFrustum = isInFrustum ? 1 : 0;
+
+            if (!launchRayTask)
+            {
+                gOutput[idx3.xy] = float4(pixelArea.x,0,0, 1);
+            }
         }
     }
 
-    if (hitData.depth == 0)
-    {
-        float4 cameraPnt = mul(float4(posW, 1), gCamera.viewProjMat);
-        cameraPnt.xyz /= cameraPnt.w;
-        float2 screenPosF = saturate((cameraPnt.xy * float2(1, -1) + 1.0) * 0.5);
-        uint2 screenDim;
-        gOutput.GetDimensions(screenDim.x, screenDim.y);
+    //if (hitData.depth == 0)
+    //{
+    //    float4 cameraPnt = mul(float4(posW, 1), gCamera.viewProjMat);
+    //    cameraPnt.xyz /= cameraPnt.w;
+    //    float2 screenPosF = saturate((cameraPnt.xy * float2(1, -1) + 1.0) * 0.5);
+    //    uint2 screenDim;
+    //    gOutput.GetDimensions(screenDim.x, screenDim.y);
 
-        int2 screenPosI = screenPosF * screenDim;
-        screenPosI = DispatchRaysIndex().xy;
-        gOutput[screenPosI.xy] = float4(abs(sd.N), 1);
-    }
+    //    int2 screenPosI = screenPosF * screenDim;
+    //    screenPosI = DispatchRaysIndex().xy;
+    //    gOutput[screenPosI.xy] = float4(abs(sd.N), 1);
+    //}
 }
 
 [shader("raygeneration")]
@@ -362,6 +373,7 @@ void rayGen()
     else
     {
         lightUV = float2(launchIndex.xy) / float2(coarseDim.xy);
+        gOutput[launchIndex.xy] = 0;
     }
     lightUV = lightUV * 2 - 1;
     //float dispatchFactor = (coarseDim.x / 512.0) * (coarseDim.y / 512.0);
@@ -402,7 +414,6 @@ void rayGen()
     }
 
     TraceRay( gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, hitData );
-    //gOutput[launchIndex.xy] = hitData.color;
     //gOutput[int2(0,0)] = hitData.color;
 
     //Photon photon;

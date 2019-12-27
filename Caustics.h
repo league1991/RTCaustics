@@ -63,6 +63,7 @@ private:
     float mIntensity = 3.f;
     float mRoughThreshold = 0.1f;
     float mKernelPower = 1.f;
+    float mMaxPixelArea = 100;
     int mPhotonDisplayMode = 0;
     uint32_t mPhotonMode = 0;
     uint32_t mAreaType = 0;
@@ -167,7 +168,7 @@ private:
     StructuredBuffer::SharedPtr  mpPhotonBuffer;
     StructuredBuffer::SharedPtr  mpPhotonBuffer2;
     StructuredBuffer::SharedPtr  mpRayTaskBuffer;
-
+    Texture::SharedPtr mpRayDensityTex;
 
     void setPerFrameVars(const Fbo* pTargetFbo);
     void renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo);

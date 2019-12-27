@@ -42,21 +42,6 @@ void Caustics::onGuiRender(Gui* pGui)
 {
     pGui->addCheckBox("Ray Trace", mRayTrace);
 
-    {
-        Gui::DropdownList debugModeList;
-        debugModeList.push_back({ 0, "Rasterize" });
-        debugModeList.push_back({ 1, "Depth" });
-        debugModeList.push_back({ 2, "Normal" });
-        debugModeList.push_back({ 3, "Diffuse" });
-        debugModeList.push_back({ 4, "Specular" });
-        debugModeList.push_back({ 5, "Photon" });
-        debugModeList.push_back({ 6, "World" });
-        debugModeList.push_back({ 7, "Roughness" });
-        debugModeList.push_back({ 8, "Ray" });
-        debugModeList.push_back({ 9, "Raytrace" });
-        pGui->addDropdown("Debug mode", debugModeList, (uint32_t&)mDebugMode);
-    }
-
     if (pGui->addButton("Load Scene"))
     {
         std::string filename;
@@ -69,6 +54,24 @@ void Caustics::onGuiRender(Gui* pGui)
     if (pGui->addButton("Update Shader"))
     {
         loadShader();
+    }
+
+    if (pGui->beginGroup("Composite", true))
+    {
+        Gui::DropdownList debugModeList;
+        debugModeList.push_back({ 0, "Rasterize" });
+        debugModeList.push_back({ 1, "Depth" });
+        debugModeList.push_back({ 2, "Normal" });
+        debugModeList.push_back({ 3, "Diffuse" });
+        debugModeList.push_back({ 4, "Specular" });
+        debugModeList.push_back({ 5, "Photon" });
+        debugModeList.push_back({ 6, "World" });
+        debugModeList.push_back({ 7, "Roughness" });
+        debugModeList.push_back({ 8, "Ray Info" });
+        debugModeList.push_back({ 9, "Raytrace" });
+        pGui->addDropdown("Composite mode", debugModeList, (uint32_t&)mDebugMode);
+        pGui->addFloatVar("Max Pixel Area", mMaxPixelArea, 0, 1000, 0.1f);
+        pGui->endGroup();
     }
 
     if (pGui->beginGroup("Photon Trace", true))
@@ -413,7 +416,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
 
     // coarse photon tracing
     {
-        pContext->clearTexture(mpRtOut.get());
+        pContext->clearTexture(mpRayDensityTex.get());
         GraphicsVars* pVars = mpPhotonTraceVars->getGlobalVars().get();
         ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
         pCB["invView"] = glm::inverse(mpCamera->getViewMatrix());
@@ -432,16 +435,17 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pCB["cullColorThreshold"] = mCullColorThreshold / 255;
         pCB["gAreaType"] = mAreaType;
         pCB["gIntensity"] = mIntensity / 1000;
+        pCB["gSplatSize"] = mSplatSize;
         auto rayGenVars = mpPhotonTraceVars->getRayGenVars();
         rayGenVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
         rayGenVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
         rayGenVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
-        rayGenVars->setTexture("gOutput", mpRtOut);
+        rayGenVars->setTexture("gOutput", mpRayDensityTex);
         rayGenVars->setTexture("gUniformNoise", mpUniformNoise);
         auto hitVars = mpPhotonTraceVars->getHitVars(0);
         for (auto& hitVar : hitVars)
         {
-            hitVar->setTexture("gOutput", mpRtOut);
+            hitVar->setTexture("gOutput", mpRayDensityTex);
             hitVar->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
             hitVar->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
             hitVar->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
@@ -487,12 +491,12 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         rayGenVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
         rayGenVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
         rayGenVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
-        rayGenVars->setTexture("gOutput", mpRtOut);
+        rayGenVars->setTexture("gOutput", mpRayDensityTex);
         rayGenVars->setTexture("gUniformNoise", mpUniformNoise);
         auto hitVars = mpPhotonTraceVars->getHitVars(0);
         for (auto& hitVar : hitVars)
         {
-            hitVar->setTexture("gOutput", mpRtOut);
+            hitVar->setTexture("gOutput", mpRayDensityTex);
             hitVar->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
             hitVar->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
             hitVar->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
@@ -662,13 +666,16 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         mpCompositePass["gDiffuseTex"] = mpGPassFbo->getColorTexture(1);
         mpCompositePass["gSpecularTex"] = mpGPassFbo->getColorTexture(2);
         mpCompositePass["gPhotonTex"] = mpCausticsFbo->getColorTexture(0);
-        mpCompositePass["gRayTex"] = mpRtOut;
+        mpCompositePass["gRayTex"] = mpRayDensityTex;
         mpCompositePass["gPointSampler"] = mpPointSampler;
         ConstantBuffer::SharedPtr pCompCB = mpCompositePass["PerImageCB"];
         pCompCB["gNumLights"] = mpScene->getLightCount();
         pCompCB["gDebugMode"] = (uint32_t)mDebugMode;
         pCompCB["gInvWvpMat"] = mpCamera->getInvViewProjMatrix();
-        pCompCB["gCameraPos"] = mpCamera->getPosition();
+        pCompCB["gCameraPos"] = mpCamera->getPosition(); 
+        pCompCB["screenDim"] = int2(mpRtOut->getWidth(), mpRtOut->getHeight());
+        pCompCB["dispatchSize"] = int2(mDispatchSize, mDispatchSize);
+        pCompCB["gMaxPixelArea"] = mMaxPixelArea;
         for (uint32_t i = 0; i < mpScene->getLightCount(); i++)
         {
             mpScene->getLight(i)->setIntoProgramVars(mpCompositePass->getVars().get(), pCompCB.get(), "gLightData[" + std::to_string(i) + "]");
@@ -742,6 +749,8 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
     mpDepthTex = Texture::create2D(width, height, ResourceFormat::D24UnormS8, 1, 1, nullptr, Resource::BindFlags::DepthStencil | Resource::BindFlags::ShaderResource);
     mpPhotonMapTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
     mpCausticsFbo = Fbo::create({ mpPhotonMapTex });
+
+    mpRayDensityTex = Texture::create2D(CAUSTICS_MAP_SIZE, CAUSTICS_MAP_SIZE, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
 
     mpNormalTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
     mpDiffuseTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
