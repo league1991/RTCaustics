@@ -48,8 +48,8 @@ private:
     int2 mTileDim = int2(1, 1);
     int mMaxTraceDepth = 10;
     bool mRayTrace = true;
-    bool mRefinePhoton = false;
-    bool mRemoveIsolatedPhoton = true;
+    bool mRefinePhoton = true;
+    bool mRemoveIsolatedPhoton = false;
     int mMinNeighbourCount = 2;
     bool mMedianFilter = false;
     bool mShowTileCount = false;
@@ -82,7 +82,7 @@ private:
     int mPhotonIDScale = 50;
     float mTraceColorThreshold = 0.04f;
     float mCullColorThreshold = 0.04f;
-    int   mScatterOrGather = 1;
+    int   mScatterOrGather = 0;
     float2 mLightAngle{0.4f,2.f};
     float3 mLightDirection;
     float2 mLightAngleSpeed{0,0};

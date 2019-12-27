@@ -260,7 +260,9 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
 
         float3 baseColor = lerp(1, sd.diffuse, sd.opacity);
         hitData2.color = float4(baseColor,1) * hitData.color;// *float4(sd.specular, 1);
-        if (dot(hitData2.color.rgb, float3(0.299, 0.587, 0.114)) > traceColorThreshold)
+        float area = (dot(hitData2.dPdx, hitData2.dPdx) + dot(hitData2.dPdy, hitData2.dPdy)) * 0.5;
+        float3 color = hitData2.color.rgb / area;
+        if (dot(color, float3(0.299, 0.587, 0.114)) > traceColorThreshold)
         {
             RayDesc ray;
             ray.Origin = posW;
@@ -292,8 +294,9 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
             area = length(areaVector);
         }
 
-        float area0 = emitSize * emitSize / (coarseDim.x * coarseDim.y);
-        if (area0 / area > cullColorThreshold)
+        //float area0 = emitSize * emitSize / (coarseDim.x * coarseDim.y);
+        float3 color = dot(-rayDirW, sd.N)* sd.diffuse* hitData.color.rgb / area;
+        if (dot(color, float3(0.299, 0.587, 0.114)) > cullColorThreshold)
         {
             uint instanceIdx = 0;
             InterlockedAdd(gDrawArgument[0].instanceCount, 1, instanceIdx);
@@ -301,7 +304,7 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
             Photon photon;
             photon.posW = posW;
             photon.normalW = sd.N;
-            photon.color = dot(-rayDirW, sd.N) * sd.diffuse * hitData.color.rgb / area;//sr.color.rgb;
+            photon.color = color;//sr.color.rgb;
             photon.dPdx = hitData2.dPdx;
             photon.dPdy = hitData2.dPdy;
             gPhotonBuffer[instanceIdx] = photon;
