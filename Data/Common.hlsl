@@ -55,3 +55,8 @@ bool isPhotonAdjecent(Photon photon0, Photon photon1, float normalThreshold, flo
         ;
 }
 
+float smoothKernel(float x)
+{
+    x = saturate(x);
+    return x * x * (2 * x - 3) + 1;
+}

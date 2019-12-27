@@ -43,7 +43,7 @@ public:
     void onGuiRender(Gui* pGui) override;
 
 private:
-    int mDispatchSize=64;
+    int mDispatchSize=512;
     int mTileSize = 16;
     int2 mTileDim = int2(1, 1);
     int mMaxTraceDepth = 10;
@@ -52,6 +52,8 @@ private:
     bool mRemoveIsolatedPhoton = true;
     int mMinNeighbourCount = 2;
     bool mMedianFilter = false;
+    bool mShowTileCount = false;
+    int mTileCountScale = 10;
     uint32_t mDebugMode = 9;
     bool mUseDOF = false;
     uint32_t mSampleIndex = 0xdeadbeef;

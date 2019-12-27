@@ -114,24 +114,37 @@ void Caustics::onGuiRender(Gui* pGui)
         }
         pGui->addFloatVar("Splat size", mSplatSize, 0, 10, 0.01f);
         pGui->addFloatVar("Kernel Power", mKernelPower, 0.01f, 10, 0.01f);
-        pGui->addFloatVar("Scatter Normal Threshold", mScatterNormalThreshold, 0.01f, 1.0, 0.01f);
-        pGui->addFloatVar("Scatter Distance Threshold", mScatterDistanceThreshold, 0.1f, 10.0f, 0.1f);
-        pGui->addFloatVar("Scatter Planar Threshold", mScatterPlanarThreshold, 0.01f, 10.0, 0.1f);
-        pGui->addFloatVar("Max Anisotropy", mMaxAnisotropy, 1, 100, 0.1f);
+
+        if(pGui->beginGroup("Scatter Parameters", false))
         {
-            Gui::DropdownList debugModeList;
-            debugModeList.push_back({ 0, "Kernel" });
-            debugModeList.push_back({ 1, "Solid" });
-            debugModeList.push_back({ 2, "Shaded" });
-            pGui->addDropdown("Photon Display Mode", debugModeList, (uint32_t&)mPhotonDisplayMode);
+            pGui->addFloatVar("Scatter Normal Threshold", mScatterNormalThreshold, 0.01f, 1.0, 0.01f);
+            pGui->addFloatVar("Scatter Distance Threshold", mScatterDistanceThreshold, 0.1f, 10.0f, 0.1f);
+            pGui->addFloatVar("Scatter Planar Threshold", mScatterPlanarThreshold, 0.01f, 10.0, 0.1f);
+            pGui->addFloatVar("Max Anisotropy", mMaxAnisotropy, 1, 100, 0.1f);
+            {
+                Gui::DropdownList debugModeList;
+                debugModeList.push_back({ 0, "Kernel" });
+                debugModeList.push_back({ 1, "Solid" });
+                debugModeList.push_back({ 2, "Shaded" });
+                pGui->addDropdown("Photon Display Mode", debugModeList, (uint32_t&)mPhotonDisplayMode);
+            }
+
+            {
+                Gui::DropdownList debugModeList;
+                debugModeList.push_back({ 0, "Anisotropic" });
+                debugModeList.push_back({ 1, "Isotropic" });
+                debugModeList.push_back({ 2, "Photon Mesh" });
+                pGui->addDropdown("Photon mode", debugModeList, (uint32_t&)mPhotonMode);
+            }
+            pGui->endGroup();
         }
 
+        if(pGui->beginGroup("Gather Parameters", false))
         {
-            Gui::DropdownList debugModeList;
-            debugModeList.push_back({ 0, "Anisotropic" });
-            debugModeList.push_back({ 1, "Isotropic" });
-            debugModeList.push_back({ 2, "Photon Mesh" });
-            pGui->addDropdown("Photon mode", debugModeList, (uint32_t&)mPhotonMode);
+            pGui->addFloatVar("Gather Depth Radius", mDepthRadius, 0, 10, 0.01f);
+            pGui->addCheckBox("Gather Show Tile Count", mShowTileCount);
+            pGui->addIntVar("Gather Tile Count Scale", mTileCountScale, 0, 1000);
+            pGui->endGroup();
         }
 
         pGui->endGroup();
@@ -567,9 +580,9 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     else if (mScatterOrGather == 1)
     {
         uvec3 dispatchDim[] = {
-            uvec3((mDispatchSize * mDispatchSize + 63) / 64,1,1),
+            uvec3((mDispatchSize * mDispatchSize + 255) / 256,1,1),
             uvec3((mTileDim.x+15) / 16,(mTileDim.y+15) / 16,1),
-            uvec3((mDispatchSize * mDispatchSize + 63) / 64,1,1)
+            uvec3((mDispatchSize * mDispatchSize + 255) / 256,1,1)
         };
         // build tile data
         for (int i = 0; i < 3; i++)
@@ -598,6 +611,9 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pPerFrameCB["tileDim"] = mTileDim;
         pPerFrameCB["gSplatSize"] = mSplatSize;
         pPerFrameCB["gDepthRadius"] = mDepthRadius;
+        pPerFrameCB["gShowTileCount"] = int(mShowTileCount);
+        pPerFrameCB["gTileCountScale"] = int(mTileCountScale);
+        pPerFrameCB["gKernelPower"] = mKernelPower;
         mpPhotonGatherVars->setStructuredBuffer("gPhotonBuffer", photonBuffer);
         mpPhotonGatherVars->setStructuredBuffer("gTileInfo", mpTileIDInfoBuffer);
         mpPhotonGatherVars->setRawBuffer("gIDBuffer", mpIDBuffer);
@@ -717,7 +733,7 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
     mpRayArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gRayArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg);
     mTileDim.x = (width + mTileSize - 1) / mTileSize;
     mTileDim.y = (height + mTileSize - 1) / mTileSize;
-    int avgTileIDCount = 1024;
+    int avgTileIDCount = 2048;
     mpTileIDInfoBuffer = StructuredBuffer::create(mpAllocateTileProgram[0].get(), std::string("gTileInfo"), mTileDim.x * mTileDim.y, ResourceBindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
     mpIDBuffer = Buffer::create(mTileDim.x * mTileDim.y * avgTileIDCount * sizeof(uint32_t), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, Buffer::CpuAccess::None);
     mpIDCounterBuffer = Buffer::create(sizeof(uint32_t), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, Buffer::CpuAccess::None);

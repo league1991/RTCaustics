@@ -59,6 +59,15 @@ void GetPhotonScreenRange(Photon photon, out int2 minTileID, out int2 maxTileID)
     float4 px1 = mul(float4(photon.posW - corner0 * gSplatSize, 1), gViewProjMat);
     float4 py0 = mul(float4(photon.posW + corner1 * gSplatSize, 1), gViewProjMat);
     float4 py1 = mul(float4(photon.posW - corner1 * gSplatSize, 1), gViewProjMat);
+    if ((px0.z < 0 || px0.z > px0.w) ||
+        (px1.z < 0 || px1.z > px1.w) ||
+        (py0.z < 0 || py0.z > py0.w) ||
+        (py1.z < 0 || py1.z > py1.w))
+    {
+        minTileID = 1;
+        maxTileID = -1;
+        return;
+    }
     px0.xyz /= px0.w;
     px1.xyz /= px1.w;
     py0.xyz /= py0.w;
@@ -69,33 +78,37 @@ void GetPhotonScreenRange(Photon photon, out int2 minTileID, out int2 maxTileID)
     py1.y *= -1;
 
     // get range
-    float2 minCoord = 10000;
-    float2 maxCoord = -10000;
-    minCoord = min(minCoord, px0.xy);
-    minCoord = min(minCoord, px1.xy);
-    minCoord = min(minCoord, py0.xy);
-    minCoord = min(minCoord, py1.xy);
-    maxCoord = max(maxCoord, px0.xy);
-    maxCoord = max(maxCoord, px1.xy);
-    maxCoord = max(maxCoord, py0.xy);
-    maxCoord = max(maxCoord, py1.xy);
-
-    if (any(minCoord > 1) || any(maxCoord < -1))
+    float3 minCoord = 10000;
+    float3 maxCoord = -10000;
+    minCoord = min(minCoord, px0.xyz);
+    minCoord = min(minCoord, px1.xyz);
+    minCoord = min(minCoord, py0.xyz);
+    minCoord = min(minCoord, py1.xyz);
+    maxCoord = max(maxCoord, px0.xyz);
+    maxCoord = max(maxCoord, px1.xyz);
+    maxCoord = max(maxCoord, py0.xyz);
+    maxCoord = max(maxCoord, py1.xyz);
+    minCoord.xy = (minCoord.xy + 1) * 0.5;
+    maxCoord.xy = (maxCoord.xy + 1) * 0.5;
+    if (any(minCoord > 1) || any(maxCoord < 0))
     {
         minTileID = 1;
         maxTileID = -1;
         return;
     }
-    minCoord = (minCoord + 1) * 0.5;
-    maxCoord = (maxCoord + 1) * 0.5;
-    minCoord = clamp(minCoord, 0, 1);
-    maxCoord = clamp(maxCoord, 0, 1);
+    minTileID = minCoord.xy * screenDim / GATHER_TILE_SIZE;
+    maxTileID = maxCoord.xy * screenDim / GATHER_TILE_SIZE;
 
-    minTileID = minCoord * screenDim / GATHER_TILE_SIZE;
-    maxTileID = maxCoord * screenDim / GATHER_TILE_SIZE;
+    minTileID = clamp(minTileID, 0, tileDim - 1);
+    maxTileID = clamp(maxTileID, 0, tileDim - 1);
 }
 
-[numthreads(64, 1, 1)]
+bool checkPhoton(Photon p)
+{
+    return dot(p.color, float3(1, 1, 1)) > 0.01;
+}
+
+[numthreads(256, 1, 1)]
 void CountTilePhoton(uint3 threadIdx : SV_DispatchThreadID)
 {
     int photonID = threadIdx.x;
@@ -109,6 +122,11 @@ void CountTilePhoton(uint3 threadIdx : SV_DispatchThreadID)
     }
 
     Photon photon = gPhotonBuffer[photonID];
+    if (!checkPhoton(photon))
+    {
+        return;
+    }
+
     int2 minTileID, maxTileID;
     GetPhotonScreenRange(photon, minTileID, maxTileID);
     for (int x = minTileID.x; x <= maxTileID.x; x++)
@@ -139,7 +157,7 @@ void AllocateMemory(uint3 threadIdx : SV_DispatchThreadID)
     gTileInfo[offset].count = 0;
 }
 
-[numthreads(64, 1, 1)]
+[numthreads(256, 1, 1)]
 void StoreTilePhoton(uint3 threadIdx : SV_DispatchThreadID)
 {
     int photonID = threadIdx.x;
@@ -149,6 +167,11 @@ void StoreTilePhoton(uint3 threadIdx : SV_DispatchThreadID)
     }
 
     Photon photon = gPhotonBuffer[photonID];
+    if (!checkPhoton(photon))
+    {
+        return;
+    }
+
     int2 minTileID, maxTileID;
     GetPhotonScreenRange(photon, minTileID, maxTileID);
     for (int x = minTileID.x; x <= maxTileID.x; x++)

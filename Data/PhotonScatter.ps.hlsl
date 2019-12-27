@@ -220,7 +220,7 @@ float3 scaleVector(float3 vec, float3 axis, float2 factor)
 PhotonVSOut photonScatterVS(PhotonVSIn vIn)
 {
     PhotonVSOut vOut;
-    vOut.texcoord = (vIn.pos.xz + 1) * 0.5;
+    vOut.texcoord = vIn.pos.xz;// (vIn.pos.xz + 1) * 0.5;
 
     float3 tangent, bitangent, color;
     if (gPhotonMode == PhotonMesh)
@@ -316,7 +316,7 @@ float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
     }
     else
     {
-        alpha = gGaussianTex.Sample(gLinearSampler, vOut.texcoord).r;
+        alpha = smoothKernel(length(vOut.texcoord.xy));//gGaussianTex.Sample(gLinearSampler, vOut.texcoord).r;
         alpha = pow(alpha, gKernelPower);
     }
     return float4(vOut.color.rgb * alpha, 1);

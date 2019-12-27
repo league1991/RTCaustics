@@ -34,6 +34,9 @@ shared cbuffer PerFrameCB
     int2 tileDim;
     float gSplatSize;
     float gDepthRadius;
+    int gShowTileCount;
+    int gTileCountScale;
+    float gKernelPower;
 };
 
 struct DrawArguments
@@ -65,34 +68,31 @@ float2 getLocalCoordinate(float3 a, float3 b, float3 P)
     float xb = dot(a, b) / xa;
     float xc = dot(a, P) / xa;
     float3 y = b - a * (xb / xa);
-    float yb = 1;
+    float yb = dot(y, b);
     float yc = dot(y, P);
     float cb = yc / yb;
-    float ca = (1 - xb / yb) * yc / xa;
+    float ca = (xc - xb * cb) / xa;
     return float2(ca, cb);
 }
 
 float getLightFactor(float3 pos, float3 photonPos, float3 dPdx, float3 dPdy)
 {
     float3 dPos = pos - photonPos;
-    float dist = length(dPos) / (gSplatSize);
-    return saturate(1 - dist);
-    //dPdx *= gSplatSize;
-    //dPdy *= gSplatSize;
-    //float3 normal = cross(dPdx, dPdy);
-    //float z = dot(dPos, normal) / gDepthRadius;
-    //if (abs(z) > 1)
-    //{
-    //    return 0;
-    //}
-    //float2 localCoord = getLocalCoordinate(dPdx, dPdy, dPos);
-    //float r2 = dot(localCoord, localCoord);
-    //if (r2 > 2)
-    //{
-    //    return 0;
-    //}
-    //float dist2 = r2 + z * z;
-    //return 1 / (1 + dist2);
+    //float dist = length(dPos) / (gSplatSize);
+    //return saturate(1 - dist);
+    dPdx *= gSplatSize;
+    dPdy *= gSplatSize;
+    float3 normal = normalize(cross(dPdx, dPdy));
+    float z = dot(dPos, normal) / (gDepthRadius * gSplatSize);
+    if (abs(z) > 1)
+    {
+        return 0;
+    }
+    dPos -= dot(dPos, normal) * normal;
+    float2 localCoord = getLocalCoordinate(dPdx, dPdy, dPos);
+    float r2 = dot(localCoord, localCoord);
+    float dist2 = r2 + z * z;
+    return pow(smoothKernel(sqrt(dist2)), gKernelPower);
 }
 
 [numthreads(GATHER_TILE_SIZE, GATHER_TILE_SIZE, 1)]
@@ -116,6 +116,23 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID, ui
     int tileOffset = getTileOffset(tileID.x, tileID.y);
     int beginAddress = gTileInfo[tileOffset].address;
     int count = gTileInfo[tileOffset].count;
+
+    if (gShowTileCount)
+    {
+        float intensity = float(count) / gTileCountScale;
+        float4 color;
+        if (intensity <= 1)
+        {
+            color = float4(intensity.xxx, 1);
+        }
+        else
+        {
+            color = float4(1, 0, 0, 1);
+        }
+        gPhotonTex[pixelLocation] = color;
+        return;
+    }
+
     float3 totalLight = 0;
     for (int i = 0; i < count; i++)
     {
