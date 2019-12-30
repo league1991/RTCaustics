@@ -48,28 +48,29 @@ private:
     int mDispatchSize=64;
     int mMaxTraceDepth = 10;
     float mEmitSize = 30.0;
-    float mIntensity = 3.f;
+    float mIntensity = 1.f;
     float mRoughThreshold = 0.1f;
     uint32_t mAreaType = 0;
     float mJitter = 0.f;
     float mIOROveride = 1.5f;
     int mColorPhoton = 0;
     int mPhotonIDScale = 50;
-    float mTraceColorThreshold = 0.04f;
-    float mCullColorThreshold = 0.04f;
+    float mTraceColorThreshold = 0.002f;
+    float mCullColorThreshold = 0.2f;
 
     // Adaptive photon refine
-    bool mRemoveIsolatedPhoton = false;
-    int mMinNeighbourCount = 2;
-    bool mMedianFilter = false;
-    int mTileCountScale = 10;
     float mNormalThreshold = 0.2f;
     float mDistanceThreshold = 10.0f;
     float mPlanarThreshold = 2.0f;
-    float mMinPhotonPixelSize = 7.0f;
-    float mSmoothWeight = 0.2f;
+    float mMinPhotonPixelSize = 15.0f;
+    float mSmoothWeight = 0.04f;
+    int mMaxTaskCountPerPixel = 8192;
+    float mUpdateSpeed = 0.2f;
 
     // smooth photon
+    bool mMedianFilter = false;
+    int mMinNeighbourCount = 2;
+    bool mRemoveIsolatedPhoton = false;
     float mPixelLuminanceThreshold = 0.5f;
     float trimDirectionThreshold = 0.5f;
 
@@ -85,6 +86,7 @@ private:
     float mMaxAnisotropy = 20.0f;
 
     // Photon Gather
+    int mTileCountScale = 10;
     int mTileSize = 16;
     int2 mTileDim = int2(1, 1);
     bool mShowTileCount = false;

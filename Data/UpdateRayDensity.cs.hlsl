@@ -32,6 +32,8 @@ shared cbuffer PerFrameCB
     int2 coarseDim;
     float minPhotonPixelSize;
     float smoothWeight;
+    int maxTaskPerPixel;
+    float updateSpeed;
 };
 
 RWStructuredBuffer<PixelInfo> gPixelInfo;
@@ -40,7 +42,7 @@ RWTexture2D<float> gRayDensityTex;
 float getAvgArea(uint2 pos)
 {
     int idx = coarseDim.x * pos.y + pos.x;
-    float avgArea = sqrt(gPixelInfo[idx].screenArea / float(gPixelInfo[idx].count + 0.01));
+    float avgArea = (gPixelInfo[idx].screenArea / float(gPixelInfo[idx].count + 0.01));
     return avgArea;
 }
 
@@ -57,20 +59,26 @@ void updateRayDensityTex(uint3 threadIdx : SV_DispatchThreadID)
     a[4] = getAvgArea(threadIdx.xy + uint2(0, -1));
 
     float area = a[0];
-    float weight = 0.2;
-    for (int i = 1; i < 5; i++)
-    {
-        //area = max(area, a[i]);
-        area += a[i];
-    }
-    //area /= (1 + weight * 4);
-    area = a[0];
+    //for (int i = 1; i < 5; i++)
+    //{
+    //    //area = max(area, a[i]);
+    //    area += a[i]* smoothWeight;
+    //}
+    //area /= (1 + smoothWeight * 4);
 
     float targetArea = minPhotonPixelSize * minPhotonPixelSize;
+
     float oldDensity = gRayDensityTex[threadIdx.xy].r;
+    float weight = smoothWeight * updateSpeed;
+    oldDensity += gRayDensityTex[threadIdx.xy + uint2(1, 0)].r * weight;
+    oldDensity += gRayDensityTex[threadIdx.xy + uint2(0, 1)].r * weight;
+    oldDensity += gRayDensityTex[threadIdx.xy + uint2(-1, 0)].r * weight;
+    oldDensity += gRayDensityTex[threadIdx.xy + uint2(0, -1)].r * weight;
+    oldDensity /= (1 + weight * 4);
+
     float newDensity = oldDensity * area / targetArea;// oldDensity + (area - targetArea) * 0.1;
-    newDensity = newDensity * 0.05 + oldDensity * 0.95;
-    gRayDensityTex[threadIdx.xy] = clamp(newDensity, 0.1, 1024 * 8);
+    newDensity = newDensity * updateSpeed + oldDensity * (1- updateSpeed);
+    gRayDensityTex[threadIdx.xy] = clamp(newDensity, 0.1, maxTaskPerPixel);
 
     //gPixelInfo[idx].screenArea = 0;
     //gPixelInfo[idx].count = 0;

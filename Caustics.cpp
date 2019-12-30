@@ -128,7 +128,9 @@ void Caustics::onGuiRender(Gui* pGui)
     {
         pGui->addFloatVar("Luminance Threshold", mPixelLuminanceThreshold, 0.01f, 10.0, 0.01f);
         pGui->addFloatVar("Photon Size Threshold", mMinPhotonPixelSize, 1.f, 1000.0f, 0.1f);
-        pGui->addFloatVar("Smooth Weight", mSmoothWeight, -10.0f, 10.0f, 0.01f);
+        pGui->addFloatVar("Smooth Weight", mSmoothWeight, 0, 10.0f, 0.001f);
+        pGui->addFloatVar("Update Speed", mUpdateSpeed, 0, 1, 0.01f);
+        pGui->addIntVar("Max Task Per Pixel", mMaxTaskCountPerPixel, 1);
         pGui->endGroup();
     }
 
@@ -489,7 +491,9 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             ConstantBuffer::SharedPtr pPerFrameCB = mpUpdateRayDensityVars["PerFrameCB"];
             pPerFrameCB["coarseDim"] = int2(mDispatchSize, mDispatchSize);
             pPerFrameCB["minPhotonPixelSize"] = mMinPhotonPixelSize;
-            pPerFrameCB["smoothWeight"] = mSmoothWeight;
+            pPerFrameCB["smoothWeight"] = mSmoothWeight; 
+            pPerFrameCB["maxTaskPerPixel"] = mMaxTaskCountPerPixel;
+            pPerFrameCB["updateSpeed"] = mUpdateSpeed;
             mpUpdateRayDensityVars->setStructuredBuffer("gPixelInfo", mpPixelInfoBuffer);
             mpUpdateRayDensityVars->setTexture("gRayDensityTex", mpRayDensityTex);
             static int groupSize = 16;
@@ -505,7 +509,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             pPerFrameCB["normalThreshold"] = mNormalThreshold;
             pPerFrameCB["distanceThreshold"] = mDistanceThreshold;
             pPerFrameCB["planarThreshold"] = mPlanarThreshold;
-            pPerFrameCB["pixelLuminanceThreshold"] = mPixelLuminanceThreshold;
+            pPerFrameCB["pixelLuminanceThreshold"] = mPixelLuminanceThreshold; 
             pPerFrameCB["minPhotonPixelSize"] = mMinPhotonPixelSize;
             static float2 offset(0.5,0.5);
             static float speed = 0.0f;

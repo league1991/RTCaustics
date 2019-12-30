@@ -201,7 +201,8 @@ void addPhotonTaskFromTexture(uint3 groupID : SV_GroupID, uint groupIndex : SV_G
     float v01 = gRayDensityTex.Load(int3(pixel00 + int2(0, 1), 0)).r;
     float v11 = gRayDensityTex.Load(int3(pixel00 + int2(1, 1), 0)).r;
 
-    int sampleCount =  0.25 * (v00 + v10 + v01 + v11); //max(v00, max(v10, max(v01, v11)));//
+    float sampleCountF =  0.25 * (v00 + v10 + v01 + v11); //max(v00, max(v10, max(v01, v11)));//
+    int sampleCount = int(sampleCountF);
     sampleCount = clamp(sampleCount, 1, 1024 * 8);
 
     float sampleWeight = 1.0 / sqrt(float(sampleCount));

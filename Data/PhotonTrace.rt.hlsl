@@ -177,8 +177,8 @@ float getPhotonScreenArea(float3 posW, float3 dPdx, float3 dPdy, out bool inFrus
     s01 /= s01.w;
     float2 dx = (s00.xy - s0.xy) * viewportDims;
     float2 dy = (s01.xy - s0.xy) * viewportDims;
-    //float area = abs(dx.x * dy.y - dy.x * dx.y) / (gSplatSize * gSplatSize);
-    float area = 0.5 * (dot(dx, dx) + dot(dy, dy)) / (gSplatSize * gSplatSize);
+    float area = abs(dx.x * dy.y - dy.x * dx.y) / (gSplatSize * gSplatSize);
+    //float area = 0.5 * (dot(dx, dx) + dot(dy, dy)) / (gSplatSize * gSplatSize);
     return area;
 }
 
@@ -337,7 +337,7 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
             uint oldV;
             uint2 pixelPos = uint2(hitData2.pixelPos >> 16, hitData2.pixelPos & 0xffff);
             uint pixelLoc = pixelPos.y * coarseDim.x + pixelPos.x;
-            InterlockedAdd(gPixelInfo[pixelLoc].screenArea, uint(pixelArea.x* pixelArea.x), oldV);
+            InterlockedAdd(gPixelInfo[pixelLoc].screenArea, uint(pixelArea.x), oldV);
             InterlockedAdd(gPixelInfo[pixelLoc].count, 1, oldV);
         }
     }
