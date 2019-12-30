@@ -481,18 +481,6 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pContext->dispatch(mpDrawArgumentState.get(), mpDrawArgumentVars.get(), uvec3(1,1, 1));
     }
 
-    // coarse photon tracing
-    bool coarsePhotonTracing = mTraceType == 0;
-    if(false && coarsePhotonTracing)
-    {
-        //pContext->clearTexture(mpRayDensityTex.get());
-        setPhotonTracingCommonVariable();
-        GraphicsVars* pVars = mpPhotonTraceVars->getGlobalVars().get();
-        ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
-        pCB["launchRayTask"] = int(mTraceType == 1);
-        mpRtRenderer->renderScene(pContext, mpPhotonTraceVars, mpPhotonTraceState, uvec3(4096, 4096, 1), mpCamera.get());
-    }
-
     // analysis output
     bool refinePhoton = mTraceType == 1;
     if(refinePhoton)
@@ -534,14 +522,14 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         }
     }
 
-    // fine photon tracing
-    //if (false && refinePhoton)
+    // photon tracing
     {
         setPhotonTracingCommonVariable();
         GraphicsVars* pVars = mpPhotonTraceVars->getGlobalVars().get();
         ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
         pCB["launchRayTask"] = int(mTraceType == 1);
-        mpRtRenderer->renderScene(pContext, mpPhotonTraceVars, mpPhotonTraceState, uvec3(4096, 4096, 1), mpCamera.get());
+        uvec3 resolution = mTraceType == 0 ? uvec3(mDispatchSize, mDispatchSize, 1) : uvec3(4096, 4096, 1);
+        mpRtRenderer->renderScene(pContext, mpPhotonTraceVars, mpPhotonTraceState, resolution, mpCamera.get());
     }
 
     // smooth photon
