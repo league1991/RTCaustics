@@ -22,6 +22,7 @@ struct RayTask
 struct PixelInfo
 {
     uint screenArea;
+    uint screenAreaSq;
     uint count;
 };
 

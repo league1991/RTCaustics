@@ -55,7 +55,7 @@ RWStructuredBuffer<RayArgument> gRayArgument;
 RWStructuredBuffer<RayTask> gRayTask;
 RWStructuredBuffer<PixelInfo> gPixelInfo;
 Texture2D gDepthTex;
-Texture2D gRayDensityTex;
+Texture2D<float4> gRayDensityTex;
 
 float getNeighbourArea(uint2 pixelCoord0, uint2 offset, out int isInFrustum)
 {
@@ -190,6 +190,7 @@ void addPhotonTaskFromTexture(uint3 groupID : SV_GroupID, uint groupIndex : SV_G
 {
     uint rayIdx = getRayTaskID(threadIdx.xy);
     gPixelInfo[rayIdx].screenArea = 0;
+    gPixelInfo[rayIdx].screenAreaSq = 0;
     gPixelInfo[rayIdx].count = 0;
 
     RayTask task0 = gRayTask[rayIdx];

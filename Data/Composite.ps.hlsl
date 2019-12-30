@@ -36,7 +36,7 @@ Texture2D gNormalTex;
 Texture2D gDiffuseTex;
 Texture2D gSpecularTex;
 Texture2D gPhotonTex;
-Texture2D<float> gRayTex;
+Texture2D<float4> gRayTex;
 
 // Debug modes
 #define ShowDepth       1
@@ -92,12 +92,12 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
         int2 screenPixel = texC * screenDim;
         //float2 uv = clamp(screenPixel / 2048, 0, 1);
         //color = gRayTex.Sample(gPointSampler, uv);
-        uint v = gRayTex.Load(int3(screenPixel.xy / gRayTexScale, 0));
+        float4 v = gRayTex.Load(int3(screenPixel.xy / gRayTexScale, 0));
         //color = float4(v >> 16, 0, 0, v & 0xff);
         //color /= color.w;
         //color.r /= gMaxPixelArea;
-        if(v <= gMaxPixelArea)
-            color = float4(v.xxx / gMaxPixelArea, 1);
+        if(v.r <= gMaxPixelArea)
+            color = float4(v.rgb / gMaxPixelArea, 1);
         else
             color = float4(1, 0, 1, 1);
     }

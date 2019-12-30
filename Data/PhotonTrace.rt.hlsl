@@ -338,6 +338,7 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
             uint2 pixelPos = uint2(hitData2.pixelPos >> 16, hitData2.pixelPos & 0xffff);
             uint pixelLoc = pixelPos.y * coarseDim.x + pixelPos.x;
             InterlockedAdd(gPixelInfo[pixelLoc].screenArea, uint(pixelArea.x), oldV);
+            InterlockedAdd(gPixelInfo[pixelLoc].screenAreaSq, uint(pixelArea.x* pixelArea.x), oldV);
             InterlockedAdd(gPixelInfo[pixelLoc].count, 1, oldV);
         }
     }

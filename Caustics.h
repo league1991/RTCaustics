@@ -48,7 +48,7 @@ private:
     int mDispatchSize=64;
     int mMaxTraceDepth = 10;
     float mEmitSize = 30.0;
-    float mIntensity = 1.f;
+    float mIntensity = 0.4f;
     float mRoughThreshold = 0.1f;
     uint32_t mAreaType = 0;
     float mJitter = 0.f;
@@ -62,10 +62,12 @@ private:
     float mNormalThreshold = 0.2f;
     float mDistanceThreshold = 10.0f;
     float mPlanarThreshold = 2.0f;
-    float mMinPhotonPixelSize = 15.0f;
+    float mMinPhotonPixelSize = 8.0f;
     float mSmoothWeight = 0.04f;
     int mMaxTaskCountPerPixel = 8192;
     float mUpdateSpeed = 0.2f;
+    float mVarianceGain = 0.0f;
+    float mDerivativeGain = 0.1f;
 
     // smooth photon
     bool mMedianFilter = false;
@@ -76,7 +78,7 @@ private:
 
     // Photon Scatter
     int   mScatterOrGather = 0;
-    float mSplatSize = 2.8f;
+    float mSplatSize = 4.0f;
     float mKernelPower = 1.f;
     int mPhotonDisplayMode = 0;
     uint32_t mPhotonMode = 0;

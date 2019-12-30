@@ -129,7 +129,9 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addFloatVar("Luminance Threshold", mPixelLuminanceThreshold, 0.01f, 10.0, 0.01f);
         pGui->addFloatVar("Photon Size Threshold", mMinPhotonPixelSize, 1.f, 1000.0f, 0.1f);
         pGui->addFloatVar("Smooth Weight", mSmoothWeight, 0, 10.0f, 0.001f);
-        pGui->addFloatVar("Update Speed", mUpdateSpeed, 0, 1, 0.01f);
+        pGui->addFloatVar("Proportional Gain", mUpdateSpeed, 0, 1, 0.01f);
+        pGui->addFloatVar("Variance Gain", mVarianceGain, 0, 10, 0.0001f);
+        pGui->addFloatVar("Derivative Gain", mDerivativeGain, -10, 10, 0.1f);
         pGui->addIntVar("Max Task Per Pixel", mMaxTaskCountPerPixel, 1);
         pGui->endGroup();
     }
@@ -491,9 +493,11 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             ConstantBuffer::SharedPtr pPerFrameCB = mpUpdateRayDensityVars["PerFrameCB"];
             pPerFrameCB["coarseDim"] = int2(mDispatchSize, mDispatchSize);
             pPerFrameCB["minPhotonPixelSize"] = mMinPhotonPixelSize;
-            pPerFrameCB["smoothWeight"] = mSmoothWeight; 
+            pPerFrameCB["smoothWeight"] = mSmoothWeight;
             pPerFrameCB["maxTaskPerPixel"] = mMaxTaskCountPerPixel;
             pPerFrameCB["updateSpeed"] = mUpdateSpeed;
+            pPerFrameCB["varianceGain"] = mVarianceGain;
+            pPerFrameCB["derivativeGain"] = mDerivativeGain;
             mpUpdateRayDensityVars->setStructuredBuffer("gPixelInfo", mpPixelInfoBuffer);
             mpUpdateRayDensityVars->setTexture("gRayDensityTex", mpRayDensityTex);
             static int groupSize = 16;
@@ -784,7 +788,7 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
     mpPhotonMapTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
     mpCausticsFbo = Fbo::create({ mpPhotonMapTex });
 
-    mpRayDensityTex = Texture::create2D(CAUSTICS_MAP_SIZE, CAUSTICS_MAP_SIZE, ResourceFormat::R32Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
+    mpRayDensityTex = Texture::create2D(CAUSTICS_MAP_SIZE, CAUSTICS_MAP_SIZE, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
 
     mpNormalTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
     mpDiffuseTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
