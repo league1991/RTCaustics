@@ -19,6 +19,12 @@ struct RayTask
     int    inFrustum;
 };
 
+struct PixelInfo
+{
+    uint screenArea;
+    uint count;
+};
+
 struct RayArgument
 {
     int rayTaskCount;
@@ -64,4 +70,32 @@ float smoothKernel(float x)
 bool isInFrustum(float4 p)
 {
     return (p.x >= -p.w) && (p.x <= p.w) && (p.y >= -p.w) && (p.y <= p.w) && (p.z >= 0) && (p.z <= p.w);
+}
+
+float linearSample(float a, float b, float u)
+{
+    if (a == b)
+        return u;
+    float s = 0.5 * (a + b);
+    a /= s;
+    b /= s;
+    return (a - sqrt(lerp(a * a, b * b, u))) / (a - b);
+}
+
+float2 bilinearSample(float a00, float a10, float a01, float a11, float2 uv)
+{
+    float a0 = a00 + a01;
+    float a1 = a10 + a11;
+    float u = linearSample(a0, a1, uv.x);
+    float b0 = lerp(a00, a10, u);
+    float b1 = lerp(a01, a11, u);
+    float v = linearSample(b0, b1, uv.y);
+    return float2(u, v);
+}
+
+float bilinearIntepolation(float a00, float a10, float a01, float a11, float2 uv)
+{
+    float b0 = lerp(a00, a10, uv.x);
+    float b1 = lerp(a01, a11, uv.x);
+    return lerp(b0, b1, uv.y);
 }

@@ -45,6 +45,9 @@
     <FxCompile Include="Data\PhotonGather.cs.hlsl">
       <Filter>Data</Filter>
     </FxCompile>
+    <FxCompile Include="Data\UpdateRayDensity.cs.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Caustics.h" />

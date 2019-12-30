@@ -26,7 +26,6 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
 #include "Common.hlsl"
-RWTexture2D<float4> gOutput;
 __import Raytracing;
 __import ShaderCommon;
 __import Shading;
@@ -36,6 +35,7 @@ RWStructuredBuffer<Photon> gPhotonBuffer;
 RWStructuredBuffer<DrawArguments> gDrawArgument;
 RWStructuredBuffer<RayArgument> gRayArgument;
 RWStructuredBuffer<RayTask> gRayTask;
+RWStructuredBuffer<PixelInfo> gPixelInfo;
 Texture2D gUniformNoise;
 
 shared cbuffer PerFrameCB
@@ -43,6 +43,7 @@ shared cbuffer PerFrameCB
     float4x4 invView;
     float2 viewportDims;
     uint2 coarseDim;
+    float2 randomOffset;
     float emitSize;
     float roughThreshold;
     float jitter;
@@ -63,8 +64,9 @@ struct PrimaryRayData
 {
     float4 color;
     float3 dPdx, dPdy, dDdx, dDdy;  // ray differentials
+    uint pixelPos;
     uint depth;
-    float hitT;
+    //float hitT;
 };
 
 struct ShadowRayData
@@ -76,7 +78,7 @@ struct ShadowRayData
 void primaryMiss(inout PrimaryRayData hitData)
 {
     hitData.color = float4(1, 0, 0, 1);
-    hitData.hitT = -1;
+    //hitData.hitT = -1;
 }
 
 void getVerticesAndNormals(
@@ -175,8 +177,8 @@ float getPhotonScreenArea(float3 posW, float3 dPdx, float3 dPdy, out bool inFrus
     s01 /= s01.w;
     float2 dx = (s00.xy - s0.xy) * viewportDims;
     float2 dy = (s01.xy - s0.xy) * viewportDims;
-    float area = abs(dx.x * dy.y - dy.x * dx.y);
-    //float area = 0.5 * (dx.x * dx.y + dy.x * dy.y);
+    //float area = abs(dx.x * dy.y - dy.x * dx.y) / (gSplatSize * gSplatSize);
+    float area = 0.5 * (dot(dx, dx) + dot(dy, dy)) / (gSplatSize * gSplatSize);
     return area;
 }
 
@@ -217,7 +219,7 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     // prepare the shading data
     VertexOut v = getVertexAttributes(triangleIndex, attribs);
     ShadingData sd = prepareShadingData(v, gMaterial, rayOrigW, 0);
-    hitData.hitT = hitT;
+    //hitData.hitT = hitT;
 
     PrimaryRayData hitData2;
     hitData2.depth = hitData.depth + 1;
@@ -225,6 +227,7 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     hitData2.dDdx = hitData.dDdx;
     hitData2.dPdy = hitData.dPdy;
     hitData2.dDdy = hitData.dDdy;
+    hitData2.pixelPos = hitData.pixelPos;
     float3 P0, P1, P2, N0, N1, N2, N;
     getVerticesAndNormals(PrimitiveIndex(), attribs, P0, P1, P2, N0, N1, N2, N);
     updateTransferRayDifferential(N, hitData2.dPdx, hitData2.dDdx);
@@ -316,17 +319,26 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
             photon.dPdy = hitData2.dPdy;
             gPhotonBuffer[instanceIdx] = photon;
 
-            uint3 dim3 = DispatchRaysDimensions();
-            uint3 idx3 = DispatchRaysIndex();
-            uint idx = idx3.y * dim3.x + idx3.x;
-            gRayTask[idx].photonIdx = instanceIdx;
-            gRayTask[idx].pixelArea = pixelArea;
-            gRayTask[idx].inFrustum = isInFrustum ? 1 : 0;
-
             if (!launchRayTask)
             {
-                gOutput[idx3.xy] = float4(pixelArea.x,0,0, 1);
+                //float4 screenArea0 = gOutput[idx3.xy];
+                //float w = pixelArea.x > screenArea0.x ? 1 : 0.1;
+                //gOutput[idx3.xy] = gOutput[idx3.xy] * (1 - w) + float4(pixelArea.x, 0, 0, 1) * w;
+
+                uint3 dim3 = DispatchRaysDimensions();
+                uint3 idx3 = DispatchRaysIndex();
+                uint idx = idx3.y * dim3.x + idx3.x;
+                gRayTask[idx].photonIdx = instanceIdx;
+                gRayTask[idx].pixelArea = pixelArea;
+                gRayTask[idx].inFrustum = isInFrustum ? 1 : 0;
+
             }
+            //uint v = ((uint(pixelArea.x) << 16) | 1);
+            uint oldV;
+            uint2 pixelPos = uint2(hitData2.pixelPos >> 16, hitData2.pixelPos & 0xffff);
+            uint pixelLoc = pixelPos.y * coarseDim.x + pixelPos.x;
+            InterlockedAdd(gPixelInfo[pixelLoc].screenArea, uint(pixelArea.x* pixelArea.x), oldV);
+            InterlockedAdd(gPixelInfo[pixelLoc].count, 1, oldV);
         }
     }
 
@@ -345,6 +357,7 @@ void rayGen()
     float2 lightUV;
     float2 pixelSize = float2(1,1);
     uint taskIdx = launchIndex.y * launchDimension.x + launchIndex.x;
+    uint pixelCoord;
     if (launchRayTask)
     {
         taskIdx += rayTaskOffset;
@@ -353,6 +366,7 @@ void rayGen()
             return;
         }
         RayTask task = gRayTask[taskIdx];
+        pixelCoord = (int(task.screenCoord.x) << 16) | int(task.screenCoord.y);
         lightUV = (task.screenCoord) / float2(coarseDim);// float2(launchDimension.xy);
         pixelSize = task.pixelSize;
         //lightUV = float2(launchIndex.xy+0.5) / float2(launchDimension.xy);
@@ -360,17 +374,21 @@ void rayGen()
     }
     else
     {
+        if (any(launchIndex.xy >= coarseDim))
+        {
+            return;
+        }
+        pixelCoord = ((launchIndex.x << 16) | (launchIndex.y));
         lightUV = float2(launchIndex.xy) / float2(coarseDim.xy);
-        gOutput[launchIndex.xy] = 0;
+        uint nw, nh, nl;
+        gUniformNoise.GetDimensions(0, nw, nh, nl);
+        float2 noise = gUniformNoise.Load(uint3(launchIndex.xy % uint2(nw, nh), 0)).rg;
+        lightUV += (noise * jitter + randomOffset*0) * pixelSize;
+        //gOutput[launchIndex.xy] *= 0.99;
     }
     lightUV = lightUV * 2 - 1;
     //float dispatchFactor = (coarseDim.x / 512.0) * (coarseDim.y / 512.0);
     pixelSize *= emitSize / float2(coarseDim.xy);
-
-    uint nw, nh, nl;
-    gUniformNoise.GetDimensions(0, nw, nh, nl);
-    float2 noise = gUniformNoise.Load(uint3(launchIndex.xy % uint2(nw, nh), 0)).rg;
-    lightUV += noise * pixelSize * jitter;
 
     ray.Origin = lightOrigin + (lightDirX * lightUV.x + lightDirY * lightUV.y) * emitSize;
     ray.Direction = lightDirZ;// lightDirZ;
@@ -391,6 +409,7 @@ void rayGen()
     hitData.dDdy = 0;// lightDirY* pixelSize.y * 2.0;
     hitData.dPdx = lightDirX * pixelSize.x * 2.0;
     hitData.dPdy = -lightDirY * pixelSize.y * 2.0;
+    hitData.pixelPos = pixelCoord;
 
     gRayTask[taskIdx].photonIdx = -1;
     if (!launchRayTask)

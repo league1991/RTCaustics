@@ -43,47 +43,62 @@ public:
     void onGuiRender(Gui* pGui) override;
 
 private:
-    int mDispatchSize=512;
-    int mTileSize = 16;
-    int2 mTileDim = int2(1, 1);
+    // Photon trace
+    int mTraceType = 0;
+    int mDispatchSize=64;
     int mMaxTraceDepth = 10;
-    bool mRayTrace = true;
-    bool mRefinePhoton = true;
-    bool mRemoveIsolatedPhoton = false;
-    int mMinNeighbourCount = 2;
-    bool mMedianFilter = false;
-    bool mShowTileCount = false;
-    int mTileCountScale = 10;
-    uint32_t mDebugMode = 9;
-    bool mUseDOF = false;
-    uint32_t mSampleIndex = 0xdeadbeef;
     float mEmitSize = 30.0;
-    float mSplatSize = 2.8f;
-    float mDepthRadius = 0.1f;
     float mIntensity = 3.f;
     float mRoughThreshold = 0.1f;
-    float mKernelPower = 1.f;
-    float mMaxPixelArea = 100;
-    int mPhotonDisplayMode = 0;
-    uint32_t mPhotonMode = 0;
     uint32_t mAreaType = 0;
     float mJitter = 0.f;
-    float mNormalThreshold = 0.2f;
-    float mDistanceThreshold = 10.0f;
-    float mPlanarThreshold = 2.0f;
-    float mScatterNormalThreshold = 0.2f;
-    float mScatterDistanceThreshold = 10.0f;
-    float mScatterPlanarThreshold = 2.0f;
-    float mPixelLuminanceThreshold = 0.5f;
-    float mMinPhotonPixelSize = 7.0f;
     float mIOROveride = 1.5f;
-    float mMaxAnisotropy = 20.0f;
-    float trimDirectionThreshold = 0.5f;
     int mColorPhoton = 0;
     int mPhotonIDScale = 50;
     float mTraceColorThreshold = 0.04f;
     float mCullColorThreshold = 0.04f;
+
+    // Adaptive photon refine
+    bool mRemoveIsolatedPhoton = false;
+    int mMinNeighbourCount = 2;
+    bool mMedianFilter = false;
+    int mTileCountScale = 10;
+    float mNormalThreshold = 0.2f;
+    float mDistanceThreshold = 10.0f;
+    float mPlanarThreshold = 2.0f;
+    float mMinPhotonPixelSize = 7.0f;
+    float mSmoothWeight = 0.2f;
+
+    // smooth photon
+    float mPixelLuminanceThreshold = 0.5f;
+    float trimDirectionThreshold = 0.5f;
+
+    // Photon Scatter
     int   mScatterOrGather = 0;
+    float mSplatSize = 2.8f;
+    float mKernelPower = 1.f;
+    int mPhotonDisplayMode = 0;
+    uint32_t mPhotonMode = 0;
+    float mScatterNormalThreshold = 0.2f;
+    float mScatterDistanceThreshold = 10.0f;
+    float mScatterPlanarThreshold = 2.0f;
+    float mMaxAnisotropy = 20.0f;
+
+    // Photon Gather
+    int mTileSize = 16;
+    int2 mTileDim = int2(1, 1);
+    bool mShowTileCount = false;
+    float mDepthRadius = 0.1f;
+
+    // Composite
+    bool mRayTrace = true;
+    uint32_t mDebugMode = 9;
+    float mMaxPixelArea = 100;
+    int mRayTexScaleFactor = 4;
+
+    // Others
+    bool mUseDOF = false;
+    uint32_t mSampleIndex = 0xdeadbeef;
     float2 mLightAngle{0.4f,2.f};
     float3 mLightDirection;
     float2 mLightAngleSpeed{0,0};
@@ -116,6 +131,11 @@ private:
     RtProgramVars::SharedPtr mpPhotonTraceVars;
     RtState::SharedPtr mpPhotonTraceState;
     Texture::SharedPtr mpUniformNoise;
+
+    // update ray density result
+    ComputeProgram::SharedPtr mpUpdateRayDensityProgram;
+    ComputeVars::SharedPtr mpUpdateRayDensityVars;
+    ComputeState::SharedPtr mpUpdateRayDensityState;
 
     // analyse trace result
     ComputeProgram::SharedPtr mpAnalyseProgram;
@@ -168,6 +188,7 @@ private:
     StructuredBuffer::SharedPtr  mpPhotonBuffer;
     StructuredBuffer::SharedPtr  mpPhotonBuffer2;
     StructuredBuffer::SharedPtr  mpRayTaskBuffer;
+    StructuredBuffer::SharedPtr  mpPixelInfoBuffer;
     Texture::SharedPtr mpRayDensityTex;
 
     void setPerFrameVars(const Fbo* pTargetFbo);
@@ -175,4 +196,5 @@ private:
     void loadScene(const std::string& filename, const Fbo* pTargetFbo);
     void loadShader();
     void setCommonVars(GraphicsVars* pVars, const Fbo* pTargetFbo);
+    void setPhotonTracingCommonVariable();
 };

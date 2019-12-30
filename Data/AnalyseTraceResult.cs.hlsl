@@ -32,6 +32,7 @@ shared cbuffer PerFrameCB
     float4x4 viewProjMat;
     int2 taskDim;
     int2 screenDim;
+    float2 randomOffset;
     float normalThreshold;
     float distanceThreshold;
     float planarThreshold;
@@ -52,7 +53,9 @@ RWStructuredBuffer<Photon> gPhotonBuffer;
 //RWStructuredBuffer<DrawArguments> gDrawArgument;
 RWStructuredBuffer<RayArgument> gRayArgument;
 RWStructuredBuffer<RayTask> gRayTask;
+RWStructuredBuffer<PixelInfo> gPixelInfo;
 Texture2D gDepthTex;
+Texture2D gRayDensityTex;
 
 float getNeighbourArea(uint2 pixelCoord0, uint2 offset, out int isInFrustum)
 {
@@ -112,10 +115,15 @@ float checkPixelNeighbour(uint2 pixelCoord0, RayTask task0, Photon photon0, uint
     //return int(subd + 0.5);
 }
 
+int getRayTaskID(uint2 pos)
+{
+    return pos.y * taskDim.x + pos.x;
+}
+
 [numthreads(16, 16, 1)]
 void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 threadIdx : SV_DispatchThreadID)
 {
-    uint rayIdx = threadIdx.y * taskDim.x + threadIdx.x;
+    uint rayIdx = getRayTaskID(threadIdx.xy);
     RayTask task0 = gRayTask[rayIdx];
     int idx0 = task0.photonIdx;
     if (idx0 == -1)
@@ -130,7 +138,7 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 thr
     {
         return;
     }
-    int2 screenPos = (posS0.xy * float2(1,-1) + 1) * 0.5 * screenDim;
+    int2 screenPos = (posS0.xy * float2(1, -1) + 1) * 0.5 * screenDim;
     float depth = gDepthTex.Load(int3(screenPos.xy, 0)).x;
     if (posS0.w > depth + 0.1)
     {
@@ -172,6 +180,55 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 thr
         RayTask newTask;
         newTask.screenCoord = screenCoord0 + float2(x, y)*0.5;
         newTask.pixelSize = pixelSize;
+        newTask.photonIdx = -1;
+        gRayTask[taskIdx + i] = newTask;
+    }
+}
+
+[numthreads(16, 16, 1)]
+void addPhotonTaskFromTexture(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 threadIdx : SV_DispatchThreadID)
+{
+    uint rayIdx = getRayTaskID(threadIdx.xy);
+    gPixelInfo[rayIdx].screenArea = 0;
+    gPixelInfo[rayIdx].count = 0;
+
+    RayTask task0 = gRayTask[rayIdx];
+    int idx0 = task0.photonIdx;
+
+    int2 pixel00 = threadIdx.xy;
+    float v00 = gRayDensityTex.Load(int3(pixel00 + int2(0, 0), 0)).r;
+    float v10 = gRayDensityTex.Load(int3(pixel00 + int2(1, 0), 0)).r;
+    float v01 = gRayDensityTex.Load(int3(pixel00 + int2(0, 1), 0)).r;
+    float v11 = gRayDensityTex.Load(int3(pixel00 + int2(1, 1), 0)).r;
+
+    int sampleCount =  0.25 * (v00 + v10 + v01 + v11); //max(v00, max(v10, max(v01, v11)));//
+    sampleCount = clamp(sampleCount, 1, 1024 * 8);
+
+    float sampleWeight = 1.0 / sqrt(float(sampleCount));
+    float2 pixelSize = float2(1, 1) * sampleWeight;
+
+    if (idx0 != -1)
+    {
+        //Photon photon0 = gPhotonBuffer[idx0];
+        gPhotonBuffer[idx0].dPdx *= sampleWeight;
+        gPhotonBuffer[idx0].dPdy *= sampleWeight;
+        gPhotonBuffer[idx0].color /= sampleCount;
+    }
+
+    int taskIdx = 0;
+    InterlockedAdd(gRayArgument[0].rayTaskCount, sampleCount, taskIdx);
+    float g = 1.32471795724474602596;
+    float a1 = 1.0 / g;
+    float a2 = 1.0 / (g * g);
+    for (uint i = 0; i < sampleCount; i++)
+    {
+        float x = frac(randomOffset.x + a1 * (i + 1));
+        float y = frac(randomOffset.y + a2 * (i + 1));
+
+        float2 uv = bilinearSample(v00, v10, v01, v11, float2(x, y));
+        RayTask newTask;
+        newTask.screenCoord = pixel00 + uv +0.5;
+        newTask.pixelSize = pixelSize *sqrt(sampleCount / (bilinearIntepolation(v00, v10, v01, v11, uv)));
         newTask.photonIdx = -1;
         gRayTask[taskIdx + i] = newTask;
     }

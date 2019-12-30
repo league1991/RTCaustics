@@ -25,47 +25,53 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
-#include "common.hlsl"
-struct DrawArguments
-{
-    uint indexCountPerInstance;
-    uint instanceCount;
-    uint startIndexLocation;
-    int  baseVertexLocation;
-    uint startInstanceLocation;
-};
+#include "Common.hlsl"
 
 shared cbuffer PerFrameCB
 {
-    uint2 coarseDim;
-    uint initRayCount;
+    int2 coarseDim;
+    float minPhotonPixelSize;
+    float smoothWeight;
 };
 
-//StructuredBuffer<Photon> gPhotonBuffer;
-RWStructuredBuffer<DrawArguments> gDrawArgument;
-RWStructuredBuffer<RayArgument> gRayArgument;
-//RWStructuredBuffer<PixelInfo> gPixelInfo;
+RWStructuredBuffer<PixelInfo> gPixelInfo;
+RWTexture2D<float> gRayDensityTex;
 
-[numthreads(1, 1, 1)]
-void main(uint3 threadIdx : SV_DispatchThreadID)
+float getAvgArea(uint2 pos)
 {
-    //uint length, stride;
-    //gPhotonBuffer.GetDimensions(length, stride);
-    if (all(threadIdx == uint3(0,0,0)))
+    int idx = coarseDim.x * pos.y + pos.x;
+    float avgArea = sqrt(gPixelInfo[idx].screenArea / float(gPixelInfo[idx].count + 0.01));
+    return avgArea;
+}
+
+[numthreads(16, 16, 1)]
+void updateRayDensityTex(uint3 threadIdx : SV_DispatchThreadID)
+{
+    int idx = coarseDim.x * threadIdx.y + threadIdx.x;
+
+    float a[5];
+    a[0] = getAvgArea(threadIdx.xy);
+    a[1] = getAvgArea(threadIdx.xy + uint2(1, 0));
+    a[2] = getAvgArea(threadIdx.xy + uint2(-1, 0));
+    a[3] = getAvgArea(threadIdx.xy + uint2(0, 1));
+    a[4] = getAvgArea(threadIdx.xy + uint2(0, -1));
+
+    float area = a[0];
+    float weight = 0.2;
+    for (int i = 1; i < 5; i++)
     {
-        gDrawArgument[0].indexCountPerInstance = 6;
-        gDrawArgument[0].instanceCount = 0;
-        gDrawArgument[0].startIndexLocation = 0;
-        gDrawArgument[0].baseVertexLocation = 0;
-        gDrawArgument[0].startInstanceLocation = 0;
-
-        gRayArgument[0].rayTaskCount = initRayCount;
+        //area = max(area, a[i]);
+        area += a[i];
     }
+    //area /= (1 + weight * 4);
+    area = a[0];
 
-    //uint value = gRayDensityTex[threadIdx.xy];
-    //float avgArea = float(value >> 16) / float(value & 0xff);
-    //uint lastCount = 1;
-    //int idx = coarseDim.x * threadIdx.y + threadIdx.x;
-    //gPixelInfo[idx].screenArea = 0;// (uint(avgArea * lastCount) << 16) | lastCount;
+    float targetArea = minPhotonPixelSize * minPhotonPixelSize;
+    float oldDensity = gRayDensityTex[threadIdx.xy].r;
+    float newDensity = oldDensity * area / targetArea;// oldDensity + (area - targetArea) * 0.1;
+    newDensity = newDensity * 0.05 + oldDensity * 0.95;
+    gRayDensityTex[threadIdx.xy] = clamp(newDensity, 0.1, 1024 * 8);
+
+    //gPixelInfo[idx].screenArea = 0;
     //gPixelInfo[idx].count = 0;
 }
