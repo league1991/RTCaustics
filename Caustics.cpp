@@ -72,7 +72,7 @@ void Caustics::onGuiRender(Gui* pGui)
             debugModeList.push_back({ 9, "Raytrace" });
             pGui->addDropdown("Composite mode", debugModeList, (uint32_t&)mDebugMode);
         }
-        pGui->addFloatVar("Max Pixel Area", mMaxPixelArea, 0, 10000, 0.1f);
+        pGui->addFloatVar("Max Pixel Area", mMaxPixelArea, 0, 10000, 1.f);
         {
             Gui::DropdownList debugModeList;
             debugModeList.push_back({ 1, "x1" });
@@ -154,6 +154,7 @@ void Caustics::onGuiRender(Gui* pGui)
             pGui->addFloatVar("Scatter Distance Threshold", mScatterDistanceThreshold, 0.1f, 10.0f, 0.1f);
             pGui->addFloatVar("Scatter Planar Threshold", mScatterPlanarThreshold, 0.01f, 10.0, 0.1f);
             pGui->addFloatVar("Max Anisotropy", mMaxAnisotropy, 1, 100, 0.1f);
+            pGui->addFloatVar("Max Pixel Radius", mMaxPhotonPixelRadius, 0, 5000, 1.f);
             {
                 Gui::DropdownList debugModeList;
                 debugModeList.push_back({ 0, "Kernel" });
@@ -583,10 +584,13 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pPerFrameCB["gShowPhoton"] = uint32_t(mPhotonDisplayMode);
         pPerFrameCB["gLightDir"] = mLightDirection;
         pPerFrameCB["taskDim"] = int2(mDispatchSize, mDispatchSize);
+        pPerFrameCB["screenDim"] = int2(mpDepthTex->getWidth(), mpDepthTex->getHeight());
         pPerFrameCB["normalThreshold"] = mScatterNormalThreshold;
         pPerFrameCB["distanceThreshold"] = mScatterDistanceThreshold;
         pPerFrameCB["planarThreshold"] = mScatterPlanarThreshold;
         pPerFrameCB["gMaxAnisotropy"] = mMaxAnisotropy;
+        pPerFrameCB["gCameraPos"] = mpCamera->getPosition();
+        pPerFrameCB["gMaxScreenRadius"] = mMaxPhotonPixelRadius;
         mpPhotonScatterVars["gLinearSampler"] = mpLinearSampler;
         mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", photonBuffer);
         mpPhotonScatterVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);

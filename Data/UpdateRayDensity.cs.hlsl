@@ -68,8 +68,11 @@ void updateRayDensityTex(uint3 threadIdx : SV_DispatchThreadID)
     oldDensity += gRayDensityTex[threadIdx.xy + uint2(0, -1)].r * weight;
     oldDensity /= (1 + weight * 4);
 
-    float newDensity = oldDensity * area / targetArea + stdVariance * varianceGain * 0.01 - value.g * derivativeGain;
+    //float density = 1 / (area + 0.001);
+    //float targetDensity = 1 / (targetArea * 0.01 + 0.001);
+    //float newDensity = oldDensity + updateSpeed * 100 * (targetDensity - density) + stdVariance * varianceGain * 0.01 - value.g * derivativeGain;
 
+    float newDensity = oldDensity * area / targetArea + stdVariance * varianceGain * 0.01 - value.g * derivativeGain;
     newDensity = newDensity * updateSpeed + oldDensity * (1- updateSpeed);
     newDensity = clamp(newDensity, 0.1, maxTaskPerPixel);
     gRayDensityTex[threadIdx.xy] = float4(newDensity, newDensity - value.r, 0, 0);

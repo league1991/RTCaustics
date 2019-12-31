@@ -67,7 +67,7 @@ private:
     int mMaxTaskCountPerPixel = 8192;
     float mUpdateSpeed = 0.2f;
     float mVarianceGain = 0.0f;
-    float mDerivativeGain = 0.1f;
+    float mDerivativeGain = 0.0f;
 
     // smooth photon
     bool mMedianFilter = false;
@@ -86,6 +86,7 @@ private:
     float mScatterDistanceThreshold = 10.0f;
     float mScatterPlanarThreshold = 2.0f;
     float mMaxAnisotropy = 20.0f;
+    float mMaxPhotonPixelRadius = 90.0f;
 
     // Photon Gather
     int mTileCountScale = 10;

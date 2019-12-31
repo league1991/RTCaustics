@@ -63,8 +63,12 @@ cbuffer PerFrameCB : register(b0)
     float gSurfaceRoughness;
     float gSplatSize;
 
+    int2 screenDim;
     uint  gPhotonMode;
     float gMaxAnisotropy;
+
+    float3 gCameraPos;
+    float gMaxScreenRadius;
 };
 #define AnisotropicPhoton 0
 #define IsotropicPhoton 1
@@ -276,9 +280,16 @@ PhotonVSOut photonScatterVS(PhotonVSIn vIn)
 
     float3 areaVector = cross(tangent, bitangent);
 
-    float3 localPoint = tangent * vIn.pos.x + bitangent * vIn.pos.z + normal * vIn.pos.y;
-    vIn.pos.xyz = localPoint + p.posW;
-    vOut.posH = mul(vIn.pos, gWvpMat);
+    float solidAngle = sqrt(length(areaVector)) / length(p.posW - gCameraPos);
+    if (solidAngle * 0.5 * (screenDim.x + screenDim.y) > gMaxScreenRadius)
+    {
+        vOut.posH = float4(100, 100, 100, 1);
+    }
+    else
+    {
+        float3 localPoint = tangent * vIn.pos.x + bitangent * vIn.pos.z + normal * vIn.pos.y;
+        vOut.posH = mul(float4(localPoint + p.posW, 1), gWvpMat);
+    }
 
     color = p.color;
     if (gShowPhoton == 2)
