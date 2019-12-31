@@ -285,7 +285,7 @@ void Caustics::loadShader()
         desc.addMiss(0, "primaryMiss");
         //photonTraceProgDesc.addHitGroup(1, "", "shadowAnyHit");
         //photonTraceProgDesc.addMiss(1, "shadowMiss");
-        mpPhotonTraceProgram = RtProgram::create(desc, 72U);
+        mpPhotonTraceProgram = RtProgram::create(desc, 80U);
         mpPhotonTraceState = RtState::create();
         mpPhotonTraceState->setProgram(mpPhotonTraceProgram);
         mpPhotonTraceVars = RtProgramVars::create(mpPhotonTraceProgram, mpScene);
@@ -453,6 +453,7 @@ void Caustics::setPhotonTracingCommonVariable()
     rayGenVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
     rayGenVars->setStructuredBuffer("gPixelInfo", mpPixelInfoBuffer);
     rayGenVars->setTexture("gUniformNoise", mpUniformNoise);
+    rayGenVars->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
     auto hitVars = mpPhotonTraceVars->getHitVars(0);
     for (auto& hitVar : hitVars)
     {
@@ -461,7 +462,7 @@ void Caustics::setPhotonTracingCommonVariable()
         hitVar->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
         hitVar->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
     }
-    mpPhotonTraceState->setMaxTraceRecursionDepth(mMaxTraceDepth + 1);
+    mpPhotonTraceState->setMaxTraceRecursionDepth(1);
 }
 
 void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)

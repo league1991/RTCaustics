@@ -62,11 +62,11 @@ shared cbuffer PerFrameCB
 
 struct PrimaryRayData
 {
-    float4 color;
+    float3 color;
+    float hitT;
+    float3 nextDir;
+    uint isContinue;
     float3 dPdx, dPdy, dDdx, dDdy;  // ray differentials
-    uint pixelPos;
-    uint depth;
-    //float hitT;
 };
 
 struct ShadowRayData
@@ -77,8 +77,9 @@ struct ShadowRayData
 [shader("miss")]
 void primaryMiss(inout PrimaryRayData hitData)
 {
-    hitData.color = float4(1, 0, 0, 1);
-    //hitData.hitT = -1;
+    hitData.color = float3(0, 0, 0);
+    hitData.isContinue = 0;
+    hitData.hitT = 0;
 }
 
 void getVerticesAndNormals(
@@ -205,10 +206,6 @@ void updateRefractRayDifferential(
 [shader("closesthit")]
 void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersectionAttributes attribs)
 {
-    if (hitData.depth >= maxDepth)
-    {
-        return;
-    }
     // Get the hit-point data
     float3 rayOrigW = WorldRayOrigin();
     float3 rayDirW = WorldRayDirection(); 
@@ -219,20 +216,14 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     // prepare the shading data
     VertexOut v = getVertexAttributes(triangleIndex, attribs);
     ShadingData sd = prepareShadingData(v, gMaterial, rayOrigW, 0);
-    //hitData.hitT = hitT;
+    hitData.hitT = hitT;
 
-    PrimaryRayData hitData2;
-    hitData2.depth = hitData.depth + 1;
-    hitData2.dPdx = hitData.dPdx;
-    hitData2.dDdx = hitData.dDdx;
-    hitData2.dPdy = hitData.dPdy;
-    hitData2.dDdy = hitData.dDdy;
-    hitData2.pixelPos = hitData.pixelPos;
     float3 P0, P1, P2, N0, N1, N2, N;
     getVerticesAndNormals(PrimitiveIndex(), attribs, P0, P1, P2, N0, N1, N2, N);
-    updateTransferRayDifferential(N, hitData2.dPdx, hitData2.dDdx);
-    updateTransferRayDifferential(N, hitData2.dPdy, hitData2.dDdy);
+    updateTransferRayDifferential(N, hitData.dPdx, hitData.dDdx);
+    updateTransferRayDifferential(N, hitData.dPdy, hitData.dDdy);
 
+    hitData.isContinue = 0;
     bool isSpecular = (sd.linearRoughness > roughThreshold || sd.opacity < 1);
     if (isSpecular)
     {
@@ -255,94 +246,33 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
 
         if (isReflect)
         {
-            updateReflectRayDifferential(P0, P1, P2, N0, N1, N2, N, hitData2.dPdx, hitData2.dDdx);
-            updateReflectRayDifferential(P0, P1, P2, N0, N1, N2, N, hitData2.dPdy, hitData2.dDdy);
+            updateReflectRayDifferential(P0, P1, P2, N0, N1, N2, N, hitData.dPdx, hitData.dDdx);
+            updateReflectRayDifferential(P0, P1, P2, N0, N1, N2, N, hitData.dPdy, hitData.dDdy);
             R = reflect(rayDirW, v.normalW);
         }
         else
         {
             getRefractVector(rayDirW, v.normalW, R, eta);
-            updateRefractRayDifferential(P0, P1, P2, N0, N1, N2, rayDirW, R, N, eta, hitData2.dPdx, hitData2.dDdx);
-            updateRefractRayDifferential(P0, P1, P2, N0, N1, N2, rayDirW, R, N, eta, hitData2.dPdy, hitData2.dDdy);
+            updateRefractRayDifferential(P0, P1, P2, N0, N1, N2, rayDirW, R, N, eta, hitData.dPdx, hitData.dDdx);
+            updateRefractRayDifferential(P0, P1, P2, N0, N1, N2, rayDirW, R, N, eta, hitData.dPdy, hitData.dDdy);
         }
 
         float3 baseColor = lerp(1, sd.diffuse, sd.opacity);
-        hitData2.color = float4(baseColor,1) * hitData.color;// *float4(sd.specular, 1);
-        float area = (dot(hitData2.dPdx, hitData2.dPdx) + dot(hitData2.dPdy, hitData2.dPdy)) * 0.5;
-        float3 color = hitData2.color.rgb / area;
-        if (dot(color, float3(0.299, 0.587, 0.114)) > traceColorThreshold)
+        hitData.color = baseColor * hitData.color;// *float4(sd.specular, 1);
+        float area = (dot(hitData.dPdx, hitData.dPdx) + dot(hitData.dPdy, hitData.dPdy)) * 0.5;
+        //hitData.color.rgb = hitData.color.rgb / area;
+        hitData.nextDir = R;
+
+        if (dot(hitData.color/ area, float3(0.299, 0.587, 0.114)) > traceColorThreshold)
         {
-            RayDesc ray;
-            ray.Origin = posW;
-            ray.Direction = R;
-            ray.TMin = 0.01;
-            ray.TMax = 100000;
-            TraceRay(gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, hitData2);
+            hitData.isContinue = 1;
         }
     }
-    else if(hitData.depth > 0)
+    else
     {
-        float area;
-        if (gAreaType == 0)
-        {
-            area = (dot(hitData2.dPdx, hitData2.dPdx) + dot(hitData2.dPdy, hitData2.dPdy)) * 0.5;
-        }
-        else if (gAreaType == 1)
-        {
-            area = (length(hitData2.dPdx) + length(hitData2.dPdy));
-            area *= area;
-        }
-        else if (gAreaType == 2)
-        {
-            area = max(dot(hitData2.dPdx, hitData2.dPdx), dot(hitData2.dPdy, hitData2.dPdy));
-        }
-        else
-        {
-            float3 areaVector = cross(hitData2.dPdx, hitData2.dPdy);
-            area = length(areaVector);
-        }
-
-        //float area0 = emitSize * emitSize / (coarseDim.x * coarseDim.y);
-        float3 color = dot(-rayDirW, sd.N)* sd.diffuse* hitData.color.rgb / area;
-        bool isInFrustum;
-        float pixelArea = getPhotonScreenArea(posW, hitData2.dPdx, hitData2.dPdy, isInFrustum);
-        if (dot(color, float3(0.299, 0.587, 0.114)) > cullColorThreshold && isInFrustum)
-        {
-            uint instanceIdx = 0;
-            InterlockedAdd(gDrawArgument[0].instanceCount, 1, instanceIdx);
-
-            Photon photon;
-            photon.posW = posW;
-            photon.normalW = sd.N;
-            photon.color = color;
-            photon.dPdx = hitData2.dPdx;
-            photon.dPdy = hitData2.dPdy;
-            gPhotonBuffer[instanceIdx] = photon;
-
-            if (!launchRayTask)
-            {
-                //float4 screenArea0 = gOutput[idx3.xy];
-                //float w = pixelArea.x > screenArea0.x ? 1 : 0.1;
-                //gOutput[idx3.xy] = gOutput[idx3.xy] * (1 - w) + float4(pixelArea.x, 0, 0, 1) * w;
-
-                uint3 dim3 = DispatchRaysDimensions();
-                uint3 idx3 = DispatchRaysIndex();
-                uint idx = idx3.y * dim3.x + idx3.x;
-                gRayTask[idx].photonIdx = instanceIdx;
-                gRayTask[idx].pixelArea = pixelArea;
-                gRayTask[idx].inFrustum = isInFrustum ? 1 : 0;
-
-            }
-            //uint v = ((uint(pixelArea.x) << 16) | 1);
-            uint oldV;
-            uint2 pixelPos = uint2(hitData2.pixelPos >> 16, hitData2.pixelPos & 0xffff);
-            uint pixelLoc = pixelPos.y * coarseDim.x + pixelPos.x;
-            InterlockedAdd(gPixelInfo[pixelLoc].screenArea, uint(pixelArea.x), oldV);
-            InterlockedAdd(gPixelInfo[pixelLoc].screenAreaSq, uint(pixelArea.x* pixelArea.x), oldV);
-            InterlockedAdd(gPixelInfo[pixelLoc].count, 1, oldV);
-        }
+        hitData.color.rgb = dot(-rayDirW, sd.N)* sd.diffuse* hitData.color.rgb;
+        hitData.nextDir = sd.N;
     }
-
 }
 
 [shader("raygeneration")]
@@ -358,7 +288,7 @@ void rayGen()
     float2 lightUV;
     float2 pixelSize = float2(1,1);
     uint taskIdx = launchIndex.y * launchDimension.x + launchIndex.x;
-    uint pixelCoord;
+    uint2 pixelCoord;
     if (launchRayTask)
     {
         taskIdx += rayTaskOffset;
@@ -367,11 +297,9 @@ void rayGen()
             return;
         }
         RayTask task = gRayTask[taskIdx];
-        pixelCoord = (int(task.screenCoord.x) << 16) | int(task.screenCoord.y);
-        lightUV = (task.screenCoord) / float2(coarseDim);// float2(launchDimension.xy);
+        pixelCoord = task.screenCoord;
+        lightUV = (task.screenCoord) / float2(coarseDim);
         pixelSize = task.pixelSize;
-        //lightUV = float2(launchIndex.xy+0.5) / float2(launchDimension.xy);
-        //pixelSize = 0.1;
     }
     else
     {
@@ -379,38 +307,34 @@ void rayGen()
         {
             return;
         }
-        pixelCoord = ((launchIndex.x << 16) | (launchIndex.y));
+        pixelCoord = launchIndex.xy;
         lightUV = float2(launchIndex.xy) / float2(coarseDim.xy);
         uint nw, nh, nl;
         gUniformNoise.GetDimensions(0, nw, nh, nl);
         float2 noise = gUniformNoise.Load(uint3(launchIndex.xy % uint2(nw, nh), 0)).rg;
         lightUV += (noise * jitter + randomOffset*0) * pixelSize;
-        //gOutput[launchIndex.xy] *= 0.99;
     }
     lightUV = lightUV * 2 - 1;
-    //float dispatchFactor = (coarseDim.x / 512.0) * (coarseDim.y / 512.0);
     pixelSize *= emitSize / float2(coarseDim.xy);
 
     ray.Origin = lightOrigin + (lightDirX * lightUV.x + lightDirY * lightUV.y) * emitSize;
-    ray.Direction = lightDirZ;// lightDirZ;
+    ray.Direction = lightDirZ;
     ray.TMin = 0.0;
     ray.TMax = 1e10;
 
     PrimaryRayData hitData;
-    float4 color0 = 1;
+    float3 color0 = 1;
     if (colorPhotonID)
     {
         color0.xyz = frac(launchIndex.xyz / float(photonIDScale)) * 0.8 + 0.2;
     }
-    hitData.color = color0 *pixelSize.x* pixelSize.y * 512 * 512 * 0.5 * gIntensity;
-    hitData.depth = 0;
-    //hitData.dPdx = 0;
-    //hitData.dPdy = 0;
+    hitData.color = color0* pixelSize.x* pixelSize.y * 512 * 512 * 0.5 * gIntensity;
     hitData.dDdx = 0;// lightDirX* pixelSize.x * 2.0;
     hitData.dDdy = 0;// lightDirY* pixelSize.y * 2.0;
     hitData.dPdx = lightDirX * pixelSize.x * 2.0;
     hitData.dPdy = -lightDirY * pixelSize.y * 2.0;
-    hitData.pixelPos = pixelCoord;
+    hitData.nextDir = ray.Direction;
+    hitData.isContinue = 1;
 
     gRayTask[taskIdx].photonIdx = -1;
     if (!launchRayTask)
@@ -421,5 +345,71 @@ void rayGen()
         gRayTask[taskIdx].inFrustum = 0;
     }
 
-    TraceRay( gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, hitData );
+    int depth;
+    for (depth = 0; depth < maxDepth && hitData.isContinue; depth++)
+    {
+        TraceRay(gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, hitData);
+
+        ray.Origin = ray.Origin + ray.Direction * hitData.hitT;
+        ray.Direction = hitData.nextDir;
+        ray.TMin = 0.001;
+        ray.TMax = 1e10;
+    }
+
+    if (any(hitData.color > 0) && depth > 1)
+    {
+        float area;
+        if (gAreaType == 0)
+        {
+            area = (dot(hitData.dPdx, hitData.dPdx) + dot(hitData.dPdy, hitData.dPdy)) * 0.5;
+        }
+        else if (gAreaType == 1)
+        {
+            area = (length(hitData.dPdx) + length(hitData.dPdy));
+            area *= area;
+        }
+        else if (gAreaType == 2)
+        {
+            area = max(dot(hitData.dPdx, hitData.dPdx), dot(hitData.dPdy, hitData.dPdy));
+        }
+        else
+        {
+            float3 areaVector = cross(hitData.dPdx, hitData.dPdy);
+            area = length(areaVector);
+        }
+
+        float3 color = hitData.color.rgb / area;
+        bool isInFrustum;
+        float3 posW = ray.Origin;
+        float pixelArea = getPhotonScreenArea(posW, hitData.dPdx, hitData.dPdy, isInFrustum);
+        if (dot(color, float3(0.299, 0.587, 0.114)) > cullColorThreshold && isInFrustum)
+        {
+            uint instanceIdx = 0;
+            InterlockedAdd(gDrawArgument[0].instanceCount, 1, instanceIdx);
+
+            Photon photon;
+            photon.posW = posW;
+            photon.normalW = hitData.nextDir;
+            photon.color = color;
+            photon.dPdx = hitData.dPdx;
+            photon.dPdy = hitData.dPdy;
+            gPhotonBuffer[instanceIdx] = photon;
+
+            if (!launchRayTask)
+            {
+                uint3 dim3 = DispatchRaysDimensions();
+                uint3 idx3 = DispatchRaysIndex();
+                uint idx = idx3.y * dim3.x + idx3.x;
+                gRayTask[idx].photonIdx = instanceIdx;
+                gRayTask[idx].pixelArea = pixelArea;
+                gRayTask[idx].inFrustum = isInFrustum ? 1 : 0;
+
+            }
+            uint oldV;
+            uint pixelLoc = pixelCoord.y * coarseDim.x + pixelCoord.x;
+            InterlockedAdd(gPixelInfo[pixelLoc].screenArea, uint(pixelArea.x), oldV);
+            InterlockedAdd(gPixelInfo[pixelLoc].screenAreaSq, uint(pixelArea.x * pixelArea.x), oldV);
+            InterlockedAdd(gPixelInfo[pixelLoc].count, 1, oldV);
+        }
+    }
 }
