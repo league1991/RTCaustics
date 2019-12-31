@@ -91,6 +91,7 @@ void Caustics::onGuiRender(Gui* pGui)
             Gui::DropdownList debugModeList;
             debugModeList.push_back({ 0, "Fixed Resolution" });
             debugModeList.push_back({ 1, "Adaptive Resolution" });
+            debugModeList.push_back({ 2, "None" });
             pGui->addDropdown("Trace Type", debugModeList, (uint32_t&)mTraceType);
         }
         {
@@ -300,7 +301,7 @@ void Caustics::loadShader()
         desc.addHitGroup(1, "", "shadowAnyHit").addMiss(1, "shadowMiss");
         desc.addMiss(0, "primaryMiss");
         desc.addMiss(1, "shadowMiss");
-        mpCompositeRTProgram = RtProgram::create(desc);
+        mpCompositeRTProgram = RtProgram::create(desc,48);
         mpCompositeRTState = RtState::create();
         mpCompositeRTState->setProgram(mpCompositeRTProgram);
         mpCompositeRTVars = RtProgramVars::create(mpCompositeRTProgram, mpScene);
@@ -532,6 +533,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     }
 
     // photon tracing
+    if(mTraceType != 2)
     {
         setPhotonTracingCommonVariable();
         GraphicsVars* pVars = mpPhotonTraceVars->getGlobalVars().get();
@@ -695,7 +697,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         }
         auto rayGenVars = mpCompositeRTVars->getRayGenVars();
         rayGenVars->setTexture("gOutput", mpRtOut);
-        mpCompositeRTState->setMaxTraceRecursionDepth(mMaxTraceDepth + 1);
+        mpCompositeRTState->setMaxTraceRecursionDepth(2);
         mpRtRenderer->renderScene(pContext, mpCompositeRTVars, mpCompositeRTState, uvec3(pTargetFbo->getWidth(), pTargetFbo->getHeight(), 1), mpCamera.get());
         pContext->blit(mpRtOut->getSRV(), pTargetFbo->getRenderTargetView(0));
     }

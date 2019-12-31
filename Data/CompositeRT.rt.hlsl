@@ -44,11 +44,12 @@ shared cbuffer PerFrameCB
     float iorOverride;
 };
 
-struct PrimaryRayData
+struct HitData
 {
-    float4 color;
-    uint depth;
+    float3 color;
     float hitT;
+    float3 nextDir;
+    float3 throughput;
 };
 
 struct ShadowRayData
@@ -69,10 +70,11 @@ void shadowAnyHit(inout ShadowRayData hitData, in BuiltInTriangleIntersectionAtt
 }
 
 [shader("miss")]
-void primaryMiss(inout PrimaryRayData hitData)
+void primaryMiss(inout HitData hitData)
 {
-    hitData.color = float4(0.38f, 0.52f, 0.10f, 1);
+    hitData.color = 0;// float4(0.38f, 0.52f, 0.10f, 1);
     hitData.hitT = -1;
+    hitData.throughput = 0;
 }
 
 bool checkLightHit(uint lightIndex, float3 origin)
@@ -90,35 +92,9 @@ bool checkLightHit(uint lightIndex, float3 origin)
     return rayData.hit;
 }
 
-float3 getReflectionColor(float3 worldOrigin, VertexOut v, float3 worldRayDir, uint hitDepth)
-{
-    float3 reflectColor = float3(0, 0, 0);
-    if (hitDepth == 0)
-    {
-        PrimaryRayData secondaryRay;
-        secondaryRay.depth.r = 1;
-        RayDesc ray;
-        ray.Origin = worldOrigin;
-        ray.Direction = reflect(worldRayDir, v.normalW);
-        ray.TMin = 0.001;
-        ray.TMax = 100000;
-        TraceRay(gRtScene, 0 /*rayFlags*/, 0xFF, 0 /* ray index*/, hitProgramCount, 0, ray, secondaryRay);
-        reflectColor = secondaryRay.hitT == -1 ? 0 : secondaryRay.color.rgb;
-        float falloff = max(1, (secondaryRay.hitT * secondaryRay.hitT));
-        reflectColor *= 20 / falloff;
-    }
-    return reflectColor;
-}
-
 [shader("closesthit")]
-void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersectionAttributes attribs)
+void primaryClosestHit(inout HitData hitData, in BuiltInTriangleIntersectionAttributes attribs)
 {
-    if (hitData.depth >= maxDepth)
-    {
-        hitData.color = float4(0, 0, 0, 1);
-        return;
-    }
-    // Get the hit-point data
     float3 rayOrigW = WorldRayOrigin();
     float3 rayDirW = WorldRayDirection();
     float hitT = RayTCurrent();
@@ -129,8 +105,6 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     VertexOut v = getVertexAttributes(triangleIndex, attribs);
     ShadingData sd = prepareShadingData(v, gMaterial, rayOrigW, 0);
 
-    // Shoot a reflection ray
-    //float3 reflectColor = getReflectionColor(posW, v, rayDirW, hitData.depth.r);
     float3 color = 0;
     if(sd.linearRoughness > roughThreshold || sd.opacity < 1)
     {
@@ -157,19 +131,10 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
             getRefractVector(rayDirW, N, R, eta);
         }
 
-        PrimaryRayData secondaryRay;
-        secondaryRay.depth.r = hitData.depth +1;
-        RayDesc ray;
-        ray.Origin = posW;
-        ray.Direction = R;
-        ray.TMin = 0.001;
-        ray.TMax = 100000;
-        TraceRay(gRtScene, 0 /*rayFlags*/, 0xFF, 0 /* ray index*/, hitProgramCount, 0, ray, secondaryRay);
-        float3 reflectColor = secondaryRay.hitT == -1 ? 0 : secondaryRay.color.rgb;
         float3 baseColor = lerp(1, sd.diffuse, sd.opacity);
-        color = baseColor * reflectColor;
-        //float falloff = max(1, (secondaryRay.hitT * secondaryRay.hitT));
-        //reflectColor *= 20 / falloff;
+        color = 0;
+        hitData.nextDir = R;
+        hitData.throughput = baseColor;
     }
     else
     {
@@ -189,16 +154,13 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
                 color += evalMaterial(sd, gLights[i], 1).color.xyz;
             }
         }
-    }
 
+        hitData.throughput = 0;
+    }
 
     hitData.color.rgb = color;
     hitData.hitT = hitT;
-    // A very non-PBR inaccurate way to do reflections
-    float roughness = min(0.5, max(1e-8, sd.roughness));
-    //hitData.color.rgb += sd.specular * reflectColor;// *(roughness * roughness);
     hitData.color.rgb += sd.emissive;
-    hitData.color.a = 1;
 }
 
 [shader("raygeneration")]
@@ -216,8 +178,22 @@ void rayGen()
     {
         ray = generateDOFRay(gCamera, launchIndex.xy, viewportDims, randSeed);
     }
-    PrimaryRayData hitData;
-    hitData.depth = 0;
-    TraceRay(gRtScene, 0 /*rayFlags*/, 0xFF, 0 /* ray index*/, hitProgramCount, 0, ray, hitData);
-    gOutput[launchIndex.xy] = hitData.color;
+
+    float3 totalColor = 0;
+    float3 totalThroughput = 1;
+    for (int i = 0; i < maxDepth && any(totalThroughput > 0); i++)
+    {
+        HitData hitData;
+        TraceRay(gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, hitData);
+
+        totalColor += totalThroughput * hitData.color.rgb;
+        totalThroughput *= hitData.throughput;
+
+        ray.Origin = ray.Origin + ray.Direction * hitData.hitT;
+        ray.Direction = hitData.nextDir;
+        ray.TMin = 0.001;
+        ray.TMax = 100000;
+    }
+
+    gOutput[launchIndex.xy] = float4(totalColor,1);
 }

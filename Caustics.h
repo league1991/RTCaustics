@@ -86,7 +86,7 @@ private:
     float mScatterDistanceThreshold = 10.0f;
     float mScatterPlanarThreshold = 2.0f;
     float mMaxAnisotropy = 20.0f;
-    float mMaxPhotonPixelRadius = 90.0f;
+    float mMaxPhotonPixelRadius = 60.0f;
 
     // Photon Gather
     int mTileCountScale = 10;
