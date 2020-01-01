@@ -39,6 +39,7 @@ shared cbuffer PerFrameCB
 };
 
 RWStructuredBuffer<PixelInfo> gPixelInfo;
+RWStructuredBuffer<RayArgument> gRayArgument;
 RWTexture2D<float4> gRayDensityTex;
 
 void getAreaValue(uint2 pos, out float avgArea, out float avgArea2)
@@ -51,6 +52,11 @@ void getAreaValue(uint2 pos, out float avgArea, out float avgArea2)
 [numthreads(16, 16, 1)]
 void updateRayDensityTex(uint3 threadIdx : SV_DispatchThreadID)
 {
+    if (all(threadIdx == uint3(0, 0, 0)))
+    {
+        gRayArgument[0].rayTaskCount = 0;
+    }
+
     int idx = coarseDim.x * threadIdx.y + threadIdx.x;
     
     float area, areaSq;

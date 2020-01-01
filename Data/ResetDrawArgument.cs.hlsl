@@ -59,7 +59,7 @@ void main(uint3 threadIdx : SV_DispatchThreadID)
         gDrawArgument[0].baseVertexLocation = 0;
         gDrawArgument[0].startInstanceLocation = 0;
 
-        gRayArgument[0].rayTaskCount = initRayCount;
+        //gRayArgument[0].rayTaskCount = initRayCount;
     }
 
     //uint value = gRayDensityTex[threadIdx.xy];

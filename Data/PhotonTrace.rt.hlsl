@@ -291,7 +291,6 @@ void rayGen()
     uint2 pixelCoord;
     if (launchRayTask)
     {
-        taskIdx += rayTaskOffset;
         if (taskIdx >= gRayArgument[0].rayTaskCount)
         {
             return;
