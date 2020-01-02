@@ -134,6 +134,7 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addFloatVar("Variance Gain", mVarianceGain, 0, 10, 0.0001f);
         pGui->addFloatVar("Derivative Gain", mDerivativeGain, -10, 10, 0.1f);
         pGui->addIntVar("Max Task Per Pixel", mMaxTaskCountPerPixel, 1);
+        pGui->addIntVar("Max Task Ray", mMaxTaskRay, 1);
         pGui->endGroup();
     }
 
@@ -529,7 +530,8 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             pPerFrameCB["distanceThreshold"] = mDistanceThreshold;
             pPerFrameCB["planarThreshold"] = mPlanarThreshold;
             pPerFrameCB["pixelLuminanceThreshold"] = mPixelLuminanceThreshold; 
-            pPerFrameCB["minPhotonPixelSize"] = mMinPhotonPixelSize;
+            pPerFrameCB["minPhotonPixelSize"] = mMinPhotonPixelSize; 
+            pPerFrameCB["maxTaskRay"] = mMaxTaskRay;
             static float2 offset(0.5,0.5);
             static float speed = 0.0f;
             pPerFrameCB["randomOffset"] = offset;// mMinPhotonPixelSize;

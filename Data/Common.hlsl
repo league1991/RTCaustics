@@ -12,7 +12,9 @@ struct Photon
 
 struct RayTask
 {
-    float2 screenCoord;
+    int2 screenCoord;
+    int2 idxRange;
+    float4 cornerSizes;
     float2 pixelSize;
 };
 

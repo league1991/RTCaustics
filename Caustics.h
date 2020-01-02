@@ -68,6 +68,7 @@ private:
     float mUpdateSpeed = 0.2f;
     float mVarianceGain = 0.0f;
     float mDerivativeGain = 0.0f;
+    int mMaxTaskRay = 10;
 
     // smooth photon
     bool mMedianFilter = false;

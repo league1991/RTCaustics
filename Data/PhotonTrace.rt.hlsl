@@ -365,7 +365,7 @@ void StorePhoton(RayDesc ray, PrimaryRayData hitData, uint2 pixelCoord)
     }
 }
 
-bool getTask(out float2 lightUV, out uint2 pixelCoord, out float2 pixelSize)
+bool getTask(out RayTask task)
 {
     uint3 launchIndex = DispatchRaysIndex();
     uint3 launchDimension = DispatchRaysDimensions();
@@ -376,10 +376,7 @@ bool getTask(out float2 lightUV, out uint2 pixelCoord, out float2 pixelSize)
         {
             return false;
         }
-        RayTask task = gRayTask[taskIdx];
-        pixelCoord = task.screenCoord;
-        lightUV = (task.screenCoord) / float2(coarseDim);
-        pixelSize = task.pixelSize;
+        task = gRayTask[taskIdx];
     }
     else
     {
@@ -387,52 +384,108 @@ bool getTask(out float2 lightUV, out uint2 pixelCoord, out float2 pixelSize)
         {
             return false;
         }
-        pixelSize = float2(1, 1);
-        pixelCoord = launchIndex.xy;
-        lightUV = float2(launchIndex.xy) / float2(coarseDim.xy);
-        uint nw, nh, nl;
-        gUniformNoise.GetDimensions(0, nw, nh, nl);
-        float2 noise = gUniformNoise.Load(uint3(launchIndex.xy % uint2(nw, nh), 0)).rg;
-        lightUV += (noise * jitter + randomOffset * 0) * pixelSize;
+        task.screenCoord = launchIndex.xy;
+        task.idxRange = int2(0, 1);
+        task.cornerSizes = 1;
+        task.pixelSize = 1;
+        gRayTask[taskIdx] = task;
     }
 
     gPixelInfo[taskIdx].photonIdx = -1;
-    if (!launchRayTask)
-    {
-        gRayTask[taskIdx].screenCoord = launchIndex.xy;
-        gRayTask[taskIdx].pixelSize = float2(1, 1);
-    }
     return true;
 }
+
+void getSample(RayTask task, int sampleIdx, out float2 lightUV, out uint2 pixelCoord, out float2 pixelSize)
+{
+    float g = 1.32471795724474602596;
+    float a1 = 1.0 / g;
+    float a2 = 1.0 / (g * g);
+    float2 randomOffset = 0.5;
+    float x = frac(randomOffset.x + a1 * (sampleIdx + 1));
+    float y = frac(randomOffset.y + a2 * (sampleIdx + 1));
+    float4 v = task.cornerSizes;
+    float2 uv = bilinearSample(v.x, v.y, v.z, v.w, float2(x, y));
+
+    float2 screenCoordF = task.screenCoord + 0.5 + uv;
+    lightUV = (screenCoordF) / float2(coarseDim);
+    pixelCoord = screenCoordF;
+    pixelSize = task.pixelSize / sqrt(bilinearIntepolation(v.x, v.y, v.z, v.w, uv));
+}
+
+//bool getTask(out float2 lightUV, out uint2 pixelCoord, out float2 pixelSize)
+//{
+//    uint3 launchIndex = DispatchRaysIndex();
+//    uint3 launchDimension = DispatchRaysDimensions();
+//    uint taskIdx = launchIndex.y * launchDimension.x + launchIndex.x;
+//    if (launchRayTask)
+//    {
+//        if (taskIdx >= gRayArgument[0].rayTaskCount)
+//        {
+//            return false;
+//        }
+//        RayTask task = gRayTask[taskIdx];
+//        pixelCoord = task.screenCoord;
+//        lightUV = (task.screenCoord) / float2(coarseDim);
+//        pixelSize = task.pixelSize;
+//    }
+//    else
+//    {
+//        if (any(launchIndex.xy >= coarseDim))
+//        {
+//            return false;
+//        }
+//        pixelSize = float2(1, 1);
+//        pixelCoord = launchIndex.xy;
+//        lightUV = float2(launchIndex.xy) / float2(coarseDim.xy);
+//        uint nw, nh, nl;
+//        gUniformNoise.GetDimensions(0, nw, nh, nl);
+//        float2 noise = gUniformNoise.Load(uint3(launchIndex.xy % uint2(nw, nh), 0)).rg;
+//        lightUV += (noise * jitter + randomOffset * 0) * pixelSize;
+//    }
+//
+//    gPixelInfo[taskIdx].photonIdx = -1;
+//    if (!launchRayTask)
+//    {
+//        gRayTask[taskIdx].screenCoord = launchIndex.xy;
+//        gRayTask[taskIdx].pixelSize = float2(1, 1);
+//    }
+//    return true;
+//}
 
 [shader("raygeneration")]
 void rayGen()
 {
     // fetch task
-    float2 lightUV;
-    uint2 pixelCoord;
-    float2 pixelSize;
-    if (!getTask(lightUV, pixelCoord, pixelSize))
+    RayTask task;
+    if (!getTask(task))
         return;
 
-    // Init ray and hit data
-    RayDesc ray;
-    PrimaryRayData hitData;
-    initFromLight(lightUV, pixelSize, ray, hitData);
-
-    // Photon trace
-    int depth;
-    for (depth = 0; depth < maxDepth && hitData.isContinue; depth++)
+    for (int i = task.idxRange.x; i < task.idxRange.x + task.idxRange.y; i++)
     {
-        TraceRay(gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, hitData);
+        float2 lightUV;
+        uint2 pixelCoord;
+        float2 pixelSize;
+        getSample(task, i, lightUV, pixelCoord, pixelSize);
 
-        ray.Origin = ray.Origin + ray.Direction * hitData.hitT;
-        ray.Direction = hitData.nextDir;
-    }
+        // Init ray and hit data
+        RayDesc ray;
+        PrimaryRayData hitData;
+        initFromLight(lightUV, pixelSize, ray, hitData);
 
-    // write result
-    if (any(hitData.color > 0) && depth > 1)
-    {
-        StorePhoton(ray, hitData, pixelCoord);
+        // Photon trace
+        int depth;
+        for (depth = 0; depth < maxDepth && hitData.isContinue; depth++)
+        {
+            TraceRay(gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, hitData);
+
+            ray.Origin = ray.Origin + ray.Direction * hitData.hitT;
+            ray.Direction = hitData.nextDir;
+        }
+
+        // write result
+        if (any(hitData.color > 0) && depth > 1)
+        {
+            StorePhoton(ray, hitData, pixelCoord);
+        }
     }
 }

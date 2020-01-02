@@ -38,6 +38,7 @@ shared cbuffer PerFrameCB
     float planarThreshold;
     float pixelLuminanceThreshold;
     float minPhotonPixelSize;
+    int maxTaskRay;
 };
 
 struct DrawArguments
@@ -87,19 +88,33 @@ void addPhotonTaskFromTexture(uint3 groupID : SV_GroupID, uint groupIndex : SV_G
     float2 pixelSize = float2(1, 1) * sampleWeight;
 
     int taskIdx = 0;
-    InterlockedAdd(gRayArgument[0].rayTaskCount, sampleCount, taskIdx);
-    float g = 1.32471795724474602596;
-    float a1 = 1.0 / g;
-    float a2 = 1.0 / (g * g);
-    for (uint i = 0; i < sampleCount; i++)
-    {
-        float x = frac(randomOffset.x + a1 * (i + 1));
-        float y = frac(randomOffset.y + a2 * (i + 1));
+    //InterlockedAdd(gRayArgument[0].rayTaskCount, sampleCount, taskIdx);
+    //float g = 1.32471795724474602596;
+    //float a1 = 1.0 / g;
+    //float a2 = 1.0 / (g * g);
+    //for (uint i = 0; i < sampleCount; i++)
+    //{
+    //    float x = frac(randomOffset.x + a1 * (i + 1));
+    //    float y = frac(randomOffset.y + a2 * (i + 1));
 
-        float2 uv = bilinearSample(v00, v10, v01, v11, float2(x, y));
-        RayTask newTask;
-        newTask.screenCoord = pixel00 + uv +0.5;
-        newTask.pixelSize = pixelSize *sqrt(sampleCount / (bilinearIntepolation(v00, v10, v01, v11, uv)));
-        gRayTask[taskIdx + i] = newTask;
+    //    float2 uv = bilinearSample(v00, v10, v01, v11, float2(x, y));
+    //    RayTask newTask;
+    //    newTask.screenCoord = pixel00 + uv +0.5;
+    //    newTask.pixelSize = pixelSize *sqrt(sampleCount / (bilinearIntepolation(v00, v10, v01, v11, uv)));
+    //    gRayTask[taskIdx + i] = newTask;
+    //}
+
+    int taskCount = (sampleCount + maxTaskRay - 1) / maxTaskRay;
+    InterlockedAdd(gRayArgument[0].rayTaskCount, taskCount, taskIdx);
+
+    float4 cornerSizes = float4(v00, v10, v01, v11);
+    RayTask newTask;
+    newTask.cornerSizes = cornerSizes;
+    newTask.pixelSize = pixelSize * sqrt(sampleCount);
+    newTask.screenCoord = pixel00;
+    for (uint t = 0, s = 0; t < taskCount; t++, s += maxTaskRay)
+    {
+        newTask.idxRange = int2(s, min(maxTaskRay, sampleCount - s));
+        gRayTask[taskIdx + t] = newTask;
     }
 }
