@@ -114,7 +114,7 @@ void getVerticesAndNormals(
 void updateTransferRayDifferential(
     float3 N,
     inout float3 dPdx,
-    inout float3 dDdx)
+    float3 dDdx)
 {
     float3 D = WorldRayDirection();
     float t = RayTCurrent();
@@ -123,14 +123,11 @@ void updateTransferRayDifferential(
 }
 
 void calculateDNdx(
-    float3 P0, float3 P1, float3 P2,
-    float3 N0, float3 N1, float3 N2,
+    float3 dP1, float3 dP2,
+    float3 dN1, float3 dN2,
     float3 N,
     float3 dPdx, out float3 dNdx)
 {
-    float3 dP1 = P1 - P0;
-    float3 dP2 = P2 - P0;
-
     float P11 = dot(dP1, dP1);
     float P12 = dot(dP1, dP2);
     float P22 = dot(dP2, dP2);
@@ -144,19 +141,16 @@ void calculateDNdx(
 
     float n2 = dot(N, N);
     float n1 = sqrt(n2);
-    dNdx = dudx * (N1 - N0) + dvdx * (N2 - N0);
+    dNdx = dudx * dN1 + dvdx * dN2;
     dNdx = (n2 * dNdx - dot(N, dNdx) * N) / (n2 * n1);
 }
 
 void updateReflectRayDifferential(
-    float3 P0, float3 P1, float3 P2,
-    float3 N0, float3 N1, float3 N2, float3 N,
+    float3 N,
     float3 dPdx,
+    float3 dNdx,
     inout float3 dDdx)
 {
-    float3 dNdx=0;
-    calculateDNdx(P0, P1, P2, N0, N1, N2, N, dPdx, dNdx);
-
     N = normalize(N);
     float3 D = WorldRayDirection();
     float dDNdx = dot(dDdx, N) + dot(D, dNdx);
@@ -185,15 +179,11 @@ float getPhotonScreenArea(float3 posW, float3 dPdx, float3 dPdy, out bool inFrus
 
 
 void updateRefractRayDifferential(
-    float3 P0, float3 P1, float3 P2,
-    float3 N0, float3 N1, float3 N2,
     float3 D, float3 R, float3 N, float eta,
     float3 dPdx,
+    float3 dNdx,
     inout float3 dDdx)
 {
-    float3 dNdx = 0;
-    calculateDNdx(P0, P1, P2, N0, N1, N2, N, dPdx, dNdx);
-
     N = normalize(N);
     float DN = dot(D, N);
     float RN = dot(R, N);
@@ -211,50 +201,59 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     float3 rayDirW = WorldRayDirection(); 
     float hitT = RayTCurrent();
     uint triangleIndex = PrimitiveIndex();
-    float3 posW = rayOrigW + hitT * rayDirW;
 
     // prepare the shading data
     VertexOut v = getVertexAttributes(triangleIndex, attribs);
     ShadingData sd = prepareShadingData(v, gMaterial, rayOrigW, 0);
     hitData.hitT = hitT;
 
-    float3 P0, P1, P2, N0, N1, N2, N;
-    getVerticesAndNormals(PrimitiveIndex(), attribs, P0, P1, P2, N0, N1, N2, N);
-    updateTransferRayDifferential(N, hitData.dPdx, hitData.dDdx);
-    updateTransferRayDifferential(N, hitData.dPdy, hitData.dDdy);
+    updateTransferRayDifferential(sd.N, hitData.dPdx, hitData.dDdx);
+    updateTransferRayDifferential(sd.N, hitData.dPdy, hitData.dDdy);
 
     hitData.isContinue = 0;
     bool isSpecular = (sd.linearRoughness > roughThreshold || sd.opacity < 1);
     if (isSpecular)
     {
+        float3 N_ = v.normalW;
+        float3 P0, P1, P2, N0, N1, N2, N;
+        getVerticesAndNormals(PrimitiveIndex(), attribs, P0, P1, P2, N0, N1, N2, N);
+        float3 dP1 = P1 - P0;
+        float3 dP2 = P2 - P0;
+        float3 dN1 = N1 - N0;
+        float3 dN2 = N2 - N0;
+
         bool isReflect = (sd.opacity == 1);
         float3 R;
         float eta = iorOverride > 0 ? 1.0 / iorOverride : 1.0 / sd.IoR;
         if (!isReflect)
         {
-            if (dot(v.normalW, rayDirW) > 0)
+            if (dot(N_, rayDirW) > 0)
             {
                 eta = 1.0 / eta;
-                N0 *= -1;
-                N1 *= -1;
-                N2 *= -1;
+                dN1 *= -1;
+                dN2 *= -1;
                 N *= -1;
-                v.normalW *= -1;
+                N_ *= -1;
             }
-            isReflect = isTotalInternalReflection(rayDirW, v.normalW, eta);
+            isReflect = isTotalInternalReflection(rayDirW, N_, eta);
         }
+
+        float3 dNdx = 0;
+        float3 dNdy = 0;
+        calculateDNdx(dP1, dP2, dN1, dN2, N, hitData.dPdx, dNdx);
+        calculateDNdx(dP1, dP2, dN1, dN2, N, hitData.dPdy, dNdy);
 
         if (isReflect)
         {
-            updateReflectRayDifferential(P0, P1, P2, N0, N1, N2, N, hitData.dPdx, hitData.dDdx);
-            updateReflectRayDifferential(P0, P1, P2, N0, N1, N2, N, hitData.dPdy, hitData.dDdy);
-            R = reflect(rayDirW, v.normalW);
+            updateReflectRayDifferential(N, hitData.dPdx, dNdx, hitData.dDdx);
+            updateReflectRayDifferential(N, hitData.dPdy, dNdy, hitData.dDdy);
+            R = reflect(rayDirW, N_);
         }
         else
         {
-            getRefractVector(rayDirW, v.normalW, R, eta);
-            updateRefractRayDifferential(P0, P1, P2, N0, N1, N2, rayDirW, R, N, eta, hitData.dPdx, hitData.dDdx);
-            updateRefractRayDifferential(P0, P1, P2, N0, N1, N2, rayDirW, R, N, eta, hitData.dPdy, hitData.dDdy);
+            getRefractVector(rayDirW, N_, R, eta);
+            updateRefractRayDifferential(rayDirW, R, N, eta, hitData.dPdx, dNdx, hitData.dDdx);
+            updateRefractRayDifferential(rayDirW, R, N, eta, hitData.dPdy, dNdy, hitData.dDdy);
         }
 
         float3 baseColor = lerp(1, sd.diffuse, sd.opacity);
