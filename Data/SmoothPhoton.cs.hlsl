@@ -63,7 +63,7 @@ RWStructuredBuffer<RayArgument> gRayArgument;
 RWStructuredBuffer<PixelInfo> gRayTask;
 Texture2D gDepthTex;
 
-bool checkPixelNeighbour(uint2 pixelCoord0, RayTask task0, Photon photon0, uint2 offset)
+bool checkPixelNeighbour(uint2 pixelCoord0, Photon photon0, uint2 offset)
 {
     uint2 pixelCoord1 = min(taskDim - 1, max(uint2(0, 0), pixelCoord0 + offset));
     uint pixelIdx1 = pixelCoord1.y * taskDim.x + pixelCoord1.x;
@@ -138,7 +138,7 @@ float3 medianFilter(uint2 pixelCoord0)
     half2 luminance[9];
     for (int i = 0; i < 8; i++)
     {
-        //bool isContinue = checkPixelNeighbour(threadIdx.xy, task0, photon0, dir[i]);
+        //bool isContinue = checkPixelNeighbour(threadIdx.xy, photon0, dir[i]);
         //uint2 pixelCoord1 = min(taskDim - 1, max(uint2(0, 0), pixelCoord0 + dir[i]));
         //uint pixelIdx1 = pixelCoord1.y * taskDim.x + pixelCoord1.x;
 
@@ -223,7 +223,7 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 thr
     int continueCount = 0;
     for (int i = 0; i < 8; i++)
     {
-        //bool isContinue = checkPixelNeighbour(threadIdx.xy, task0, photon0, dir[i]);
+        //bool isContinue = checkPixelNeighbour(threadIdx.xy, photon0, dir[i]);
         uint2 pixelCoord1 = min(taskDim - 1, max(uint2(0, 0), pixelCoord0 + dir[i]));
         uint pixelIdx1 = pixelCoord1.y * taskDim.x + pixelCoord1.x;
 

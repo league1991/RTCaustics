@@ -356,9 +356,6 @@ void StorePhoton(RayDesc ray, PrimaryRayData hitData, uint2 pixelCoord)
             uint3 dim3 = DispatchRaysDimensions();
             uint3 idx3 = DispatchRaysIndex();
             uint idx = idx3.y * dim3.x + idx3.x;
-            //gRayTask[idx].photonIdx = instanceIdx;
-            //gRayTask[pixelLoc].pixelArea = pixelArea;
-            //gRayTask[pixelLoc].inFrustum = isInFrustum ? 1 : 0;
             gPixelInfo[pixelLoc].photonIdx = instanceIdx;
         }
         uint oldV;
