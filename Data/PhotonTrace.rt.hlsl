@@ -275,16 +275,65 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     }
 }
 
+float getArea(PrimaryRayData hitData)
+{
+    float area;
+    if (gAreaType == 0)
+    {
+        area = (dot(hitData.dPdx, hitData.dPdx) + dot(hitData.dPdy, hitData.dPdy)) * 0.5;
+    }
+    else if (gAreaType == 1)
+    {
+        area = (length(hitData.dPdx) + length(hitData.dPdy));
+        area *= area;
+    }
+    else if (gAreaType == 2)
+    {
+        area = max(dot(hitData.dPdx, hitData.dPdx), dot(hitData.dPdy, hitData.dPdy));
+    }
+    else
+    {
+        float3 areaVector = cross(hitData.dPdx, hitData.dPdy);
+        area = length(areaVector);
+    }
+    return area;
+}
+
+void initFromLight(float2 lightUV, float2 pixelSize, out RayDesc ray, out PrimaryRayData hitData)
+{
+    lightUV = lightUV * 2 - 1;
+    pixelSize *= emitSize / float2(coarseDim.xy);
+
+    float3 lightOrigin = gLights[0].dirW * -100;// gLights[0].posW;
+    float3 lightDirZ = gLights[0].dirW;
+    float3 lightDirX = normalize(float3(-lightDirZ.z, 0, lightDirZ.x));
+    float3 lightDirY = normalize(cross(lightDirZ, lightDirX));
+
+    ray.Origin = lightOrigin + (lightDirX * lightUV.x + lightDirY * lightUV.y) * emitSize;
+    ray.Direction = lightDirZ;
+    ray.TMin = 0.0;
+    ray.TMax = 1e10;
+
+    float3 color0 = 1;
+    if (colorPhotonID)
+    {
+        uint3 launchIndex = DispatchRaysIndex();
+        color0.xyz = frac(launchIndex.xyz / float(photonIDScale)) * 0.8 + 0.2;
+    }
+    hitData.color = color0 * pixelSize.x * pixelSize.y * 512 * 512 * 0.5 * gIntensity;
+    hitData.dDdx = 0;// lightDirX* pixelSize.x * 2.0;
+    hitData.dDdy = 0;// lightDirY* pixelSize.y * 2.0;
+    hitData.dPdx = lightDirX * pixelSize.x * 2.0;
+    hitData.dPdy = -lightDirY * pixelSize.y * 2.0;
+    hitData.nextDir = ray.Direction;
+    hitData.isContinue = 1;
+}
+
 [shader("raygeneration")]
 void rayGen()
 {
     uint3 launchIndex = DispatchRaysIndex();
     uint3 launchDimension = DispatchRaysDimensions();
-    RayDesc ray;
-    float3 lightOrigin = gLights[0].dirW * -100;// gLights[0].posW;
-    float3 lightDirZ = gLights[0].dirW;
-    float3 lightDirX = normalize(float3(-lightDirZ.z, 0, lightDirZ.x));
-    float3 lightDirY = normalize(cross(lightDirZ, lightDirX));
     float2 lightUV;
     float2 pixelSize = float2(1,1);
     uint taskIdx = launchIndex.y * launchDimension.x + launchIndex.x;
@@ -313,27 +362,11 @@ void rayGen()
         float2 noise = gUniformNoise.Load(uint3(launchIndex.xy % uint2(nw, nh), 0)).rg;
         lightUV += (noise * jitter + randomOffset*0) * pixelSize;
     }
-    lightUV = lightUV * 2 - 1;
-    pixelSize *= emitSize / float2(coarseDim.xy);
 
-    ray.Origin = lightOrigin + (lightDirX * lightUV.x + lightDirY * lightUV.y) * emitSize;
-    ray.Direction = lightDirZ;
-    ray.TMin = 0.0;
-    ray.TMax = 1e10;
-
+    // Init ray and hit data
+    RayDesc ray;
     PrimaryRayData hitData;
-    float3 color0 = 1;
-    if (colorPhotonID)
-    {
-        color0.xyz = frac(launchIndex.xyz / float(photonIDScale)) * 0.8 + 0.2;
-    }
-    hitData.color = color0* pixelSize.x* pixelSize.y * 512 * 512 * 0.5 * gIntensity;
-    hitData.dDdx = 0;// lightDirX* pixelSize.x * 2.0;
-    hitData.dDdy = 0;// lightDirY* pixelSize.y * 2.0;
-    hitData.dPdx = lightDirX * pixelSize.x * 2.0;
-    hitData.dPdy = -lightDirY * pixelSize.y * 2.0;
-    hitData.nextDir = ray.Direction;
-    hitData.isContinue = 1;
+    initFromLight(lightUV, pixelSize, ray, hitData);
 
     gRayTask[taskIdx].photonIdx = -1;
     if (!launchRayTask)
@@ -357,25 +390,7 @@ void rayGen()
 
     if (any(hitData.color > 0) && depth > 1)
     {
-        float area;
-        if (gAreaType == 0)
-        {
-            area = (dot(hitData.dPdx, hitData.dPdx) + dot(hitData.dPdy, hitData.dPdy)) * 0.5;
-        }
-        else if (gAreaType == 1)
-        {
-            area = (length(hitData.dPdx) + length(hitData.dPdy));
-            area *= area;
-        }
-        else if (gAreaType == 2)
-        {
-            area = max(dot(hitData.dPdx, hitData.dPdx), dot(hitData.dPdy, hitData.dPdy));
-        }
-        else
-        {
-            float3 areaVector = cross(hitData.dPdx, hitData.dPdy);
-            area = length(areaVector);
-        }
+        float area = getArea(hitData);
 
         float3 color = hitData.color.rgb / area;
         bool isInFrustum;
@@ -402,7 +417,6 @@ void rayGen()
                 gRayTask[idx].photonIdx = instanceIdx;
                 gRayTask[idx].pixelArea = pixelArea;
                 gRayTask[idx].inFrustum = isInFrustum ? 1 : 0;
-
             }
             uint oldV;
             uint pixelLoc = pixelCoord.y * coarseDim.x + pixelCoord.x;
