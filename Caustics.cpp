@@ -566,7 +566,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         mpSmoothVars->setStructuredBuffer("gSrcPhotonBuffer", mpPhotonBuffer);
         mpSmoothVars->setStructuredBuffer("gDstPhotonBuffer", mpPhotonBuffer2);
         mpSmoothVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
-        mpSmoothVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
+        mpSmoothVars->setStructuredBuffer("gRayTask", mpPixelInfoBuffer);
         mpSmoothVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
         static int groupSize = 16;
         pContext->dispatch(mpSmoothState.get(), mpSmoothVars.get(), uvec3(mDispatchSize / groupSize, mDispatchSize / groupSize, 1));
@@ -597,7 +597,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pPerFrameCB["gMaxScreenRadius"] = mMaxPhotonPixelRadius;
         mpPhotonScatterVars["gLinearSampler"] = mpLinearSampler;
         mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", photonBuffer);
-        mpPhotonScatterVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
+        mpPhotonScatterVars->setStructuredBuffer("gRayTask", mpPixelInfoBuffer);
         mpPhotonScatterVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
         mpPhotonScatterVars->setTexture("gNormalTex", mpGPassFbo->getColorTexture(0));
         mpPhotonScatterVars->setTexture("gDiffuseTex", mpGPassFbo->getColorTexture(1));

@@ -32,7 +32,7 @@ __import DefaultVS;
 #include "Common.hlsl"
 
 StructuredBuffer<Photon> gPhotonBuffer;
-StructuredBuffer<RayTask> gRayTask;
+StructuredBuffer<PixelInfo> gRayTask;
 
 Texture2D gDepthTex;
 Texture2D gNormalTex;
@@ -92,7 +92,7 @@ struct PhotonVSOut
 int GetPhoton(int2 screenPos, inout Photon p)
 {
     int offset = screenPos.y * taskDim.x + screenPos.x;
-    RayTask task = gRayTask[offset];
+    PixelInfo task = gRayTask[offset];
     if (task.photonIdx == -1)
     {
         return 0;

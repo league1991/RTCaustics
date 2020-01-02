@@ -350,17 +350,18 @@ void StorePhoton(RayDesc ray, PrimaryRayData hitData, uint2 pixelCoord)
         photon.dPdy = hitData.dPdy;
         gPhotonBuffer[instanceIdx] = photon;
 
+        uint pixelLoc = pixelCoord.y * coarseDim.x + pixelCoord.x;
         if (!launchRayTask)
         {
             uint3 dim3 = DispatchRaysDimensions();
             uint3 idx3 = DispatchRaysIndex();
             uint idx = idx3.y * dim3.x + idx3.x;
-            gRayTask[idx].photonIdx = instanceIdx;
-            gRayTask[idx].pixelArea = pixelArea;
-            gRayTask[idx].inFrustum = isInFrustum ? 1 : 0;
+            //gRayTask[idx].photonIdx = instanceIdx;
+            //gRayTask[pixelLoc].pixelArea = pixelArea;
+            //gRayTask[pixelLoc].inFrustum = isInFrustum ? 1 : 0;
+            gPixelInfo[pixelLoc].photonIdx = instanceIdx;
         }
         uint oldV;
-        uint pixelLoc = pixelCoord.y * coarseDim.x + pixelCoord.x;
         InterlockedAdd(gPixelInfo[pixelLoc].screenArea, uint(pixelArea.x), oldV);
         InterlockedAdd(gPixelInfo[pixelLoc].screenAreaSq, uint(pixelArea.x * pixelArea.x), oldV);
         InterlockedAdd(gPixelInfo[pixelLoc].count, 1, oldV);
@@ -398,13 +399,11 @@ bool getTask(out float2 lightUV, out uint2 pixelCoord, out float2 pixelSize)
         lightUV += (noise * jitter + randomOffset * 0) * pixelSize;
     }
 
-    gRayTask[taskIdx].photonIdx = -1;
+    gPixelInfo[taskIdx].photonIdx = -1;
     if (!launchRayTask)
     {
         gRayTask[taskIdx].screenCoord = launchIndex.xy;
         gRayTask[taskIdx].pixelSize = float2(1, 1);
-        gRayTask[taskIdx].pixelArea = 0;
-        gRayTask[taskIdx].inFrustum = 0;
     }
     return true;
 }

@@ -60,7 +60,7 @@ StructuredBuffer<Photon> gSrcPhotonBuffer;
 RWStructuredBuffer<Photon> gDstPhotonBuffer;
 //RWStructuredBuffer<DrawArguments> gDrawArgument;
 RWStructuredBuffer<RayArgument> gRayArgument;
-RWStructuredBuffer<RayTask> gRayTask;
+RWStructuredBuffer<PixelInfo> gRayTask;
 Texture2D gDepthTex;
 
 bool checkPixelNeighbour(uint2 pixelCoord0, RayTask task0, Photon photon0, uint2 offset)
@@ -68,7 +68,7 @@ bool checkPixelNeighbour(uint2 pixelCoord0, RayTask task0, Photon photon0, uint2
     uint2 pixelCoord1 = min(taskDim - 1, max(uint2(0, 0), pixelCoord0 + offset));
     uint pixelIdx1 = pixelCoord1.y * taskDim.x + pixelCoord1.x;
 
-    RayTask task1 = gRayTask[pixelIdx1];
+    PixelInfo task1 = gRayTask[pixelIdx1];
     bool isContinue = task1.photonIdx != -1;
     float3 dColor = photon0.color;
     Photon photon1;
@@ -84,7 +84,7 @@ bool getPhoton(uint2 pixelCoord, inout Photon photon)
 {
     uint2 pixelCoord1 = min(taskDim - 1, max(uint2(0, 0), pixelCoord));
     uint pixelIdx1 = pixelCoord1.y * taskDim.x + pixelCoord1.x;
-    RayTask task1 = gRayTask[pixelIdx1];
+    PixelInfo task1 = gRayTask[pixelIdx1];
     if (task1.photonIdx == -1)
     {
         return false;
@@ -114,7 +114,7 @@ void getTrimLength(float3 P1, float3 D1, float3 P2, float3 D2, inout float l)
     l = min(l, abs(proj));
 }
 
-RayTask getRayTask(uint2 pixelCoord)
+PixelInfo getRayTask(uint2 pixelCoord)
 {
     uint2 pixelCoord1 = min(taskDim - 1, max(uint2(0, 0), pixelCoord));
     uint pixelIdx1 = pixelCoord1.y * taskDim.x + pixelCoord1.x;
@@ -142,7 +142,7 @@ float3 medianFilter(uint2 pixelCoord0)
         //uint2 pixelCoord1 = min(taskDim - 1, max(uint2(0, 0), pixelCoord0 + dir[i]));
         //uint pixelIdx1 = pixelCoord1.y * taskDim.x + pixelCoord1.x;
 
-        RayTask task1 = getRayTask(pixelCoord0 + dir[i]);
+        PixelInfo task1 = getRayTask(pixelCoord0 + dir[i]);
         if (task1.photonIdx != -1)
         {
             Photon photon = gSrcPhotonBuffer[task1.photonIdx];
@@ -169,7 +169,7 @@ float3 medianFilter(uint2 pixelCoord0)
     }
 
     int idx = luminance[4].y;
-    RayTask task1 = getRayTask(pixelCoord0 + dir[idx]);
+    PixelInfo task1 = getRayTask(pixelCoord0 + dir[idx]);
     if (task1.photonIdx != -1)
     {
         Photon photon = gSrcPhotonBuffer[task1.photonIdx];
@@ -198,7 +198,7 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 thr
     //gSrcPhotonBuffer.GetDimensions(length, stride);
     uint2 pixelCoord0 = threadIdx.xy;
     uint rayIdx = threadIdx.y * taskDim.x + threadIdx.x;
-    RayTask task0 = gRayTask[rayIdx];
+    PixelInfo task0 = gRayTask[rayIdx];
     int idx0 = task0.photonIdx;
     if (idx0 == -1)
     {
@@ -227,7 +227,7 @@ void main(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 thr
         uint2 pixelCoord1 = min(taskDim - 1, max(uint2(0, 0), pixelCoord0 + dir[i]));
         uint pixelIdx1 = pixelCoord1.y * taskDim.x + pixelCoord1.x;
 
-        RayTask task1 = gRayTask[pixelIdx1];
+        PixelInfo task1 = gRayTask[pixelIdx1];
         bool isContinue = task1.photonIdx != -1;
         Photon photon1;
         if (isContinue)

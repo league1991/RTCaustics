@@ -14,9 +14,6 @@ struct RayTask
 {
     float2 screenCoord;
     float2 pixelSize;
-    int    photonIdx;
-    float  pixelArea;
-    int    inFrustum;
 };
 
 struct PixelInfo
@@ -24,6 +21,7 @@ struct PixelInfo
     uint screenArea;
     uint screenAreaSq;
     uint count;
+    int  photonIdx;
 };
 
 struct RayArgument
