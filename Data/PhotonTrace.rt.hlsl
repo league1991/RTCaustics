@@ -311,7 +311,7 @@ void initFromLight(float2 lightUV, float2 pixelSize, out RayDesc ray, out Primar
 
     ray.Origin = lightOrigin + (lightDirX * lightUV.x + lightDirY * lightUV.y) * emitSize;
     ray.Direction = lightDirZ;
-    ray.TMin = 0.0;
+    ray.TMin = 0.001;
     ray.TMax = 1e10;
 
     float3 color0 = 1;
@@ -432,8 +432,6 @@ void rayGen()
 
         ray.Origin = ray.Origin + ray.Direction * hitData.hitT;
         ray.Direction = hitData.nextDir;
-        ray.TMin = 0.001;
-        ray.TMax = 1e10;
     }
 
     // write result
