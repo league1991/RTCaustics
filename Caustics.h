@@ -57,6 +57,8 @@ private:
     int mPhotonIDScale = 50;
     float mTraceColorThreshold = 0.002f;
     float mCullColorThreshold = 0.2f;
+    bool mUpdatePixelInfo = true;
+    bool mUpdatePhoton = true;
 
     // Adaptive photon refine
     float mNormalThreshold = 0.2f;

@@ -58,6 +58,7 @@ shared cbuffer PerFrameCB
     uint  gAreaType;
     float gIntensity;
     float gSplatSize;
+    uint updatePhoton;
 };
 
 struct PrimaryRayData
@@ -265,12 +266,12 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     N = v.normalW;
     v.normalW = normalize(v.normalW);
     ShadingData sd = prepareShadingData(v, gMaterial, rayOrigW, 0);
-    hitData.hitT = hitT;
 
     updateTransferRayDifferential(sd.N, hitData.dPdx, hitData.dDdx);
     updateTransferRayDifferential(sd.N, hitData.dPdy, hitData.dDdy);
 
     hitData.isContinue = 0;
+    hitData.hitT = hitT;
     bool isSpecular = (sd.linearRoughness > roughThreshold || sd.opacity < 1);
     if (isSpecular)
     {
@@ -389,7 +390,7 @@ void StorePhoton(RayDesc ray, PrimaryRayData hitData, uint2 pixelCoord)
     bool isInFrustum;
     float3 posW = ray.Origin;
     float pixelArea = getPhotonScreenArea(posW, hitData.dPdx, hitData.dPdy, isInFrustum);
-    if (dot(color, float3(0.299, 0.587, 0.114)) > cullColorThreshold&& isInFrustum)
+    if (dot(color, float3(0.299, 0.587, 0.114)) > cullColorThreshold&& isInFrustum && updatePhoton)
     {
         uint instanceIdx = 0;
         InterlockedAdd(gDrawArgument[0].instanceCount, 1, instanceIdx);
@@ -405,9 +406,6 @@ void StorePhoton(RayDesc ray, PrimaryRayData hitData, uint2 pixelCoord)
         uint pixelLoc = pixelCoord.y * coarseDim.x + pixelCoord.x;
         if (!launchRayTask)
         {
-            uint3 dim3 = DispatchRaysDimensions();
-            uint3 idx3 = DispatchRaysIndex();
-            uint idx = idx3.y * dim3.x + idx3.x;
             gPixelInfo[pixelLoc].photonIdx = instanceIdx;
         }
         uint oldV;
@@ -448,7 +446,10 @@ bool getTask(out float2 lightUV, out uint2 pixelCoord, out float2 pixelSize)
         lightUV += (noise * jitter + randomOffset * 0) * pixelSize;
     }
 
-    gPixelInfo[taskIdx].photonIdx = -1;
+    if (updatePhoton)
+    {
+        gPixelInfo[taskIdx].photonIdx = -1;
+    }
     if (!launchRayTask)
     {
         gRayTask[taskIdx].screenCoord = launchIndex.xy;

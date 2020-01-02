@@ -122,6 +122,7 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addIntVar("Photon ID Scale", mPhotonIDScale);
         pGui->addFloatVar("Min Trace Luminance", mTraceColorThreshold, 0, 10,0.005f);
         pGui->addFloatVar("Min Cull Luminance", mCullColorThreshold, 0, 10000, 0.001f);
+        pGui->addCheckBox("Update Photon", mUpdatePhoton);
         pGui->endGroup();
     }
 
@@ -447,6 +448,7 @@ void Caustics::setPhotonTracingCommonVariable()
     pCB["gAreaType"] = mAreaType;
     pCB["gIntensity"] = mIntensity / 1000;
     pCB["gSplatSize"] = mSplatSize;
+    pCB["updatePhoton"] = (uint32_t)mUpdatePhoton;
     auto rayGenVars = mpPhotonTraceVars->getRayGenVars();
     rayGenVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
     rayGenVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
@@ -477,6 +479,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     }
 
     // reset data
+    if(mUpdatePhoton)
     {
         ConstantBuffer::SharedPtr pPerFrameCB = mpDrawArgumentVars["PerFrameCB"];
         pPerFrameCB["initRayCount"] = uint(mDispatchSize * mDispatchSize);
@@ -501,7 +504,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
 
     // analysis output
     bool refinePhoton = mTraceType == 1;
-    if(refinePhoton)
+    if(refinePhoton && mUpdatePhoton)
     {
         {
             ConstantBuffer::SharedPtr pPerFrameCB = mpUpdateRayDensityVars["PerFrameCB"];
