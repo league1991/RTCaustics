@@ -329,20 +329,54 @@ void initFromLight(float2 lightUV, float2 pixelSize, out RayDesc ray, out Primar
     hitData.isContinue = 1;
 }
 
-[shader("raygeneration")]
-void rayGen()
+void StorePhoton(RayDesc ray, PrimaryRayData hitData, uint2 pixelCoord)
+{
+    float area = getArea(hitData);
+
+    float3 color = hitData.color.rgb / area;
+    bool isInFrustum;
+    float3 posW = ray.Origin;
+    float pixelArea = getPhotonScreenArea(posW, hitData.dPdx, hitData.dPdy, isInFrustum);
+    if (dot(color, float3(0.299, 0.587, 0.114)) > cullColorThreshold&& isInFrustum)
+    {
+        uint instanceIdx = 0;
+        InterlockedAdd(gDrawArgument[0].instanceCount, 1, instanceIdx);
+
+        Photon photon;
+        photon.posW = posW;
+        photon.normalW = hitData.nextDir;
+        photon.color = color;
+        photon.dPdx = hitData.dPdx;
+        photon.dPdy = hitData.dPdy;
+        gPhotonBuffer[instanceIdx] = photon;
+
+        if (!launchRayTask)
+        {
+            uint3 dim3 = DispatchRaysDimensions();
+            uint3 idx3 = DispatchRaysIndex();
+            uint idx = idx3.y * dim3.x + idx3.x;
+            gRayTask[idx].photonIdx = instanceIdx;
+            gRayTask[idx].pixelArea = pixelArea;
+            gRayTask[idx].inFrustum = isInFrustum ? 1 : 0;
+        }
+        uint oldV;
+        uint pixelLoc = pixelCoord.y * coarseDim.x + pixelCoord.x;
+        InterlockedAdd(gPixelInfo[pixelLoc].screenArea, uint(pixelArea.x), oldV);
+        InterlockedAdd(gPixelInfo[pixelLoc].screenAreaSq, uint(pixelArea.x * pixelArea.x), oldV);
+        InterlockedAdd(gPixelInfo[pixelLoc].count, 1, oldV);
+    }
+}
+
+bool getTask(out float2 lightUV, out uint2 pixelCoord, out float2 pixelSize)
 {
     uint3 launchIndex = DispatchRaysIndex();
     uint3 launchDimension = DispatchRaysDimensions();
-    float2 lightUV;
-    float2 pixelSize = float2(1,1);
     uint taskIdx = launchIndex.y * launchDimension.x + launchIndex.x;
-    uint2 pixelCoord;
     if (launchRayTask)
     {
         if (taskIdx >= gRayArgument[0].rayTaskCount)
         {
-            return;
+            return false;
         }
         RayTask task = gRayTask[taskIdx];
         pixelCoord = task.screenCoord;
@@ -353,20 +387,16 @@ void rayGen()
     {
         if (any(launchIndex.xy >= coarseDim))
         {
-            return;
+            return false;
         }
+        pixelSize = float2(1, 1);
         pixelCoord = launchIndex.xy;
         lightUV = float2(launchIndex.xy) / float2(coarseDim.xy);
         uint nw, nh, nl;
         gUniformNoise.GetDimensions(0, nw, nh, nl);
         float2 noise = gUniformNoise.Load(uint3(launchIndex.xy % uint2(nw, nh), 0)).rg;
-        lightUV += (noise * jitter + randomOffset*0) * pixelSize;
+        lightUV += (noise * jitter + randomOffset * 0) * pixelSize;
     }
-
-    // Init ray and hit data
-    RayDesc ray;
-    PrimaryRayData hitData;
-    initFromLight(lightUV, pixelSize, ray, hitData);
 
     gRayTask[taskIdx].photonIdx = -1;
     if (!launchRayTask)
@@ -376,7 +406,25 @@ void rayGen()
         gRayTask[taskIdx].pixelArea = 0;
         gRayTask[taskIdx].inFrustum = 0;
     }
+    return true;
+}
 
+[shader("raygeneration")]
+void rayGen()
+{
+    // fetch task
+    float2 lightUV;
+    uint2 pixelCoord;
+    float2 pixelSize;
+    if (!getTask(lightUV, pixelCoord, pixelSize))
+        return;
+
+    // Init ray and hit data
+    RayDesc ray;
+    PrimaryRayData hitData;
+    initFromLight(lightUV, pixelSize, ray, hitData);
+
+    // Photon trace
     int depth;
     for (depth = 0; depth < maxDepth && hitData.isContinue; depth++)
     {
@@ -388,41 +436,9 @@ void rayGen()
         ray.TMax = 1e10;
     }
 
+    // write result
     if (any(hitData.color > 0) && depth > 1)
     {
-        float area = getArea(hitData);
-
-        float3 color = hitData.color.rgb / area;
-        bool isInFrustum;
-        float3 posW = ray.Origin;
-        float pixelArea = getPhotonScreenArea(posW, hitData.dPdx, hitData.dPdy, isInFrustum);
-        if (dot(color, float3(0.299, 0.587, 0.114)) > cullColorThreshold && isInFrustum)
-        {
-            uint instanceIdx = 0;
-            InterlockedAdd(gDrawArgument[0].instanceCount, 1, instanceIdx);
-
-            Photon photon;
-            photon.posW = posW;
-            photon.normalW = hitData.nextDir;
-            photon.color = color;
-            photon.dPdx = hitData.dPdx;
-            photon.dPdy = hitData.dPdy;
-            gPhotonBuffer[instanceIdx] = photon;
-
-            if (!launchRayTask)
-            {
-                uint3 dim3 = DispatchRaysDimensions();
-                uint3 idx3 = DispatchRaysIndex();
-                uint idx = idx3.y * dim3.x + idx3.x;
-                gRayTask[idx].photonIdx = instanceIdx;
-                gRayTask[idx].pixelArea = pixelArea;
-                gRayTask[idx].inFrustum = isInFrustum ? 1 : 0;
-            }
-            uint oldV;
-            uint pixelLoc = pixelCoord.y * coarseDim.x + pixelCoord.x;
-            InterlockedAdd(gPixelInfo[pixelLoc].screenArea, uint(pixelArea.x), oldV);
-            InterlockedAdd(gPixelInfo[pixelLoc].screenAreaSq, uint(pixelArea.x * pixelArea.x), oldV);
-            InterlockedAdd(gPixelInfo[pixelLoc].count, 1, oldV);
-        }
+        StorePhoton(ray, hitData, pixelCoord);
     }
 }
