@@ -82,6 +82,63 @@ void primaryMiss(inout PrimaryRayData hitData)
     hitData.hitT = 0;
 }
 
+VertexOut getVertexAttributes(
+    uint triangleIndex, BuiltInTriangleIntersectionAttributes attribs,
+    out float3 dP1, out float3 dP2, out float3 dN1, out float3 dN2)
+{
+    float3 barycentrics = float3(1.0 - attribs.barycentrics.x - attribs.barycentrics.y, attribs.barycentrics.x, attribs.barycentrics.y);
+    uint3 indices = getIndices(triangleIndex);
+    VertexOut v;
+    v.texC = 0;
+    v.normalW = 0;
+    v.bitangentW = 0;
+#ifdef USE_INTERPOLATED_POSITION
+    v.posW = 0;
+#else
+    v.posW = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
+#endif
+    v.colorV = 0;
+    v.prevPosH = 0;
+    v.lightmapC = 0;
+
+    float3 P[3], N[3];
+    [unroll]
+    for (int i = 0; i < 3; i++)
+    {
+        int address = (indices[i] * 3) * 4;
+        P[i] = asfloat(gPositions.Load3(address));
+        N[i] = asfloat(gNormals.Load3(address));
+
+        v.texC += asfloat(gTexCrds.Load2(address)) * barycentrics[i];
+        v.normalW += N[i] * barycentrics[i];
+        v.bitangentW += asfloat(gBitangents.Load3(address)) * barycentrics[i];
+        v.lightmapC += asfloat(gLightMapUVs.Load2(address)) * barycentrics[i];
+
+#ifdef USE_INTERPOLATED_POSITION
+        v.posW += P[i] * barycentrics[i];
+#endif
+    }
+
+#ifdef USE_INTERPOLATED_POSITION
+    v.posW = mul(float4(v.posW, 1.f), gWorldMat[0]).xyz;
+#endif
+
+#ifndef _MS_DISABLE_INSTANCE_TRANSFORM
+    // Transform normal/bitangent to world space
+    v.normalW = mul(v.normalW, (float3x3)gWorldInvTransposeMat[0]).xyz;
+    v.bitangentW = mul(v.bitangentW, (float3x3)gWorldMat[0]).xyz;
+#endif
+
+    dP1 = mul(P[1] - P[0], (float3x3)gWorldMat[0]).xyz;
+    dP2 = mul(P[2] - P[0], (float3x3)gWorldMat[0]).xyz;
+    dN1 = mul(N[1] - N[0], (float3x3)gWorldInvTransposeMat[0]).xyz;
+    dN2 = mul(N[2] - N[0], (float3x3)gWorldInvTransposeMat[0]).xyz;
+
+    // Handle invalid bitangents gracefully (avoid NaN from normalization).
+    v.bitangentW = dot(v.bitangentW, v.bitangentW) > 0.f ? normalize(v.bitangentW) : float3(0, 0, 0);
+    return v;
+}
+
 void getVerticesAndNormals(
     uint triangleIndex, BuiltInTriangleIntersectionAttributes attribs,
     out float3 P0, out float3 P1, out float3 P2,
@@ -203,7 +260,10 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     uint triangleIndex = PrimitiveIndex();
 
     // prepare the shading data
-    VertexOut v = getVertexAttributes(triangleIndex, attribs);
+    float3 dP1, dP2, dN1, dN2, N;
+    VertexOut v = getVertexAttributes(triangleIndex, attribs, dP1, dP2, dN1, dN2);
+    N = v.normalW;
+    v.normalW = normalize(v.normalW);
     ShadingData sd = prepareShadingData(v, gMaterial, rayOrigW, 0);
     hitData.hitT = hitT;
 
@@ -215,13 +275,6 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     if (isSpecular)
     {
         float3 N_ = v.normalW;
-        float3 P0, P1, P2, N0, N1, N2, N;
-        getVerticesAndNormals(PrimitiveIndex(), attribs, P0, P1, P2, N0, N1, N2, N);
-        float3 dP1 = P1 - P0;
-        float3 dP2 = P2 - P0;
-        float3 dN1 = N1 - N0;
-        float3 dN2 = N2 - N0;
-
         bool isReflect = (sd.opacity == 1);
         float3 R;
         float eta = iorOverride > 0 ? 1.0 / iorOverride : 1.0 / sd.IoR;
