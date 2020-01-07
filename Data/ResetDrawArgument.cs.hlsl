@@ -39,20 +39,25 @@ shared cbuffer PerFrameCB
 {
     uint2 coarseDim;
     uint initRayCount;
+    uint textureOffset;
 };
 
 //StructuredBuffer<Photon> gPhotonBuffer;
 RWStructuredBuffer<DrawArguments> gDrawArgument;
 RWStructuredBuffer<RayArgument> gRayArgument;
-//RWStructuredBuffer<PixelInfo> gPixelInfo;
+RWStructuredBuffer<PixelInfo> gPixelInfo;
 
-[numthreads(1, 1, 1)]
+RWTexture1D<uint> gPhotonCountTexture;
+
+[numthreads(16, 16, 1)]
 void main(uint3 threadIdx : SV_DispatchThreadID)
 {
     //uint length, stride;
     //gPhotonBuffer.GetDimensions(length, stride);
     if (all(threadIdx == uint3(0,0,0)))
     {
+        gPhotonCountTexture[textureOffset] = gDrawArgument[0].instanceCount;
+
         gDrawArgument[0].indexCountPerInstance = 6;
         gDrawArgument[0].instanceCount = 0;
         gDrawArgument[0].startIndexLocation = 0;
@@ -65,7 +70,8 @@ void main(uint3 threadIdx : SV_DispatchThreadID)
     //uint value = gRayDensityTex[threadIdx.xy];
     //float avgArea = float(value >> 16) / float(value & 0xff);
     //uint lastCount = 1;
-    //int idx = coarseDim.x * threadIdx.y + threadIdx.x;
-    //gPixelInfo[idx].screenArea = 0;// (uint(avgArea * lastCount) << 16) | lastCount;
-    //gPixelInfo[idx].count = 0;
+    int idx = coarseDim.x * threadIdx.y + threadIdx.x;
+    gPixelInfo[idx].screenArea = 0;// (uint(avgArea * lastCount) << 16) | lastCount;
+    gPixelInfo[idx].screenAreaSq = 0;
+    gPixelInfo[idx].count = 0;
 }

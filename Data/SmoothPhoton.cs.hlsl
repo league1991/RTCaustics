@@ -60,7 +60,7 @@ StructuredBuffer<Photon> gSrcPhotonBuffer;
 RWStructuredBuffer<Photon> gDstPhotonBuffer;
 //RWStructuredBuffer<DrawArguments> gDrawArgument;
 RWStructuredBuffer<RayArgument> gRayArgument;
-RWStructuredBuffer<PixelInfo> gRayTask;
+StructuredBuffer<PixelInfo> gRayTask;
 Texture2D gDepthTex;
 
 bool checkPixelNeighbour(uint2 pixelCoord0, Photon photon0, uint2 offset)

@@ -38,7 +38,7 @@ shared cbuffer PerFrameCB
     float derivativeGain;
 };
 
-RWStructuredBuffer<PixelInfo> gPixelInfo;
+StructuredBuffer<PixelInfo> gPixelInfo;
 RWStructuredBuffer<RayArgument> gRayArgument;
 RWTexture2D<float4> gRayDensityTex;
 
@@ -84,5 +84,6 @@ void updateRayDensityTex(uint3 threadIdx : SV_DispatchThreadID)
     gRayDensityTex[threadIdx.xy] = float4(newDensity, newDensity - value.r, 0, 0);
 
     //gPixelInfo[idx].screenArea = 0;
+    //gPixelInfo[idx].screenAreaSq = 0;
     //gPixelInfo[idx].count = 0;
 }
