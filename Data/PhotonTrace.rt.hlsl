@@ -59,6 +59,7 @@ shared cbuffer PerFrameCB
     float gIntensity;
     float gSplatSize;
     uint updatePhoton;
+    float gMaxScreenRadius;
 };
 
 struct PrimaryRayData
@@ -67,7 +68,12 @@ struct PrimaryRayData
     float hitT;
     float3 nextDir;
     uint isContinue;
+#ifdef RAY_DIFFERENTIAL
     float3 dPdx, dPdy, dDdx, dDdy;  // ray differentials
+#elif defined(RAY_CONE)
+    float radius;
+    float dRadius;
+#endif
 };
 
 struct ShadowRayData
@@ -215,6 +221,21 @@ void updateReflectRayDifferential(
     dDdx = dDdx - 2 * (dot(D, N) * dNdx + dDNdx * N);
 }
 
+void getPhotonDifferential(PrimaryRayData hitData, RayDesc ray, out float3 dPdx, out float3 dPdy)
+{
+#ifdef RAY_DIFFERENTIAL
+    dPdx = hitData.dPdx;
+    dPdy = hitData.dPdy;
+#elif defined(RAY_CONE)
+    float radius = hitData.radius;
+    float3 normal = hitData.nextDir;
+    float cosVal = dot(normal, ray.Direction);
+    dPdx = normalize(ray.Direction - normal * cosVal) * radius;
+    dPdy = cross(normal, dPdx);
+    dPdx /= cosVal;
+#endif
+}
+
 float getPhotonScreenArea(float3 posW, float3 dPdx, float3 dPdy, out bool inFrustum)
 {
     dPdx = dPdx * gSplatSize;
@@ -231,6 +252,9 @@ float getPhotonScreenArea(float3 posW, float3 dPdx, float3 dPdy, out bool inFrus
     float2 dx = (s00.xy - s0.xy) * viewportDims;
     float2 dy = (s01.xy - s0.xy) * viewportDims;
     float area = abs(dx.x * dy.y - dy.x * dx.y) / (gSplatSize * gSplatSize);
+
+    //float zRadius = max(1,length(dPdx) + length(dPdy)) * 0.5 / length(posW - gCamera.posW) * gCamera.nearZ * 0.5 * (viewportDims.x + viewportDims.y);
+    //float area = zRadius * zRadius;
     //float area = 0.5 * (dot(dx, dx) + dot(dy, dy)) / (gSplatSize * gSplatSize);
     return area;
 }
@@ -261,14 +285,17 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     uint triangleIndex = PrimitiveIndex();
 
     // prepare the shading data
-    float3 dP1, dP2, dN1, dN2, N;
+    float3 dP1, dP2, dN1, dN2;
     VertexOut v = getVertexAttributes(triangleIndex, attribs, dP1, dP2, dN1, dN2);
-    N = v.normalW;
+    float3 N = v.normalW;
     v.normalW = normalize(v.normalW);
+#ifdef RAY_DIFFERENTIAL
+    updateTransferRayDifferential(v.normalW, hitData.dPdx, hitData.dDdx);
+    updateTransferRayDifferential(v.normalW, hitData.dPdy, hitData.dDdy);
+#elif defined(RAY_CONE)
+    hitData.radius = abs(hitData.radius + hitT * hitData.dRadius);
+#endif
     ShadingData sd = prepareShadingData(v, gMaterial, rayOrigW, 0);
-
-    updateTransferRayDifferential(sd.N, hitData.dPdx, hitData.dDdx);
-    updateTransferRayDifferential(sd.N, hitData.dPdy, hitData.dDdy);
 
     hitData.isContinue = 0;
     hitData.hitT = hitT;
@@ -284,19 +311,21 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
             if (dot(N_, rayDirW) > 0)
             {
                 eta = 1.0 / eta;
-                dN1 *= -1;
-                dN2 *= -1;
                 N *= -1;
                 N_ *= -1;
+#ifdef RAY_DIFFERENTIAL
+                dN1 *= -1;
+                dN2 *= -1;
+#endif
             }
             isReflect = isTotalInternalReflection(rayDirW, N_, eta);
         }
 
+#ifdef RAY_DIFFERENTIAL
         float3 dNdx = 0;
         float3 dNdy = 0;
         calculateDNdx(dP1, dP2, dN1, dN2, N, hitData.dPdx, dNdx);
         calculateDNdx(dP1, dP2, dN1, dN2, N, hitData.dPdy, dNdy);
-
         if (isReflect)
         {
             updateReflectRayDifferential(N, hitData.dPdx, dNdx, hitData.dDdx);
@@ -309,12 +338,34 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
             updateRefractRayDifferential(rayDirW, R, N, eta, hitData.dPdx, dNdx, hitData.dDdx);
             updateRefractRayDifferential(rayDirW, R, N, eta, hitData.dPdy, dNdy, hitData.dDdy);
         }
-
+        float area = (dot(hitData.dPdx, hitData.dPdx) + dot(hitData.dPdy, hitData.dPdy)) * 0.5;
+#elif defined(RAY_CONE)
+        float cosVal = abs(dot(N_, rayDirW));
+        float area = hitData.radius * hitData.radius / cosVal;
+        float triArea = length(cross(dP1, dP2)) * 0.5;
+        float triNormalArea = max(dot(dN1, dN1),dot(dN2, dN2));
+        float isConcave = (dot(dP1, dN1) + dot(dP2, dN2) >= 0) ? 1.0 : -1.0;
+        float dH = area / triArea * triNormalArea * isConcave * 2;
+        float dO;
+        if (isReflect)
+        {
+            R = reflect(rayDirW, N_);
+            dO = dH * 4 * cosVal;
+        }
+        else
+        {
+            getRefractVector(rayDirW, N_, R, eta);
+            float etaI = eta;
+            float etaO = 1;
+            float3 ht = -1 * (-etaI * rayDirW + etaO * R);
+            float dHdO = dot(ht, ht) / (etaO * etaO * abs(dot(ht, R)));
+            dO = dH * dHdO;
+        }
+        hitData.dRadius += sqrt(dO);
+#endif
+        hitData.nextDir = R;
         float3 baseColor = lerp(1, sd.diffuse, sd.opacity);
         hitData.color = baseColor * hitData.color;// *float4(sd.specular, 1);
-        float area = (dot(hitData.dPdx, hitData.dPdx) + dot(hitData.dPdy, hitData.dPdy)) * 0.5;
-        //hitData.color.rgb = hitData.color.rgb / area;
-        hitData.nextDir = R;
 
         if (dot(hitData.color/ area, float3(0.299, 0.587, 0.114)) > traceColorThreshold)
         {
@@ -328,29 +379,30 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
     }
 }
 
-float getArea(PrimaryRayData hitData)
+float getArea(float3 dPdx, float3 dPdy)
 {
     float area;
     if (gAreaType == 0)
     {
-        area = (dot(hitData.dPdx, hitData.dPdx) + dot(hitData.dPdy, hitData.dPdy)) * 0.5;
+        area = (dot(dPdx, dPdx) + dot(dPdy, dPdy)) * 0.5;
     }
     else if (gAreaType == 1)
     {
-        area = (length(hitData.dPdx) + length(hitData.dPdy));
+        area = (length(dPdx) + length(dPdy));
         area *= area;
     }
     else if (gAreaType == 2)
     {
-        area = max(dot(hitData.dPdx, hitData.dPdx), dot(hitData.dPdy, hitData.dPdy));
+        area = max(dot(dPdx, dPdx), dot(dPdy, dPdy));
     }
     else
     {
-        float3 areaVector = cross(hitData.dPdx, hitData.dPdy);
+        float3 areaVector = cross(dPdx, dPdy);
         area = length(areaVector);
     }
     return area;
 }
+
 
 void initFromLight(float2 lightUV, float2 pixelSize, out RayDesc ray, out PrimaryRayData hitData)
 {
@@ -374,41 +426,52 @@ void initFromLight(float2 lightUV, float2 pixelSize, out RayDesc ray, out Primar
         color0.xyz = frac(launchIndex.xyz / float(photonIDScale)) * 0.8 + 0.2;
     }
     hitData.color = color0 * pixelSize.x * pixelSize.y * 512 * 512 * 0.5 * gIntensity;
+    hitData.nextDir = ray.Direction;
+    hitData.isContinue = 1;
+#ifdef RAY_DIFFERENTIAL
     hitData.dDdx = 0;// lightDirX* pixelSize.x * 2.0;
     hitData.dDdy = 0;// lightDirY* pixelSize.y * 2.0;
     hitData.dPdx = lightDirX * pixelSize.x * 2.0;
     hitData.dPdy = -lightDirY * pixelSize.y * 2.0;
-    hitData.nextDir = ray.Direction;
-    hitData.isContinue = 1;
+#elif defined(RAY_CONE)
+    hitData.radius = 0.5 * (pixelSize.x + pixelSize.y);
+    hitData.dRadius = 0.0;
+#endif
 }
 
 void StorePhoton(RayDesc ray, PrimaryRayData hitData, uint2 pixelCoord)
 {
-    float area = getArea(hitData);
-
-    float3 color = hitData.color.rgb / area;
     bool isInFrustum;
+    float3 dPdx, dPdy;
     float3 posW = ray.Origin;
-    float pixelArea = getPhotonScreenArea(posW, hitData.dPdx, hitData.dPdy, isInFrustum);
+    getPhotonDifferential(hitData, ray, dPdx, dPdy);
+    float area = getArea(dPdx, dPdy);
+    float3 color = hitData.color.rgb / area;
+    float pixelArea = getPhotonScreenArea(posW, dPdx, dPdy, isInFrustum);
     if (dot(color, float3(0.299, 0.587, 0.114)) > cullColorThreshold&& isInFrustum && updatePhoton)
     {
-        uint instanceIdx = 0;
-        InterlockedAdd(gDrawArgument[0].instanceCount, 1, instanceIdx);
-
-        Photon photon;
-        photon.posW = posW;
-        photon.normalW = hitData.nextDir;
-        photon.color = color;
-        photon.dPdx = hitData.dPdx;
-        photon.dPdy = hitData.dPdy;
-        gPhotonBuffer[instanceIdx] = photon;
-
         uint pixelLoc = pixelCoord.y * coarseDim.x + pixelCoord.x;
-        if (!launchRayTask)
+
+        if (pixelArea < gMaxScreenRadius* gMaxScreenRadius)
         {
-            gPixelInfo[pixelLoc].photonIdx = instanceIdx;
+            uint instanceIdx = 0;
+            InterlockedAdd(gDrawArgument[0].instanceCount, 1, instanceIdx);
+
+            Photon photon;
+            photon.posW = posW;
+            photon.normalW = hitData.nextDir;
+            photon.color = color;
+            photon.dPdx = dPdx;
+            photon.dPdy = dPdy;
+            gPhotonBuffer[instanceIdx] = photon;
+            if (!launchRayTask)
+            {
+                gPixelInfo[pixelLoc].photonIdx = instanceIdx;
+            }
         }
+
         uint oldV;
+        pixelArea = clamp(pixelArea, 1, 100 * 100);
         InterlockedAdd(gPixelInfo[pixelLoc].screenArea, uint(pixelArea.x), oldV);
         InterlockedAdd(gPixelInfo[pixelLoc].screenAreaSq, uint(pixelArea.x * pixelArea.x), oldV);
         InterlockedAdd(gPixelInfo[pixelLoc].count, 1, oldV);
@@ -477,10 +540,9 @@ void rayGen()
     int depth;
     for (depth = 0; depth < maxDepth && hitData.isContinue; depth++)
     {
-        TraceRay(gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, hitData);
-
-        ray.Origin = ray.Origin + ray.Direction * hitData.hitT;
         ray.Direction = hitData.nextDir;
+        TraceRay(gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, hitData);
+        ray.Origin = ray.Origin + ray.Direction * hitData.hitT;
     }
 
     // write result

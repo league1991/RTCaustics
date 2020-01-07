@@ -73,6 +73,7 @@ cbuffer PerFrameCB : register(b0)
 #define AnisotropicPhoton 0
 #define IsotropicPhoton 1
 #define PhotonMesh 2
+#define ScreenDot 3
 
 struct PhotonVSIn
 {
@@ -92,12 +93,12 @@ struct PhotonVSOut
 int GetPhoton(int2 screenPos, inout Photon p)
 {
     int offset = screenPos.y * taskDim.x + screenPos.x;
-    PixelInfo task = gRayTask[offset];
-    if (task.photonIdx == -1)
+    int photonIdx = gRayTask[offset].photonIdx;
+    if (photonIdx == -1)
     {
         return 0;
     }
-    p = gPhotonBuffer[task.photonIdx];
+    p = gPhotonBuffer[photonIdx];
     return 1;
 }
 
@@ -280,10 +281,12 @@ PhotonVSOut photonScatterVS(PhotonVSIn vIn)
 
     float3 areaVector = cross(tangent, bitangent);
 
-    float solidAngle = sqrt(length(areaVector)) / length(p.posW - gCameraPos);
-    if (solidAngle * 0.5 * (screenDim.x + screenDim.y) > gMaxScreenRadius)
+    color = p.color;
+    if (gPhotonMode == ScreenDot)
     {
-        vOut.posH = float4(100, 100, 100, 1);
+        vOut.posH = mul(float4(p.posW, 1), gWvpMat);
+        vOut.posH.xy += vIn.pos.xz * vOut.posH.w / screenDim.xy * gSplatSize;
+        color = 1;
     }
     else
     {
@@ -291,7 +294,6 @@ PhotonVSOut photonScatterVS(PhotonVSIn vIn)
         vOut.posH = mul(float4(localPoint + p.posW, 1), gWvpMat);
     }
 
-    color = p.color;
     if (gShowPhoton == 2)
     {
         float3 normal = normalize(areaVector);
@@ -321,7 +323,7 @@ float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
     }
 
     float alpha;
-    if (gShowPhoton == 1 || gPhotonMode == PhotonMesh)
+    if (gShowPhoton == 1 || gPhotonMode == PhotonMesh || gPhotonMode == ScreenDot)
     {
         alpha = 1;
     }

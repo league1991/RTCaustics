@@ -53,7 +53,7 @@ RWStructuredBuffer<Photon> gPhotonBuffer;
 //RWStructuredBuffer<DrawArguments> gDrawArgument;
 RWStructuredBuffer<RayArgument> gRayArgument;
 RWStructuredBuffer<RayTask> gRayTask;
-RWStructuredBuffer<PixelInfo> gPixelInfo;
+StructuredBuffer<PixelInfo> gPixelInfo;
 Texture2D gDepthTex;
 Texture2D<float4> gRayDensityTex;
 
@@ -66,12 +66,11 @@ int getRayTaskID(uint2 pos)
 void addPhotonTaskFromTexture(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 threadIdx : SV_DispatchThreadID)
 {
     uint rayIdx = getRayTaskID(threadIdx.xy);
-    gPixelInfo[rayIdx].screenArea = 0;
-    gPixelInfo[rayIdx].screenAreaSq = 0;
-    gPixelInfo[rayIdx].count = 0;
+    //gPixelInfo[rayIdx].screenArea = 0;
+    //gPixelInfo[rayIdx].screenAreaSq = 0;
+    //gPixelInfo[rayIdx].count = 0;
 
-    PixelInfo task0 = gPixelInfo[rayIdx];
-    int idx0 = task0.photonIdx;
+    int idx0 = gPixelInfo[rayIdx].photonIdx;
 
     int2 pixel00 = threadIdx.xy;
     float v00 = gRayDensityTex.Load(int3(pixel00 + int2(0, 0), 0)).r;

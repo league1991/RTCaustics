@@ -29,6 +29,8 @@ __import ShaderCommon;
 __import Shading;
 __import DefaultVS;
 
+#include "Common.hlsl"
+
 SamplerState gPointSampler : register(s1);
 
 Texture2D gDepthTex;
@@ -37,6 +39,8 @@ Texture2D gDiffuseTex;
 Texture2D gSpecularTex;
 Texture2D gPhotonTex;
 Texture2D<float4> gRayTex;
+Texture1D<uint> gStatisticsTex;
+StructuredBuffer<PixelInfo> gPixelInfo;
 
 // Debug modes
 #define ShowDepth       1
@@ -47,6 +51,10 @@ Texture2D<float4> gRayTex;
 #define ShowWorld       6
 #define ShowRoughness   7
 #define ShowRayTex      8
+#define ShowAvgScreenArea 10
+#define ShowAvgScreenAreaVariance 11
+#define ShowCount 12
+#define ShowTotalPhoton 13
 
 cbuffer PerImageCB
 {
@@ -59,9 +67,11 @@ cbuffer PerImageCB
 
     int2 screenDim;
     int2 dispatchSize;
+
     uint gDebugMode;
     float gMaxPixelArea;
     int gRayTexScale;
+    uint gStatisticsOffset;
 };
 
 float4 main(float2 texC  : TEXCOORD) : SV_TARGET
@@ -100,6 +110,46 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
             color = float4(v.rgb / gMaxPixelArea, 1);
         else
             color = float4(1, 0, 1, 1);
+    }
+    else if (gDebugMode == ShowAvgScreenArea || gDebugMode == ShowAvgScreenAreaVariance || gDebugMode == ShowCount)
+    {
+        int2 screenPixel = texC * screenDim;
+        int2 texelPos = clamp(screenPixel.xy / gRayTexScale, 0, dispatchSize - 1);
+        PixelInfo info = gPixelInfo[texelPos.y * dispatchSize.x + texelPos.x];
+        float value = 0;
+        float avgArea = float(info.screenArea) / float(info.count + 0.001);
+        float avgAreaSq = float(info.screenAreaSq) / float(info.count + 0.001);
+        if (gDebugMode == ShowAvgScreenArea)
+        {
+            value = avgArea;
+        }
+        else if (gDebugMode == ShowAvgScreenAreaVariance)
+        {
+            value = sqrt(avgAreaSq - avgArea * avgArea);
+        }
+        else if (gDebugMode == ShowCount)
+        {
+            value = info.count;
+        }
+        if (value <= gMaxPixelArea)
+            color = float4(value.xxx/ gMaxPixelArea, 1);
+        else
+            color = float4(1, 0, 1, 1);
+    }
+    else if (gDebugMode == ShowTotalPhoton)
+    {
+        texC.y = 1 - texC.y;
+        int2 screenPixel = texC * screenDim;
+        int texelPos = (gStatisticsOffset - screenPixel.x + screenDim.x) % screenDim.x;
+        uint valueI = gStatisticsTex[texelPos].r;
+        valueI = valueI * screenDim.y / gMaxPixelArea;
+        uint segmentWidth = screenDim.y / 4;
+        if (screenPixel.y % segmentWidth == 0)
+            color = float4(0.2, 0.2, 0.2, 1);
+        else if (screenPixel.y <= valueI)
+            color = float4(1, 0, 0, 1);
+        else
+            color = float4(0, 0, 0, 1);
     }
     else
     {

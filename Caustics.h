@@ -65,7 +65,7 @@ private:
     float mDistanceThreshold = 10.0f;
     float mPlanarThreshold = 2.0f;
     float mMinPhotonPixelSize = 8.0f;
-    float mSmoothWeight = 0.04f;
+    float mSmoothWeight = 0.15f;
     int mMaxTaskCountPerPixel = 8192;
     float mUpdateSpeed = 0.2f;
     float mVarianceGain = 0.0f;
@@ -102,6 +102,7 @@ private:
     uint32_t mDebugMode = 9;
     float mMaxPixelArea = 100;
     int mRayTexScaleFactor = 4;
+    int mFrameCounter = 0;
 
     // Others
     bool mUseDOF = false;
@@ -134,9 +135,19 @@ private:
     Fbo::SharedPtr mpGPassFbo;
 
     // photon trace
-    RtProgram::SharedPtr mpPhotonTraceProgram;
-    RtProgramVars::SharedPtr mpPhotonTraceVars;
-    RtState::SharedPtr mpPhotonTraceState;
+    struct PhotonTraceShader
+    {
+        RtProgram::SharedPtr mpPhotonTraceProgram;
+        RtProgramVars::SharedPtr mpPhotonTraceVars;
+        RtState::SharedPtr mpPhotonTraceState;
+    };
+    enum PhotonTraceMacro
+    {
+        RAY_DIFFERENTIAL = 0,
+        RAY_CONE = 1,
+    };
+    PhotonTraceMacro mPhotonTraceMacro = RAY_CONE;
+    std::unordered_map<PhotonTraceMacro, PhotonTraceShader> mPhotonTraceShaderList;
     Texture::SharedPtr mpUniformNoise;
 
     // update ray density result
@@ -185,6 +196,7 @@ private:
     // composite pass
     Sampler::SharedPtr mpPointSampler;
     FullScreenPass::SharedPtr mpCompositePass;
+    Texture::SharedPtr mpPhotonCountTex;
 
     // RT composite pass
     RtProgram::SharedPtr mpCompositeRTProgram;
@@ -203,5 +215,6 @@ private:
     void loadScene(const std::string& filename, const Fbo* pTargetFbo);
     void loadShader();
     void setCommonVars(GraphicsVars* pVars, const Fbo* pTargetFbo);
-    void setPhotonTracingCommonVariable();
+    void setPhotonTracingCommonVariable(PhotonTraceShader& shader);
+    PhotonTraceShader getPhotonTraceShader();
 };
