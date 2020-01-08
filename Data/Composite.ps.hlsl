@@ -38,6 +38,7 @@ Texture2D gNormalTex;
 Texture2D gDiffuseTex;
 Texture2D gSpecularTex;
 Texture2D gPhotonTex;
+Texture2D gRaytracingTex;
 Texture2D<float4> gRayTex;
 Texture1D<uint> gStatisticsTex;
 StructuredBuffer<PixelInfo> gPixelInfo;
@@ -51,6 +52,7 @@ StructuredBuffer<PixelInfo> gPixelInfo;
 #define ShowWorld       6
 #define ShowRoughness   7
 #define ShowRayTex      8
+#define ShowRayTracing  9
 #define ShowAvgScreenArea 10
 #define ShowAvgScreenAreaVariance 11
 #define ShowCount 12
@@ -83,6 +85,7 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
     float4 normalVal = gNormalTex.Sample(gPointSampler, texC);
     float4 diffuseVal = gDiffuseTex.Sample(gPointSampler, texC);
     float4 specularVal = gSpecularTex.Sample(gPointSampler, texC);
+    float4 rtColor = gRaytracingTex.Sample(gPointSampler, texC);
 
     float4 color = 0;
     if (gDebugMode == ShowDepth)
@@ -111,30 +114,39 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
         else
             color = float4(1, 0, 1, 1);
     }
+    else if (gDebugMode == ShowRayTracing)
+    {
+        color = rtColor;
+    }
     else if (gDebugMode == ShowAvgScreenArea || gDebugMode == ShowAvgScreenAreaVariance || gDebugMode == ShowCount)
     {
         int2 screenPixel = texC * screenDim;
-        int2 texelPos = clamp(screenPixel.xy / gRayTexScale, 0, dispatchSize - 1);
-        PixelInfo info = gPixelInfo[texelPos.y * dispatchSize.x + texelPos.x];
-        float value = 0;
-        float avgArea = float(info.screenArea) / float(info.count + 0.001);
-        float avgAreaSq = float(info.screenAreaSq) / float(info.count + 0.001);
-        if (gDebugMode == ShowAvgScreenArea)
+        int2 texelPos = screenPixel.xy / gRayTexScale;
+        if (all(texelPos < dispatchSize))
         {
-            value = avgArea;
+            PixelInfo info = gPixelInfo[texelPos.y * dispatchSize.x + texelPos.x];
+            float value = 0;
+            float avgArea = float(info.screenArea) / float(info.count + 0.001);
+            float avgAreaSq = float(info.screenAreaSq) / float(info.count + 0.001);
+            if (gDebugMode == ShowAvgScreenArea)
+            {
+                value = avgArea;
+            }
+            else if (gDebugMode == ShowAvgScreenAreaVariance)
+            {
+                value = sqrt(avgAreaSq - avgArea * avgArea);
+            }
+            else if (gDebugMode == ShowCount)
+            {
+                value = info.count;
+            }
+            if (value <= gMaxPixelArea)
+                color = float4(value.xxx / gMaxPixelArea, 1);
+            else
+                color = float4(1, 0, 1, 1);
         }
-        else if (gDebugMode == ShowAvgScreenAreaVariance)
-        {
-            value = sqrt(avgAreaSq - avgArea * avgArea);
-        }
-        else if (gDebugMode == ShowCount)
-        {
-            value = info.count;
-        }
-        if (value <= gMaxPixelArea)
-            color = float4(value.xxx/ gMaxPixelArea, 1);
         else
-            color = float4(1, 0, 1, 1);
+            color = rtColor;
     }
     else if (gDebugMode == ShowTotalPhoton)
     {
@@ -144,12 +156,16 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
         uint valueI = gStatisticsTex[texelPos].r;
         valueI = valueI * screenDim.y / gMaxPixelArea;
         uint segmentWidth = screenDim.y / 4;
+        float4 graphColor;
+        float alpha = 0.3;
         if (screenPixel.y % segmentWidth == 0)
-            color = float4(0.2, 0.2, 0.2, 1);
+            graphColor = float4(0.2, 0.2, 0.2, alpha);
         else if (screenPixel.y <= valueI)
-            color = float4(1, 0, 0, 1);
+            graphColor = float4(1, 0, 0, alpha);
         else
-            color = float4(0, 0, 0, 1);
+            graphColor = float4(0, 0, 0, 0);
+        color.rgb = lerp(rtColor.rgb, graphColor.rgb, graphColor.a);
+        color.a = 1;
     }
     else
     {

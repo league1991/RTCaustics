@@ -44,7 +44,7 @@ public:
 
 private:
     // Photon trace
-    int mTraceType = 0;
+    int mTraceType = 1;
     int mDispatchSize=64;
     int mMaxTraceDepth = 10;
     float mEmitSize = 30.0;
@@ -66,7 +66,7 @@ private:
     float mPlanarThreshold = 2.0f;
     float mMinPhotonPixelSize = 8.0f;
     float mSmoothWeight = 0.15f;
-    int mMaxTaskCountPerPixel = 8192;
+    int mMaxTaskCountPerPixel = 8000;
     float mUpdateSpeed = 0.2f;
     float mVarianceGain = 0.0f;
     float mDerivativeGain = 0.0f;
@@ -145,8 +145,9 @@ private:
     {
         RAY_DIFFERENTIAL = 0,
         RAY_CONE = 1,
+        RAY_NONE = 2
     };
-    PhotonTraceMacro mPhotonTraceMacro = RAY_CONE;
+    PhotonTraceMacro mPhotonTraceMacro = RAY_DIFFERENTIAL;
     std::unordered_map<PhotonTraceMacro, PhotonTraceShader> mPhotonTraceShaderList;
     Texture::SharedPtr mpUniformNoise;
 
@@ -217,4 +218,6 @@ private:
     void setCommonVars(GraphicsVars* pVars, const Fbo* pTargetFbo);
     void setPhotonTracingCommonVariable(PhotonTraceShader& shader);
     PhotonTraceShader getPhotonTraceShader();
+    void loadSceneSetting(std::string path);
+    void saveSceneSetting(std::string path);
 };

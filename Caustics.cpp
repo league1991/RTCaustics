@@ -38,6 +38,8 @@ std::string to_string(const vec3& v)
     return s;
 }
 
+const FileDialogFilterVec settingFilter = { {"ini", "Scene Setting File"} };
+
 void Caustics::onGuiRender(Gui* pGui)
 {
     pGui->addCheckBox("Ray Trace", mRayTrace);
@@ -49,6 +51,23 @@ void Caustics::onGuiRender(Gui* pGui)
         {
             loadScene(filename, gpFramework->getTargetFbo().get());
             loadShader();
+        }
+    }
+
+    if (pGui->addButton("Load Scene Settings"))
+    {
+        std::string filename;
+        if (openFileDialog(settingFilter, filename))
+        {
+            loadSceneSetting(filename);
+        }
+    }
+    if (pGui->addButton("Save Scene Settings"))
+    {
+        std::string filename;
+        if (saveFileDialog(settingFilter, filename))
+        {
+            saveSceneSetting(filename);
         }
     }
     if (pGui->addButton("Update Shader"))
@@ -102,6 +121,7 @@ void Caustics::onGuiRender(Gui* pGui)
             Gui::DropdownList debugModeList;
             debugModeList.push_back({ 0, "Ray Differential" });
             debugModeList.push_back({ 1, "Ray Cone" });
+            debugModeList.push_back({ 2, "None" });
             pGui->addDropdown("Ray Type", debugModeList, (uint32_t&)mPhotonTraceMacro);
         }
         {
@@ -158,7 +178,7 @@ void Caustics::onGuiRender(Gui* pGui)
             debugModeList.push_back({ 2, "None" });
             pGui->addDropdown("Density Estimation", debugModeList, (uint32_t&)mScatterOrGather);
         }
-        pGui->addFloatVar("Splat size", mSplatSize, 0, 10, 0.01f);
+        pGui->addFloatVar("Splat size", mSplatSize, 0, 100, 0.01f);
         pGui->addFloatVar("Kernel Power", mKernelPower, 0.01f, 10, 0.01f);
 
         if(pGui->beginGroup("Scatter Parameters", false))
@@ -284,6 +304,9 @@ Caustics::PhotonTraceShader Caustics::getPhotonTraceShader()
         case Caustics::RAY_CONE:
             desc.addDefine("RAY_CONE", "1");
             break;
+        case Caustics::RAY_NONE:
+            desc.addDefine("RAY_NONE", "1");
+            break;
         default:
             break;
         }
@@ -297,6 +320,42 @@ Caustics::PhotonTraceShader Caustics::getPhotonTraceShader()
         mPhotonTraceShaderList[mPhotonTraceMacro] = { pPhotonTraceProgram , pPhotonTraceVars ,pPhotonTraceState };
     }
     return mPhotonTraceShaderList[mPhotonTraceMacro];
+}
+
+void Caustics::loadSceneSetting(std::string path)
+{
+    std::ifstream file(path, std::ios::in);
+    if (!file)
+    {
+        return;
+    }
+
+    file >> mLightAngle.x >> mLightAngle.y;
+
+    float3 camOri, camTarget;
+    file >> camOri.x >> camOri.y >> camOri.z;
+    file >> camTarget.x >> camTarget.y >> camTarget.z;
+    mpCamera->setPosition(camOri);
+    mpCamera->setTarget(camTarget);
+}
+
+void Caustics::saveSceneSetting(std::string path)
+{
+    if (path.find(".ini") == std::string::npos)
+    {
+        path += ".ini";
+    }
+    std::ofstream file(path, std::ios::out);
+    if (!file)
+    {
+        return;
+    }
+
+    file << mLightAngle.x << " " << mLightAngle.y << std::endl;
+    float3 camOri = mpCamera->getPosition();
+    float3 camTarget = mpCamera->getTarget();
+    file << camOri.x << " " << camOri.y << " " << camOri.z << std::endl;
+    file << camTarget.x << " " << camTarget.y << " " << camTarget.z << std::endl;
 }
 
 void Caustics::loadShader()
@@ -503,7 +562,7 @@ void Caustics::setPhotonTracingCommonVariable(Caustics::PhotonTraceShader& shade
 void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
 {
     PROFILE("renderRT");
-    setPerFrameVars(pTargetFbo.get());
+    //setPerFrameVars(pTargetFbo.get());
 
     // reset data
     uint32_t statisticsOffset = uint32_t(mFrameCounter % mpPhotonCountTex->getWidth());
@@ -717,7 +776,6 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
 
 
     // Render output
-    if (mDebugMode == 9)
     {
         pContext->clearUAV(mpRtOut->getUAV().get(), kClearColor);
         GraphicsVars* pVars = mpCompositeRTVars->getGlobalVars().get();
@@ -741,15 +799,15 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         rayGenVars->setTexture("gOutput", mpRtOut);
         mpCompositeRTState->setMaxTraceRecursionDepth(2);
         mpRtRenderer->renderScene(pContext, mpCompositeRTVars, mpCompositeRTState, uvec3(pTargetFbo->getWidth(), pTargetFbo->getHeight(), 1), mpCamera.get());
-        pContext->blit(mpRtOut->getSRV(), pTargetFbo->getRenderTargetView(0));
     }
-    else
+
     {
         mpCompositePass["gDepthTex"] = mpGPassFbo->getDepthStencilTexture();
         mpCompositePass["gNormalTex"] = mpGPassFbo->getColorTexture(0);
         mpCompositePass["gDiffuseTex"] = mpGPassFbo->getColorTexture(1);
         mpCompositePass["gSpecularTex"] = mpGPassFbo->getColorTexture(2);
         mpCompositePass["gPhotonTex"] = mpCausticsFbo->getColorTexture(0);
+        mpCompositePass["gRaytracingTex"] = mpRtOut;
         mpCompositePass["gRayTex"] = mpRayDensityTex;
         mpCompositePass["gStatisticsTex"] = mpPhotonCountTex;
         mpCompositePass["gPointSampler"] = mpPointSampler;

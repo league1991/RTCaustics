@@ -73,6 +73,7 @@ struct PrimaryRayData
 #elif defined(RAY_CONE)
     float radius;
     float dRadius;
+#elif defined(RAY_NONE)
 #endif
 };
 
@@ -233,6 +234,13 @@ void getPhotonDifferential(PrimaryRayData hitData, RayDesc ray, out float3 dPdx,
     dPdx = normalize(ray.Direction - normal * cosVal) * radius;
     dPdy = cross(normal, dPdx);
     dPdx /= cosVal;
+#elif defined(RAY_NONE)
+    float radius = 0.2;
+    float3 normal = hitData.nextDir;
+    float cosVal = dot(normal, ray.Direction);
+    dPdx = normalize(ray.Direction - normal * cosVal) * radius;
+    dPdy = cross(normal, dPdx);
+    dPdx /= cosVal;
 #endif
 }
 
@@ -362,6 +370,16 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
             dO = dH * dHdO;
         }
         hitData.dRadius += sqrt(dO);
+#elif defined(RAY_NONE)
+        if (isReflect)
+        {
+            R = reflect(rayDirW, N_);
+        }
+        else
+        {
+            getRefractVector(rayDirW, N_, R, eta);
+        }
+        float area = 0.0001;
 #endif
         hitData.nextDir = R;
         float3 baseColor = lerp(1, sd.diffuse, sd.opacity);
@@ -370,6 +388,10 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         if (dot(hitData.color/ area, float3(0.299, 0.587, 0.114)) > traceColorThreshold)
         {
             hitData.isContinue = 1;
+        }
+        else
+        {
+            hitData.color = 0;
         }
     }
     else
@@ -516,7 +538,7 @@ bool getTask(out float2 lightUV, out uint2 pixelCoord, out float2 pixelSize)
     if (!launchRayTask)
     {
         gRayTask[taskIdx].screenCoord = launchIndex.xy;
-        gRayTask[taskIdx].pixelSize = float2(1, 1);
+        gRayTask[taskIdx].pixelSize = 1;
     }
     return true;
 }
