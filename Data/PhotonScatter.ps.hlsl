@@ -75,9 +75,14 @@ cbuffer PerFrameCB : register(b0)
 #define PhotonMesh 2
 #define ScreenDot 3
 
+#define SHOW_PHOTON_KERNEL 0
+#define SHOW_PHOTON_SOLID  1
+#define SHOW_PHOTON_SHADED 2
+
 struct PhotonVSIn
 {
     float4 pos         : POSITION;
+    float3 normal      : NORMAL;
     float2 texC        : TEXCOORD;
     uint instanceID : SV_INSTANCEID;
     uint vertexID: SV_VERTEXID;
@@ -278,6 +283,7 @@ PhotonVSOut photonScatterVS(PhotonVSIn vIn)
 
     tangent *= gSplatSize;
     bitangent *= gSplatSize;
+    //normal *= gSplatSize;
 
     float3 areaVector = cross(tangent, bitangent);
 
@@ -290,14 +296,14 @@ PhotonVSOut photonScatterVS(PhotonVSIn vIn)
     }
     else
     {
-        float3 localPoint = tangent * vIn.pos.x + bitangent * vIn.pos.z + normal * vIn.pos.y;
+        float3 localPoint = tangent * vIn.pos.x + bitangent * vIn.pos.z + normal * vIn.pos.y * gSplatSize*0.05;
         vOut.posH = mul(float4(localPoint + p.posW, 1), gWvpMat);
     }
 
-    if (gShowPhoton == 2)
+    if (gShowPhoton == SHOW_PHOTON_SHADED)
     {
-        float3 normal = normalize(areaVector);
-        vOut.color = float4(abs(dot(gLightDir, normal)), 1);
+        float3 surfNormal = normalize(tangent * vIn.normal.x + bitangent * vIn.normal.z + normal * vIn.normal.y* gSplatSize);
+        vOut.color = float4(abs(dot(float3(1,1,1), surfNormal)), 1);
     }
     else
         vOut.color = float4(color, 1);
@@ -307,23 +313,19 @@ PhotonVSOut photonScatterVS(PhotonVSIn vIn)
 
 float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
 {
-    float depth = gDepthTex.Load(int3(vOut.posH.xy, 0)).x;
-    if (gShowPhoton == 2)
+    //float depth = gDepthTex.Load(int3(vOut.posH.xy, 0)).x;
+    if (gShowPhoton == SHOW_PHOTON_SHADED)
     {
-        if (vOut.posH.z - depth > 0.0001)
-        {
-            discard;
-        }
-        return float4(1, 0, 0, 1)* vOut.color;
+        return float4(1, 1, 0, 1)* vOut.color;
     }
 
-    if (abs(depth- vOut.posH.z) > 0.00001)
-    {
-        discard;
-    }
+    //if (abs(depth- vOut.posH.z) > 0.00001)
+    //{
+    //    //discard;
+    //}
 
     float alpha;
-    if (gShowPhoton == 1 || gPhotonMode == PhotonMesh || gPhotonMode == ScreenDot)
+    if (gShowPhoton == SHOW_PHOTON_SOLID || gPhotonMode == PhotonMesh || gPhotonMode == ScreenDot)
     {
         alpha = 1;
     }

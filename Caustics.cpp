@@ -181,12 +181,18 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addFloatVar("Splat size", mSplatSize, 0, 100, 0.01f);
         pGui->addFloatVar("Kernel Power", mKernelPower, 0.01f, 10, 0.01f);
 
-        if(pGui->beginGroup("Scatter Parameters", false))
+        if(pGui->beginGroup("Scatter Parameters", true))
         {
             pGui->addFloatVar("Scatter Normal Threshold", mScatterNormalThreshold, 0.01f, 1.0, 0.01f);
             pGui->addFloatVar("Scatter Distance Threshold", mScatterDistanceThreshold, 0.1f, 10.0f, 0.1f);
             pGui->addFloatVar("Scatter Planar Threshold", mScatterPlanarThreshold, 0.01f, 10.0, 0.1f);
             pGui->addFloatVar("Max Anisotropy", mMaxAnisotropy, 1, 100, 0.1f);
+            {
+                Gui::DropdownList debugModeList;
+                debugModeList.push_back({ 0, "Quad" });
+                debugModeList.push_back({ 1, "Sphere" });
+                pGui->addDropdown("Photon Geometry", debugModeList, (uint32_t&)mScatterGeometry);
+            }
             {
                 Gui::DropdownList debugModeList;
                 debugModeList.push_back({ 0, "Kernel" });
@@ -258,6 +264,7 @@ void Caustics::loadScene(const std::string& filename, const Fbo* pTargetFbo)
     if (!mpScene) return;
 
     mpQuad = Model::createFromFile("Caustics/quad.obj");
+    mpSphere = Model::createFromFile("Caustics/sphere.obj");
 
     Model::SharedPtr pModel = mpScene->getModel(0);
     float radius = pModel->getRadius();
@@ -441,10 +448,14 @@ void Caustics::loadShader()
         BlendState::SharedPtr scatterBlendState = BlendState::create(blendDesc);
         mpPhotonScatterProgram = GraphicsProgram::createFromFile("PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
         DepthStencilState::Desc dsDesc;
-        dsDesc.setDepthEnabled(false);
+        dsDesc.setDepthEnabled(true);
+        dsDesc.setDepthWriteMask(false);
         auto depthStencilState = DepthStencilState::create(dsDesc);
         RasterizerState::Desc rasterDesc;
         rasterDesc.setCullMode(RasterizerState::CullMode::None);
+        static int32_t depthBias = -8;
+        static float slopeBias = -16;
+        rasterDesc.setDepthBias(depthBias, slopeBias);
         auto rasterState = RasterizerState::create(rasterDesc);
         mpPhotonScatterBlendState = GraphicsState::create();
         mpPhotonScatterBlendState->setProgram(mpPhotonScatterProgram);
@@ -572,6 +583,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pPerFrameCB["initRayCount"] = uint(mDispatchSize * mDispatchSize);
         pPerFrameCB["coarseDim"] = uint2(mDispatchSize, mDispatchSize);
         pPerFrameCB["textureOffset"] = statisticsOffset;
+        pPerFrameCB["scatterGeoIdxCount"] = mScatterGeometry == SCATTER_GEOMETRY_QUAD ? 6U : 12U;
         mpDrawArgumentVars->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
         mpDrawArgumentVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
         //mpDrawArgumentVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
@@ -675,7 +687,8 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     // photon scattering
     if(mScatterOrGather == 0)
     {
-        pContext->clearFbo(mpCausticsFbo.get(), vec4(0, 0, 0, 0), 1.0, 0);
+        //pContext->clearFbo(mpCausticsFbo.get(), vec4(0, 0, 0, 0), 1.0, 0);
+        pContext->clearRtv(mpCausticsFbo->getColorTexture(0)->getRTV().get(), vec4(0, 0, 0, 0));
         glm::mat4 wvp = mpCamera->getProjMatrix() * mpCamera->getViewMatrix();
         ConstantBuffer::SharedPtr pPerFrameCB = mpPhotonScatterVars["PerFrameCB"];
         pPerFrameCB["gWorldMat"] = glm::mat4();
@@ -697,13 +710,12 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         mpPhotonScatterVars["gLinearSampler"] = mpLinearSampler;
         mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", photonBuffer);
         mpPhotonScatterVars->setStructuredBuffer("gRayTask", mpPixelInfoBuffer);
-        mpPhotonScatterVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
+        //mpPhotonScatterVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
         mpPhotonScatterVars->setTexture("gNormalTex", mpGPassFbo->getColorTexture(0));
         mpPhotonScatterVars->setTexture("gDiffuseTex", mpGPassFbo->getColorTexture(1));
         mpPhotonScatterVars->setTexture("gSpecularTex", mpGPassFbo->getColorTexture(2));
         mpPhotonScatterVars->setTexture("gGaussianTex", mpGaussianKernel);
         int instanceCount = mDispatchSize * mDispatchSize;
-        //pContext->drawIndexedInstanced(mpPhotonScatterState.get(), mpPhotonScatterVars.get(), mpQuad->getMesh(0)->getIndexCount(), instanceCount, 0, 0, 0);
         GraphicsState::SharedPtr scatterState;
         if (mPhotonDisplayMode == 2)
         {
@@ -713,7 +725,10 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         {
             scatterState = mpPhotonScatterBlendState;
         }
-        scatterState->setVao(mpQuad->getMesh(0)->getVao());
+        if (mScatterGeometry == SCATTER_GEOMETRY_QUAD)
+            scatterState->setVao(mpQuad->getMesh(0)->getVao());
+        else
+            scatterState->setVao(mpSphere->getMesh(0)->getVao());
         scatterState->setFbo(mpCausticsFbo);
         if (mPhotonMode == 2)
         {
@@ -898,7 +913,7 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
     mpRtOut = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpDepthTex = Texture::create2D(width, height, ResourceFormat::D24UnormS8, 1, 1, nullptr, Resource::BindFlags::DepthStencil | Resource::BindFlags::ShaderResource);
     mpPhotonMapTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
-    mpCausticsFbo = Fbo::create({ mpPhotonMapTex });
+    mpCausticsFbo = Fbo::create({ mpPhotonMapTex }, mpDepthTex);
 
     mpRayDensityTex = Texture::create2D(CAUSTICS_MAP_SIZE, CAUSTICS_MAP_SIZE, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
     mpPhotonCountTex = Texture::create1D(width, ResourceFormat::R32Uint, 1, 1, nullptr, Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);

@@ -79,6 +79,12 @@ private:
     float trimDirectionThreshold = 0.5f;
 
     // Photon Scatter
+    enum ScatterGeometry
+    {
+        SCATTER_GEOMETRY_QUAD = 0,
+        SCATTER_GEOMETRY_SPHERE = 1,
+    };
+    ScatterGeometry mScatterGeometry= SCATTER_GEOMETRY_QUAD;
     int   mScatterOrGather = 0;
     float mSplatSize = 4.0f;
     float mKernelPower = 1.f;
@@ -112,6 +118,7 @@ private:
     float2 mLightAngleSpeed{0,0};
 
     Model::SharedPtr mpQuad;
+    Model::SharedPtr mpSphere;
     RtScene::SharedPtr mpScene;
     Camera::SharedPtr mpCamera;
     FirstPersonCameraController mCamController;

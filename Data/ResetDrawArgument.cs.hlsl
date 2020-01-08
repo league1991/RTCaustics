@@ -40,6 +40,7 @@ shared cbuffer PerFrameCB
     uint2 coarseDim;
     uint initRayCount;
     uint textureOffset;
+    uint scatterGeoIdxCount;
 };
 
 //StructuredBuffer<Photon> gPhotonBuffer;
@@ -58,7 +59,7 @@ void main(uint3 threadIdx : SV_DispatchThreadID)
     {
         gPhotonCountTexture[textureOffset] = gDrawArgument[0].instanceCount;
 
-        gDrawArgument[0].indexCountPerInstance = 6;
+        gDrawArgument[0].indexCountPerInstance = scatterGeoIdxCount;// 12;//6
         gDrawArgument[0].instanceCount = 0;
         gDrawArgument[0].startIndexLocation = 0;
         gDrawArgument[0].baseVertexLocation = 0;
