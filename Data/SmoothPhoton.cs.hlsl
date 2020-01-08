@@ -181,12 +181,14 @@ float3 medianFilter(uint2 pixelCoord0)
 bool isPhotonContinue(Photon photon0, Photon photon1)
 {
     bool isContinue = true;
-    isContinue &= dot(photon0.normalW, photon1.normalW) > normalThreshold;
+    float3 normal0 = normalize(cross(photon0.dPdx, photon0.dPdy));
+    float3 normal1 = normalize(cross(photon1.dPdx, photon1.dPdy));
+    isContinue &= dot(normal0, normal1) > normalThreshold;
 
     float distanceFactor = 0.5 * (length(photon0.dPdx) + length(photon0.dPdx));
     isContinue &= length(photon0.posW - photon1.posW) / distanceFactor < distanceThreshold;
 
-    isContinue &= dot(photon0.normalW, photon0.posW - photon1.posW) < planarThreshold;
+    isContinue &= dot(normal0, photon0.posW - photon1.posW) < planarThreshold;
     return isContinue;
 }
 

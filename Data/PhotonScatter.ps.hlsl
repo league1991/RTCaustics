@@ -244,7 +244,7 @@ PhotonVSOut photonScatterVS(PhotonVSIn vIn)
     }
 
     Photon p = gPhotonBuffer[vIn.instanceID];
-    float3 normal = normalize(p.normalW);
+    float3 normal = normalize(cross(p.dPdx, p.dPdy));
 
     if (gPhotonMode == AnisotropicPhoton)
     {

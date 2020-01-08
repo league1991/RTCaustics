@@ -481,7 +481,11 @@ void StorePhoton(RayDesc ray, PrimaryRayData hitData, uint2 pixelCoord)
 
             Photon photon;
             photon.posW = posW;
-            photon.normalW = hitData.nextDir;
+            //photon.normalW = hitData.nextDir;
+            if (dot(cross(dPdx,dPdy), hitData.nextDir) < 0)
+            {
+                dPdy *= -1;
+            }
             photon.color = color;
             photon.dPdx = dPdx;
             photon.dPdy = dPdy;
