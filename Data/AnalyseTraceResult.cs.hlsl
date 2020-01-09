@@ -62,7 +62,7 @@ int getRayTaskID(uint2 pos)
     return pos.y * taskDim.x + pos.x;
 }
 
-[numthreads(16, 16, 1)]
+[numthreads(32, 16, 1)]
 void addPhotonTaskFromTexture(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 threadIdx : SV_DispatchThreadID)
 {
     uint rayIdx = getRayTaskID(threadIdx.xy);
