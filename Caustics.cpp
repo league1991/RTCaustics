@@ -692,8 +692,8 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             mpAnalyseVars->setStructuredBuffer("gPixelInfo", mpPixelInfoBuffer);
             mpAnalyseVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
             mpAnalyseVars->setTexture("gRayDensityTex", mpRayDensityTex);
-            static int groupSize = 16;
-            pContext->dispatch(mpAnalyseState.get(), mpAnalyseVars.get(), uvec3(mDispatchSize / groupSize, mDispatchSize / groupSize, 1));
+            int2 groupSize(32, 4);
+            pContext->dispatch(mpAnalyseState.get(), mpAnalyseVars.get(), uvec3(mDispatchSize / groupSize.x, mDispatchSize / groupSize.y, 1));
         }
     }
 
