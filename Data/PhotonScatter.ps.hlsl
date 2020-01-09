@@ -47,6 +47,7 @@ cbuffer PerFrameCB : register(b0)
 {
     float4x4 gWvpMat;
     float4x4 gWorldMat;
+    float4x4 gInvProjMat;
 
     float3 gEyePosW;
     float gLightIntensity;
@@ -69,6 +70,8 @@ cbuffer PerFrameCB : register(b0)
 
     float3 gCameraPos;
     float gMaxScreenRadius;
+
+    float gZTolerance;
 };
 #define AnisotropicPhoton 0
 #define IsotropicPhoton 1
@@ -311,18 +314,27 @@ PhotonVSOut photonScatterVS(PhotonVSIn vIn)
     return vOut;
 }
 
+float toViewSpace(float depth, float w)
+{
+    return (gInvProjMat[2][2] * depth + gInvProjMat[3][2] * w) / (gInvProjMat[2][3] * depth + gInvProjMat[3][3] * w);
+}
+
 float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
 {
-    //float depth = gDepthTex.Load(int3(vOut.posH.xy, 0)).x;
+    float depth = gDepthTex.Load(int3(vOut.posH.xy, 0)).x;
+    depth = toViewSpace(depth,1);
+
+    float pixelZ = -vOut.posH.w;// toViewSpace(vOut.posH.z, vOut.posH.w);
     if (gShowPhoton == SHOW_PHOTON_SHADED)
     {
         return float4(1, 1, 0, 1)* vOut.color;
     }
 
-    //if (abs(depth- vOut.posH.z) > 0.00001)
-    //{
-    //    //discard;
-    //}
+    float zDiff = pixelZ - depth;
+    if (abs(zDiff) > gZTolerance)
+    {
+        discard;
+    }
 
     float alpha;
     if (gShowPhoton == SHOW_PHOTON_SOLID || gPhotonMode == PhotonMesh || gPhotonMode == ScreenDot)
@@ -331,7 +343,7 @@ float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
     }
     else
     {
-        alpha = smoothKernel(length(vOut.texcoord.xy));//gGaussianTex.Sample(gLinearSampler, vOut.texcoord).r;
+        alpha = smoothKernel(length(float3(vOut.texcoord.xy, zDiff)));//gGaussianTex.Sample(gLinearSampler, vOut.texcoord).r;
         alpha = pow(alpha, gKernelPower);
     }
     return float4(vOut.color.rgb * alpha, 1);

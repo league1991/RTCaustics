@@ -85,6 +85,7 @@ private:
         SCATTER_GEOMETRY_SPHERE = 1,
     };
     ScatterGeometry mScatterGeometry= SCATTER_GEOMETRY_QUAD;
+    int   mCausticsMapResRatio = 1;
     int   mScatterOrGather = 0;
     float mSplatSize = 4.0f;
     float mKernelPower = 1.f;
@@ -95,6 +96,7 @@ private:
     float mScatterPlanarThreshold = 2.0f;
     float mMaxAnisotropy = 20.0f;
     float mMaxPhotonPixelRadius = 90.0f;
+    float mZTolerance = 0.1f;
 
     // Photon Gather
     int mTileCountScale = 10;
@@ -138,7 +140,6 @@ private:
     Texture::SharedPtr mpDiffuseTex;
     Texture::SharedPtr mpSpecularTex;
     Texture::SharedPtr mpDepthTex;
-    Texture::SharedPtr mpPhotonMapTex;
     Fbo::SharedPtr mpGPassFbo;
 
     // photon trace
@@ -227,4 +228,5 @@ private:
     PhotonTraceShader getPhotonTraceShader();
     void loadSceneSetting(std::string path);
     void saveSceneSetting(std::string path);
+    void createCausticsMap();
 };

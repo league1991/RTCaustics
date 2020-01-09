@@ -169,6 +169,18 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->endGroup();
     }
 
+    if (pGui->beginGroup("Smooth Photon", false))
+    {
+        pGui->addCheckBox("Remove Isolated Photon", mRemoveIsolatedPhoton);
+        pGui->addCheckBox("Enable Median Filter", mMedianFilter);
+        pGui->addFloatVar("Normal Threshold", mNormalThreshold, 0.01f, 1.0, 0.01f);
+        pGui->addFloatVar("Distance Threshold", mDistanceThreshold, 0.1f, 100.0f, 0.1f);
+        pGui->addFloatVar("Planar Threshold", mPlanarThreshold, 0.01f, 10.0, 0.1f);
+        pGui->addFloatVar("Trim Direction Threshold", trimDirectionThreshold, 0, 1);
+        pGui->addIntVar("Min Neighbour Count", mMinNeighbourCount, 0, 8);
+        pGui->endGroup();
+    }
+
     if (pGui->beginGroup("Photon Splat", true))
     {
         {
@@ -178,11 +190,25 @@ void Caustics::onGuiRender(Gui* pGui)
             debugModeList.push_back({ 2, "None" });
             pGui->addDropdown("Density Estimation", debugModeList, (uint32_t&)mScatterOrGather);
         }
+        {
+            int oldResRatio = mCausticsMapResRatio;
+            Gui::DropdownList debugModeList;
+            debugModeList.push_back({ 1, "x 1" });
+            debugModeList.push_back({ 2, "x 1/2" });
+            debugModeList.push_back({ 4, "x 1/4" });
+            debugModeList.push_back({ 8, "x 1/8" });
+            pGui->addDropdown("Caustics Resolution", debugModeList, (uint32_t&)mCausticsMapResRatio);
+            if (oldResRatio != mCausticsMapResRatio)
+            {
+                createCausticsMap();
+            }
+        }
         pGui->addFloatVar("Splat size", mSplatSize, 0, 100, 0.01f);
-        pGui->addFloatVar("Kernel Power", mKernelPower, 0.01f, 10, 0.01f);
+        pGui->addFloatVar("Kernel Power", mKernelPower, 0.01f, 10.f, 0.01f);
 
         if(pGui->beginGroup("Scatter Parameters", true))
         {
+            pGui->addFloatVar("Z Tolerance", mZTolerance, 0.001f, 1, 0.001f);
             pGui->addFloatVar("Scatter Normal Threshold", mScatterNormalThreshold, 0.01f, 1.0, 0.01f);
             pGui->addFloatVar("Scatter Distance Threshold", mScatterDistanceThreshold, 0.1f, 10.0f, 0.1f);
             pGui->addFloatVar("Scatter Planar Threshold", mScatterPlanarThreshold, 0.01f, 10.0, 0.1f);
@@ -223,17 +249,6 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->endGroup();
     }
 
-    if (pGui->beginGroup("Smooth Photon", false))
-    {
-        pGui->addCheckBox("Remove Isolated Photon", mRemoveIsolatedPhoton);
-        pGui->addCheckBox("Enable Median Filter", mMedianFilter);
-        pGui->addFloatVar("Normal Threshold", mNormalThreshold, 0.01f, 1.0, 0.01f);
-        pGui->addFloatVar("Distance Threshold", mDistanceThreshold, 0.1f, 100.0f, 0.1f);
-        pGui->addFloatVar("Planar Threshold", mPlanarThreshold, 0.01f, 10.0, 0.1f);
-        pGui->addFloatVar("Trim Direction Threshold", trimDirectionThreshold, 0, 1);
-        pGui->addIntVar("Min Neighbour Count", mMinNeighbourCount, 0, 8);
-        pGui->endGroup();
-    }
     mLightDirection = vec3(
         cos(mLightAngle.x) * sin(mLightAngle.y),
         cos(mLightAngle.y),
@@ -365,6 +380,16 @@ void Caustics::saveSceneSetting(std::string path)
     file << camTarget.x << " " << camTarget.y << " " << camTarget.z << std::endl;
 }
 
+void Caustics::createCausticsMap()
+{
+    uint32_t width = mpRtOut->getWidth();
+    uint32_t height = mpRtOut->getHeight();
+    uint2 dim(width / mCausticsMapResRatio, height / mCausticsMapResRatio);
+    auto pPhotonMapTex = Texture::create2D(dim.x, dim.y, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
+    auto depthTex = Texture::create2D(dim.x, dim.y, ResourceFormat::D24UnormS8, 1, 1, nullptr, Resource::BindFlags::DepthStencil);
+    mpCausticsFbo = Fbo::create({ pPhotonMapTex }, depthTex);
+}
+
 void Caustics::loadShader()
 {
     // raytrace
@@ -448,7 +473,7 @@ void Caustics::loadShader()
         BlendState::SharedPtr scatterBlendState = BlendState::create(blendDesc);
         mpPhotonScatterProgram = GraphicsProgram::createFromFile("PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
         DepthStencilState::Desc dsDesc;
-        dsDesc.setDepthEnabled(true);
+        dsDesc.setDepthEnabled(false);
         dsDesc.setDepthWriteMask(false);
         auto depthStencilState = DepthStencilState::create(dsDesc);
         RasterizerState::Desc rasterDesc;
@@ -467,7 +492,6 @@ void Caustics::loadShader()
         mpPhotonScatterBlendState->setDepthStencilState(depthStencilState);
         mpPhotonScatterNoBlendState->setRasterizerState(rasterState);
         mpPhotonScatterVars = GraphicsVars::create(mpPhotonScatterProgram->getReflector());
-        //mpPhotonScatterPass = RasterScenePass::create(mpScene, "PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
     }
 
     mpRtRenderer = RtSceneRenderer::create(mpScene);
@@ -690,9 +714,11 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         //pContext->clearFbo(mpCausticsFbo.get(), vec4(0, 0, 0, 0), 1.0, 0);
         pContext->clearRtv(mpCausticsFbo->getColorTexture(0)->getRTV().get(), vec4(0, 0, 0, 0));
         glm::mat4 wvp = mpCamera->getProjMatrix() * mpCamera->getViewMatrix();
+        glm::mat4 invP = glm::inverse(mpCamera->getProjMatrix());
         ConstantBuffer::SharedPtr pPerFrameCB = mpPhotonScatterVars["PerFrameCB"];
         pPerFrameCB["gWorldMat"] = glm::mat4();
         pPerFrameCB["gWvpMat"] = wvp;
+        pPerFrameCB["gInvProjMat"] = invP;
         pPerFrameCB["gEyePosW"] = mpCamera->getPosition();
         pPerFrameCB["gSplatSize"] = mSplatSize;
         pPerFrameCB["gPhotonMode"] = mPhotonMode;
@@ -703,14 +729,15 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pPerFrameCB["screenDim"] = int2(mpDepthTex->getWidth(), mpDepthTex->getHeight());
         pPerFrameCB["normalThreshold"] = mScatterNormalThreshold;
         pPerFrameCB["distanceThreshold"] = mScatterDistanceThreshold;
-        pPerFrameCB["planarThreshold"] = mScatterPlanarThreshold;
+        pPerFrameCB["planarThreshold"] = mScatterPlanarThreshold; 
         pPerFrameCB["gMaxAnisotropy"] = mMaxAnisotropy;
         pPerFrameCB["gCameraPos"] = mpCamera->getPosition();
+        pPerFrameCB["gZTolerance"] = mZTolerance;
         //pPerFrameCB["gMaxScreenRadius"] = mMaxPhotonPixelRadius;
         mpPhotonScatterVars["gLinearSampler"] = mpLinearSampler;
         mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", photonBuffer);
         mpPhotonScatterVars->setStructuredBuffer("gRayTask", mpPixelInfoBuffer);
-        //mpPhotonScatterVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
+        mpPhotonScatterVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
         mpPhotonScatterVars->setTexture("gNormalTex", mpGPassFbo->getColorTexture(0));
         mpPhotonScatterVars->setTexture("gDiffuseTex", mpGPassFbo->getColorTexture(1));
         mpPhotonScatterVars->setTexture("gSpecularTex", mpGPassFbo->getColorTexture(2));
@@ -830,6 +857,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pCompCB["gNumLights"] = mpScene->getLightCount();
         pCompCB["gDebugMode"] = (uint32_t)mDebugMode;
         pCompCB["gInvWvpMat"] = mpCamera->getInvViewProjMatrix();
+        pCompCB["gInvPMat"] = glm::inverse(mpCamera->getProjMatrix());
         pCompCB["gCameraPos"] = mpCamera->getPosition(); 
         pCompCB["screenDim"] = int2(mpRtOut->getWidth(), mpRtOut->getHeight());
         pCompCB["dispatchSize"] = int2(mDispatchSize, mDispatchSize);
@@ -912,8 +940,7 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
 
     mpRtOut = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpDepthTex = Texture::create2D(width, height, ResourceFormat::D24UnormS8, 1, 1, nullptr, Resource::BindFlags::DepthStencil | Resource::BindFlags::ShaderResource);
-    mpPhotonMapTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
-    mpCausticsFbo = Fbo::create({ mpPhotonMapTex }, mpDepthTex);
+    createCausticsMap();
 
     mpRayDensityTex = Texture::create2D(CAUSTICS_MAP_SIZE, CAUSTICS_MAP_SIZE, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
     mpPhotonCountTex = Texture::create1D(width, ResourceFormat::R32Uint, 1, 1, nullptr, Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);

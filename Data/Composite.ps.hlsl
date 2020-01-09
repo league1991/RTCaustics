@@ -63,6 +63,7 @@ cbuffer PerImageCB
     // Lighting params
     LightData gLightData[16];
     float4x4 gInvWvpMat;
+    float4x4 gInvPMat;
 
     float3 gCameraPos;
     uint gNumLights;
@@ -89,7 +90,13 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
 
     float4 color = 0;
     if (gDebugMode == ShowDepth)
-        color = depth;
+    {
+        float4 viewPnt = mul(screenPnt, gInvPMat);
+        viewPnt /= viewPnt.w;
+        float viewDepth = (gInvPMat[2][2] * depth + gInvPMat[3][2]) / (gInvPMat[2][3] * depth + gInvPMat[3][3]);
+        color = float4(abs(viewDepth.xxx)*0.01, 1);
+        //color = float4(abs(viewPnt.zzz) * 0.01, 1);// length(viewPnt.xyz - gCameraPos) * 0.01;
+    }
     else if (gDebugMode == ShowNormal)
         color = normalVal;
     else if (gDebugMode == ShowDiffuse)
