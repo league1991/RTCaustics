@@ -63,23 +63,20 @@ int getRayTaskID(uint2 pos)
 }
 
 #define GROUP_DIM_X 32
-#define GROUP_DIM_Y 4
-
-groupshared float4 cornerDensity[GROUP_DIM_X * GROUP_DIM_Y];
-groupshared int taskCount[GROUP_DIM_X * GROUP_DIM_Y+1];
-
-groupshared int pixelIdx0;
-groupshared int sampleIdx0;
-groupshared int2 threadTask[GROUP_DIM_X * GROUP_DIM_Y];
+#define GROUP_DIM_Y 2
 
 groupshared int globalRayOffset;
+groupshared half4 cornerDensity[GROUP_DIM_X * GROUP_DIM_Y];
+groupshared int pixelIdx0;
+groupshared uint taskCount[GROUP_DIM_X * GROUP_DIM_Y + 1];
+groupshared int sampleIdx0;
+groupshared uint threadTask[GROUP_DIM_X * GROUP_DIM_Y];
 
 [numthreads(GROUP_DIM_X, GROUP_DIM_Y, 1)]
 void addPhotonTaskFromTexture(
     uint3 groupThreadIdx : SV_GroupThreadID,
     uint3 threadIdx : SV_DispatchThreadID,
-    uint3 groupIdx:SV_GroupID
-)
+    uint3 groupIdx:SV_GroupID)
 {
     uint rayIdx = getRayTaskID(threadIdx.xy);
     int idx0 = gPixelInfo[rayIdx].photonIdx;
@@ -136,7 +133,7 @@ void addPhotonTaskFromTexture(
                     sampleIdx0 = 0;
                     pixelIdx0++;
                 }
-                threadTask[t] = int2(pixelIdx0, sampleIdx0);
+                threadTask[t] = ((pixelIdx0 << 16) | sampleIdx0);// int2(pixelIdx0, sampleIdx0);
                 sampleIdx0++;
             }
         }
@@ -146,9 +143,9 @@ void addPhotonTaskFromTexture(
         int accumulateTaskCount = i * blockThreads + threadOffset;
         if (accumulateTaskCount < rayTaskCount)
         {
-            int2 pixelAndSampleIdx = threadTask[threadOffset];
-            int pixelIdx = pixelAndSampleIdx.x;
-            int sampleIdx = pixelAndSampleIdx.y;
+            uint pixelAndSampleIdx = threadTask[threadOffset];
+            int pixelIdx = ((pixelAndSampleIdx >> 16) & 0xffff);
+            int sampleIdx = (pixelAndSampleIdx & 0xffff);
 
             int nSamples = taskCount[pixelIdx + 1] - taskCount[pixelIdx];
             float sampleWeight = 1.0 / sqrt(float(nSamples));
@@ -160,14 +157,13 @@ void addPhotonTaskFromTexture(
             float y = frac(randomOffset.y + a2 * (sampleIdx + 1));
 
             float4 corner = cornerDensity[pixelIdx];
-            float2 uv = float2(x, y);// bilinearSample(corner.x, corner.y, corner.z, corner.w, float2(x, y));
+            float2 uv = bilinearSample(corner.x, corner.y, corner.z, corner.w, float2(x, y));
             int2 pixelPos = groupIdx2 + int2(pixelIdx % GROUP_DIM_X, pixelIdx / GROUP_DIM_X);
             RayTask newTask;
             newTask.screenCoord = pixelPos + uv + 0.5;
-            newTask.pixelSize = pixelSize;// *sqrt(nSamples / (bilinearIntepolation(corner.x, corner.y, corner.z, corner.w, uv)));
+            newTask.pixelSize = pixelSize *sqrt(nSamples / (bilinearIntepolation(corner.x, corner.y, corner.z, corner.w, uv)));
             gRayTask[globalRayOffset + accumulateTaskCount] = newTask;
         }
-        //AllMemoryBarrierWithGroupSync();
         GroupMemoryBarrierWithGroupSync();
     }
 }
