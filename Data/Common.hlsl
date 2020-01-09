@@ -98,3 +98,8 @@ float bilinearIntepolation(float a00, float a10, float a01, float a11, float2 uv
     float b1 = lerp(a01, a11, uv.x);
     return lerp(b0, b1, uv.y);
 }
+
+float toViewSpace(float4x4 invProj, float depth)
+{
+    return (invProj[2][2] * depth + invProj[3][2]) / (invProj[2][3] * depth + invProj[3][3]);
+}

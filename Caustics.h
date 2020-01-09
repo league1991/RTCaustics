@@ -85,7 +85,7 @@ private:
         SCATTER_GEOMETRY_SPHERE = 1,
     };
     ScatterGeometry mScatterGeometry= SCATTER_GEOMETRY_QUAD;
-    int   mCausticsMapResRatio = 1;
+    int   mCausticsMapResRatio = 2;
     int   mScatterOrGather = 0;
     float mSplatSize = 4.0f;
     float mKernelPower = 1.f;
@@ -96,7 +96,7 @@ private:
     float mScatterPlanarThreshold = 2.0f;
     float mMaxAnisotropy = 20.0f;
     float mMaxPhotonPixelRadius = 90.0f;
-    float mZTolerance = 0.1f;
+    float mZTolerance = 0.2f;
 
     // Photon Gather
     int mTileCountScale = 10;
@@ -107,10 +107,30 @@ private:
 
     // Composite
     bool mRayTrace = true;
-    uint32_t mDebugMode = 9;
+    enum Display
+    {
+        ShowDepth = 1,
+        ShowNormal = 2,
+        ShowDiffuse = 3,
+        ShowSpecular = 4,
+        ShowPhoton = 5,
+        ShowWorld = 6,
+        ShowRoughness = 7,
+        ShowRayTex = 8,
+        ShowRayTracing = 9,
+        ShowAvgScreenArea = 10,
+        ShowAvgScreenAreaVariance = 11,
+        ShowCount = 12,
+        ShowTotalPhoton = 13,
+    };
+    Display mDebugMode = ShowRayTracing;
     float mMaxPixelArea = 100;
     int mRayTexScaleFactor = 4;
     int mFrameCounter = 0;
+    float mUVKernel = 0.7f;
+    float mZKernel = 4.5f;
+    float mNormalKernel = 4.0f;
+    bool mFilterCausticsMap = true;
 
     // Others
     bool mUseDOF = false;

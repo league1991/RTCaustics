@@ -95,7 +95,6 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
         viewPnt /= viewPnt.w;
         float viewDepth = (gInvPMat[2][2] * depth + gInvPMat[3][2]) / (gInvPMat[2][3] * depth + gInvPMat[3][3]);
         color = float4(abs(viewDepth.xxx)*0.01, 1);
-        //color = float4(abs(viewPnt.zzz) * 0.01, 1);// length(viewPnt.xyz - gCameraPos) * 0.01;
     }
     else if (gDebugMode == ShowNormal)
         color = normalVal;

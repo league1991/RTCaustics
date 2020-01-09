@@ -28,13 +28,17 @@
 #include "Common.hlsl"
 RWTexture2D<float4> gOutput;
 Texture2D<float4> gCausticsTex;
+Texture2D gDepthTex;
+Texture2D gNormalTex;
 SamplerState gLinearSampler;
+SamplerState gPointSampler;
 __import Raytracing;
 import Helpers;
 
 shared cbuffer PerFrameCB
 {
     float4x4 invView;
+    float4x4 invProj;
     float2 viewportDims;
     float tanHalfFovY;
     uint sampleIndex;
@@ -42,6 +46,10 @@ shared cbuffer PerFrameCB
     float roughThreshold;
     int maxDepth;
     float iorOverride;
+    int causticsResRatio;
+    float gPosKernel;
+    float gZKernel;
+    float gNormalKernel;
 };
 
 struct HitData
@@ -90,6 +98,28 @@ bool checkLightHit(uint lightIndex, float3 origin)
     rayData.hit = true;
     TraceRay(gRtScene, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xFF, 1 /* ray index */, hitProgramCount, 1, ray, rayData);
     return rayData.hit;
+}
+
+void getSample(SamplerState samplerState, float2 uv, out float3 causticsClr, out float3 normal, out float depth)
+{
+    causticsClr = gCausticsTex.SampleLevel(samplerState, uv, 0).rgb;
+    normal = gNormalTex.SampleLevel(samplerState, uv, 0).rgb;
+    depth = gDepthTex.SampleLevel(samplerState, uv, 0).r;
+
+    depth = toViewSpace(invProj, depth);
+    //float4 screenPnt = float4(uv * float2(2, -2) + float2(-1, 1), depth, 1);
+    //float4 worldPnt = mul(screenPnt, invProj);
+    //pos = worldPnt.xyz / worldPnt.w;
+}
+
+float getWeight(float2 offset, float3 normal0, float3 normal1, float z0, float z1)
+{
+    float normalDiff = gNormalKernel * (1 - saturate(dot(normal0, normal1)));
+    //float3 dPos = pos0 - pos1;
+    float zDiff = gZKernel * abs(z0 - z1);// (length(dPos));
+    float uvDiff = gPosKernel * length(offset);
+    //float x = zDiff * normalDiff * uvDiff * gPosKernel;// *zDiff * 1;
+    return exp(-1 * (zDiff * zDiff + normalDiff * normalDiff + uvDiff * uvDiff));
 }
 
 [shader("closesthit")]
@@ -144,7 +174,35 @@ void primaryClosestHit(inout HitData hitData, in BuiltInTriangleIntersectionAttr
         {
             posS.y *= -1;
             float2 texCoord = (posS.xy + 1) * 0.5;
-            color += sd.diffuse * gCausticsTex.SampleLevel(gLinearSampler, texCoord, 0).rgb;
+            float3 clr0, nor0;
+            float z0;
+            getSample(gLinearSampler, texCoord, clr0, nor0, z0);
+
+            float totalWeight = 1;
+            float3 causticsClr = clr0;
+            if (gPosKernel > 0 || gZKernel > 0 || gNormalKernel > 0)
+            {
+                float2 dir[] = {
+                    float2(-1,-1),    float2(-1,0),    float2(-1,1),
+                    float2(0,-1),                      float2(0,1),
+                    float2(1,-1),     float2(1,0),     float2(1,1),
+                };
+                [unroll]
+                for (int i = 0; i < 8; i++)
+                {
+                    float2 sampleUV = texCoord + dir[i] / (viewportDims / causticsResRatio);
+                    float3 clr, nor;
+                    float z;
+                    getSample(gLinearSampler, sampleUV, clr, nor, z);
+                    float w = getWeight(dir[i],nor0, nor, z0, z);
+                    causticsClr += clr * w;
+                    totalWeight += w;
+                    //color += w;
+                }
+            }
+            causticsClr /= totalWeight;
+
+            color += sd.diffuse* causticsClr;// gCausticsTex.SampleLevel(gLinearSampler, texCoord, 0).rgb;
         }
         [unroll]
         for (int i = 0; i < gLightsCount; i++)

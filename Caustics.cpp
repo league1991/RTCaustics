@@ -181,7 +181,7 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->endGroup();
     }
 
-    if (pGui->beginGroup("Photon Splat", true))
+    if (pGui->beginGroup("Density Estimation", true))
     {
         {
             Gui::DropdownList debugModeList;
@@ -189,19 +189,6 @@ void Caustics::onGuiRender(Gui* pGui)
             debugModeList.push_back({ 1, "Gather" });
             debugModeList.push_back({ 2, "None" });
             pGui->addDropdown("Density Estimation", debugModeList, (uint32_t&)mScatterOrGather);
-        }
-        {
-            int oldResRatio = mCausticsMapResRatio;
-            Gui::DropdownList debugModeList;
-            debugModeList.push_back({ 1, "x 1" });
-            debugModeList.push_back({ 2, "x 1/2" });
-            debugModeList.push_back({ 4, "x 1/4" });
-            debugModeList.push_back({ 8, "x 1/8" });
-            pGui->addDropdown("Caustics Resolution", debugModeList, (uint32_t&)mCausticsMapResRatio);
-            if (oldResRatio != mCausticsMapResRatio)
-            {
-                createCausticsMap();
-            }
         }
         pGui->addFloatVar("Splat size", mSplatSize, 0, 100, 0.01f);
         pGui->addFloatVar("Kernel Power", mKernelPower, 0.01f, 10.f, 0.01f);
@@ -249,6 +236,27 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->endGroup();
     }
 
+    if (pGui->beginGroup("Composite", true))
+    {
+        {
+            int oldResRatio = mCausticsMapResRatio;
+            Gui::DropdownList debugModeList;
+            debugModeList.push_back({ 1, "x 1" });
+            debugModeList.push_back({ 2, "x 1/2" });
+            debugModeList.push_back({ 4, "x 1/4" });
+            debugModeList.push_back({ 8, "x 1/8" });
+            pGui->addDropdown("Caustics Resolution", debugModeList, (uint32_t&)mCausticsMapResRatio);
+            if (oldResRatio != mCausticsMapResRatio)
+            {
+                createCausticsMap();
+            }
+        }
+        pGui->addCheckBox("Filter Caustics Map", mFilterCausticsMap);
+        pGui->addFloatVar("UV Kernel", mUVKernel, 0.0f, 1000.f, 0.1f);
+        pGui->addFloatVar("Depth Kernel", mZKernel, 0.0f, 1000.f, 0.1f);
+        pGui->addFloatVar("Normal Kernel", mNormalKernel, 0.0f, 1000.f, 0.1f);
+        pGui->endGroup();
+    }
     mLightDirection = vec3(
         cos(mLightAngle.x) * sin(mLightAngle.y),
         cos(mLightAngle.y),
@@ -504,6 +512,7 @@ void Caustics::loadShader()
 
     Sampler::Desc samplerDesc;
     samplerDesc.setFilterMode(Sampler::Filter::Linear, Sampler::Filter::Linear, Sampler::Filter::Linear);
+    samplerDesc.setAddressingMode(Sampler::AddressMode::Border, Sampler::AddressMode::Border, Sampler::AddressMode::Border);
     mpLinearSampler = Sampler::create(samplerDesc);
     samplerDesc.setFilterMode(Sampler::Filter::Point, Sampler::Filter::Point, Sampler::Filter::Point);
     mpPointSampler = Sampler::create(samplerDesc);
@@ -733,6 +742,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pPerFrameCB["gMaxAnisotropy"] = mMaxAnisotropy;
         pPerFrameCB["gCameraPos"] = mpCamera->getPosition();
         pPerFrameCB["gZTolerance"] = mZTolerance;
+        pPerFrameCB["gResRatio"] = mCausticsMapResRatio;
         //pPerFrameCB["gMaxScreenRadius"] = mMaxPhotonPixelRadius;
         mpPhotonScatterVars["gLinearSampler"] = mpLinearSampler;
         mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", photonBuffer);
@@ -818,11 +828,18 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
 
 
     // Render output
+    if(mDebugMode == ShowRayTracing ||
+        mDebugMode == ShowAvgScreenArea ||
+        mDebugMode == ShowAvgScreenAreaVariance ||
+        mDebugMode == ShowCount ||
+        mDebugMode == ShowTotalPhoton ||
+        mDebugMode == ShowRayTex)
     {
         pContext->clearUAV(mpRtOut->getUAV().get(), kClearColor);
         GraphicsVars* pVars = mpCompositeRTVars->getGlobalVars().get();
         ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
         pCB["invView"] = glm::inverse(mpCamera->getViewMatrix());
+        pCB["invProj"] = glm::inverse(mpCamera->getProjMatrix());
         pCB["viewportDims"] = vec2(pTargetFbo->getWidth(), pTargetFbo->getHeight());
         float fovY = focalLengthToFovY(mpCamera->getFocalLength(), Camera::kDefaultFrameHeight);
         pCB["tanHalfFovY"] = tanf(fovY * 0.5f);
@@ -831,11 +848,18 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pCB["roughThreshold"] = mRoughThreshold;
         pCB["maxDepth"] = mMaxTraceDepth;
         pCB["iorOverride"] = mIOROveride;
+        pCB["causticsResRatio"] = mCausticsMapResRatio;
+        pCB["gPosKernel"] = mFilterCausticsMap ? mUVKernel : 0.0f;
+        pCB["gZKernel"] = mFilterCausticsMap ? mZKernel : 0.0f;
+        pCB["gNormalKernel"] = mFilterCausticsMap ? mNormalKernel : 0.0f;
         auto hitVars = mpCompositeRTVars->getHitVars(0);
         for (auto& hitVar : hitVars)
         {
             hitVar->setTexture("gCausticsTex", mpCausticsFbo->getColorTexture(0));
+            hitVar->setTexture("gNormalTex", mpGPassFbo->getColorTexture(0));
+            hitVar->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
             hitVar["gLinearSampler"] = mpLinearSampler;
+            hitVar["gPointSampler"] = mpPointSampler;
         }
         auto rayGenVars = mpCompositeRTVars->getRayGenVars();
         rayGenVars->setTexture("gOutput", mpRtOut);

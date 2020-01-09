@@ -72,6 +72,7 @@ cbuffer PerFrameCB : register(b0)
     float gMaxScreenRadius;
 
     float gZTolerance;
+    int   gResRatio;
 };
 #define AnisotropicPhoton 0
 #define IsotropicPhoton 1
@@ -314,15 +315,11 @@ PhotonVSOut photonScatterVS(PhotonVSIn vIn)
     return vOut;
 }
 
-float toViewSpace(float depth, float w)
-{
-    return (gInvProjMat[2][2] * depth + gInvProjMat[3][2] * w) / (gInvProjMat[2][3] * depth + gInvProjMat[3][3] * w);
-}
 
 float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
 {
-    float depth = gDepthTex.Load(int3(vOut.posH.xy, 0)).x;
-    depth = toViewSpace(depth,1);
+    float depth = gDepthTex.Load(int3(vOut.posH.xy* gResRatio, 0)).x;
+    depth = toViewSpace(gInvProjMat, depth);
 
     float pixelZ = -vOut.posH.w;// toViewSpace(vOut.posH.z, vOut.posH.w);
     if (gShowPhoton == SHOW_PHOTON_SHADED)
