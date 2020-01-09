@@ -37,6 +37,7 @@ shared cbuffer PerFrameCB
     int gShowTileCount;
     int gTileCountScale;
     float gKernelPower;
+    int causticsMapResRatio;
 };
 
 struct DrawArguments
@@ -106,8 +107,8 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID, ui
     {
         return;
     }
-    float depth = gDepthTex.Load(int3(pixelLocation,0)).r;
-    float3 normal = gNormalTex.Load(int3(pixelLocation,0)).rgb;
+    float depth = gDepthTex.Load(int3(pixelLocation* causticsMapResRatio,0)).r;
+    float3 normal = gNormalTex.Load(int3(pixelLocation* causticsMapResRatio,0)).rgb;
     float2 uv = pixelLocation / float2(screenDim);
     float4 ndc = float4(uv * float2(2, -2) + float2(-1, 1), depth, 1);
     float4 worldPnt = mul(ndc,gInvViewProjMat);

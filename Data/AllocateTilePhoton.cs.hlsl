@@ -35,6 +35,7 @@ shared cbuffer PerFrameCB
     float4x4 gViewProjMat;
     int2 screenDim;
     int2 tileDim;
+    int2 blockCount;
     float gSplatSize;
 };
 
@@ -108,10 +109,15 @@ bool checkPhoton(Photon p)
     return dot(p.color, float3(1, 1, 1)) > 0.01;
 }
 
-[numthreads(256, 1, 1)]
+int threadIDToPhotonID(uint3 threadIdx)
+{
+    return threadIdx.y * blockCount.x * 32 + threadIdx.x;
+}
+
+[numthreads(32, 32, 1)]
 void CountTilePhoton(uint3 threadIdx : SV_DispatchThreadID)
 {
-    int photonID = threadIdx.x;
+    int photonID = threadIDToPhotonID(threadIdx);
     if (photonID >= gDrawArgument[0].instanceCount)
     {
         return;
@@ -157,10 +163,10 @@ void AllocateMemory(uint3 threadIdx : SV_DispatchThreadID)
     gTileInfo[offset].count = 0;
 }
 
-[numthreads(256, 1, 1)]
+[numthreads(32, 32, 1)]
 void StoreTilePhoton(uint3 threadIdx : SV_DispatchThreadID)
 {
-    int photonID = threadIdx.x;
+    int photonID = threadIDToPhotonID(threadIdx);
     if (photonID >= gDrawArgument[0].instanceCount)
     {
         return;

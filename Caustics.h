@@ -101,7 +101,6 @@ private:
     // Photon Gather
     int mTileCountScale = 10;
     int mTileSize = 16;
-    int2 mTileDim = int2(1, 1);
     bool mShowTileCount = false;
     float mDepthRadius = 0.1f;
 
@@ -249,4 +248,5 @@ private:
     void loadSceneSetting(std::string path);
     void saveSceneSetting(std::string path);
     void createCausticsMap();
+    int2 getTileDim() const;
 };
