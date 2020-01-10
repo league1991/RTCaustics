@@ -145,7 +145,6 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addFloatVar("Intensity", mIntensity, 0, 10, 0.1f);
         pGui->addFloatVar("Emit size", mEmitSize, 0, 1000, 1);
         pGui->addFloatVar("Rough Threshold", mRoughThreshold, 0, 1, 0.01f);
-        pGui->addFloatVar("Jitter", mJitter, 0, 1, 0.01f);
         pGui->addIntVar("Max Trace Depth", mMaxTraceDepth, 0, 30);
         pGui->addFloatVar("IOR Override", mIOROveride, 0, 3, 0.01f);
         pGui->addCheckBox("ID As Color", mColorPhoton);
@@ -233,6 +232,16 @@ void Caustics::onGuiRender(Gui* pGui)
             pGui->endGroup();
         }
 
+        pGui->endGroup();
+    }
+
+    if (pGui->beginGroup("Temporal Filter", true))
+    {
+        pGui->addCheckBox("Enable Filter", mTemporalFilter);
+        pGui->addFloatVar("Filter Weight", mFilterWeight, 0.0f, 1.0f, 0.001f);
+        pGui->addFloatVar("Jitter", mJitter, 0, 2, 0.01f);
+        pGui->addFloatVar("Normal Filter Strength", mTemporalNormalKernel, 0.0001f, 10, 0.01f);
+        pGui->addFloatVar("Depth Filter Strength", mTemporalDepthKernel, 0.0001f, 10, 0.01f);
         pGui->endGroup();
     }
 
@@ -393,9 +402,13 @@ void Caustics::createCausticsMap()
     uint32_t width = mpRtOut->getWidth();
     uint32_t height = mpRtOut->getHeight();
     uint2 dim(width / mCausticsMapResRatio, height / mCausticsMapResRatio);
+
     auto pPhotonMapTex = Texture::create2D(dim.x, dim.y, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
     auto depthTex = Texture::create2D(dim.x, dim.y, ResourceFormat::D24UnormS8, 1, 1, nullptr, Resource::BindFlags::DepthStencil);
-    mpCausticsFbo = Fbo::create({ pPhotonMapTex }, depthTex);
+    mpCausticsFbo[0] = Fbo::create({ pPhotonMapTex }, depthTex);
+
+    pPhotonMapTex = Texture::create2D(dim.x, dim.y, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
+    mpCausticsFbo[1] = Fbo::create({ pPhotonMapTex }, depthTex);
 }
 
 int2 Caustics::getTileDim() const
@@ -510,6 +523,12 @@ void Caustics::loadShader()
         mpPhotonScatterVars = GraphicsVars::create(mpPhotonScatterProgram->getReflector());
     }
 
+    // smooth photon
+    mpFilterProgram = ComputeProgram::createFromFile("TemporalFilter.cs.hlsl", "main");
+    mpFilterState = ComputeState::create();
+    mpFilterState->setProgram(mpFilterProgram);
+    mpFilterVars = ComputeVars::create(mpFilterProgram.get());
+
     mpRtRenderer = RtSceneRenderer::create(mpScene);
 
     mpRasterPass = RasterScenePass::create(mpScene, "Caustics.ps.hlsl", "", "main");
@@ -569,16 +588,28 @@ void Caustics::setPerFrameVars(const Fbo* pTargetFbo)
     mSampleIndex++;
 }
 
+float2 getRandomPoint(int i)
+{
+    const double g = 1.32471795724474602596;
+    const double a1 = 1.0 / g;
+    const double a2 = 1.0 / (g * g);
+    double x = 0.5 + a1 * (i + 1);
+    double y = 0.5 + a2 * (i + 1);
+    float xF = float(x - floor(x));
+    float yF = float(y - floor(y));
+    return float2(xF, yF);
+}
+
 void Caustics::setPhotonTracingCommonVariable(Caustics::PhotonTraceShader& shader)
 {
     GraphicsVars* pVars = shader.mpPhotonTraceVars->getGlobalVars().get();
     ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
+    float2 randomOffset = (getRandomPoint(mFrameCounter) * 2.0f - 1.0f) * mJitter;
     pCB["invView"] = glm::inverse(mpCamera->getViewMatrix());
-    pCB["viewportDims"] = vec2(mpDepthTex->getWidth(), mpDepthTex->getHeight());
+    pCB["viewportDims"] = vec2(mpRtOut->getWidth(), mpRtOut->getHeight());
     pCB["emitSize"] = mEmitSize;
     pCB["roughThreshold"] = mRoughThreshold;
-    pCB["jitter"] = mJitter;
-    pCB["randomOffset"] = float2(rand(), rand()) / float(RAND_MAX);
+    pCB["randomOffset"] = mTemporalFilter ? randomOffset : float2(0,0);
     pCB["launchRayTask"] = 0;
     pCB["rayTaskOffset"] = mDispatchSize * mDispatchSize;
     pCB["coarseDim"] = uint2(mDispatchSize, mDispatchSize);
@@ -618,6 +649,13 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
 
     // reset data
     uint32_t statisticsOffset = uint32_t(mFrameCounter % mpPhotonCountTex->getWidth());
+    int thisIdx = mFrameCounter % 2;
+    int lastIdx = 1- thisIdx;
+    GBuffer* gBuffer = mGBuffer + thisIdx;
+    GBuffer* gBufferLast = mGBuffer + lastIdx;
+    Fbo::SharedPtr causticsFbo = mpCausticsFbo[thisIdx];
+    Fbo::SharedPtr causticsFboLast = mpCausticsFbo[lastIdx];
+
     if (mUpdatePhoton)
     {
         ConstantBuffer::SharedPtr pPerFrameCB = mpDrawArgumentVars["PerFrameCB"];
@@ -635,8 +673,8 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
 
     // gpass
     {
-        pContext->clearFbo(mpGPassFbo.get(), vec4(0, 0, 0, 1), 1.0, 0);
-        mpGPass->renderScene(pContext, mpGPassFbo);
+        pContext->clearFbo(gBuffer->mpGPassFbo.get(), vec4(0, 0, 0, 1), 1.0, 0);
+        mpGPass->renderScene(pContext, gBuffer->mpGPassFbo);
     }
 
     // photon tracing
@@ -676,7 +714,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             glm::mat4 wvp = mpCamera->getProjMatrix() * mpCamera->getViewMatrix();
             pPerFrameCB["viewProjMat"] = wvp;// mpCamera->getViewProjMatrix();
             pPerFrameCB["taskDim"] = int2(mDispatchSize, mDispatchSize);
-            pPerFrameCB["screenDim"] = int2(mpDepthTex->getWidth(), mpDepthTex->getHeight());
+            pPerFrameCB["screenDim"] = int2(mpRtOut->getWidth(), mpRtOut->getHeight());
             pPerFrameCB["normalThreshold"] = mNormalThreshold;
             pPerFrameCB["distanceThreshold"] = mDistanceThreshold;
             pPerFrameCB["planarThreshold"] = mPlanarThreshold;
@@ -690,7 +728,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             mpAnalyseVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
             mpAnalyseVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
             mpAnalyseVars->setStructuredBuffer("gPixelInfo", mpPixelInfoBuffer);
-            mpAnalyseVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
+            mpAnalyseVars->setTexture("gDepthTex", gBuffer->mpGPassFbo->getDepthStencilTexture());
             mpAnalyseVars->setTexture("gRayDensityTex", mpRayDensityTex);
             int2 groupSize(32,16);
             pContext->dispatch(mpAnalyseState.get(), mpAnalyseVars.get(), uvec3(mDispatchSize / groupSize.x, mDispatchSize / groupSize.y, 1));
@@ -705,7 +743,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         glm::mat4 wvp = mpCamera->getProjMatrix() * mpCamera->getViewMatrix();
         pPerFrameCB["viewProjMat"] = wvp;// mpCamera->getViewProjMatrix();
         pPerFrameCB["taskDim"] = int2(mDispatchSize, mDispatchSize);
-        pPerFrameCB["screenDim"] = int2(mpDepthTex->getWidth(), mpDepthTex->getHeight());
+        pPerFrameCB["screenDim"] = int2(mpRtOut->getWidth(), mpRtOut->getHeight());
         pPerFrameCB["normalThreshold"] = mNormalThreshold;
         pPerFrameCB["distanceThreshold"] = mDistanceThreshold;
         pPerFrameCB["planarThreshold"] = mPlanarThreshold;
@@ -719,7 +757,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         mpSmoothVars->setStructuredBuffer("gDstPhotonBuffer", mpPhotonBuffer2);
         mpSmoothVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
         mpSmoothVars->setStructuredBuffer("gRayTask", mpPixelInfoBuffer);
-        mpSmoothVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
+        mpSmoothVars->setTexture("gDepthTex", gBuffer->mpGPassFbo->getDepthStencilTexture());
         static int groupSize = 16;
         pContext->dispatch(mpSmoothState.get(), mpSmoothVars.get(), uvec3(mDispatchSize / groupSize, mDispatchSize / groupSize, 1));
         photonBuffer = mpPhotonBuffer2;
@@ -729,7 +767,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     if(mScatterOrGather == 0)
     {
         //pContext->clearFbo(mpCausticsFbo.get(), vec4(0, 0, 0, 0), 1.0, 0);
-        pContext->clearRtv(mpCausticsFbo->getColorTexture(0)->getRTV().get(), vec4(0, 0, 0, 0));
+        pContext->clearRtv(causticsFbo->getColorTexture(0)->getRTV().get(), vec4(0, 0, 0, 0));
         glm::mat4 wvp = mpCamera->getProjMatrix() * mpCamera->getViewMatrix();
         glm::mat4 invP = glm::inverse(mpCamera->getProjMatrix());
         ConstantBuffer::SharedPtr pPerFrameCB = mpPhotonScatterVars["PerFrameCB"];
@@ -743,7 +781,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pPerFrameCB["gShowPhoton"] = uint32_t(mPhotonDisplayMode);
         pPerFrameCB["gLightDir"] = mLightDirection;
         pPerFrameCB["taskDim"] = int2(mDispatchSize, mDispatchSize);
-        pPerFrameCB["screenDim"] = int2(mpDepthTex->getWidth(), mpDepthTex->getHeight());
+        pPerFrameCB["screenDim"] = int2(mpRtOut->getWidth(), mpRtOut->getHeight());
         pPerFrameCB["normalThreshold"] = mScatterNormalThreshold;
         pPerFrameCB["distanceThreshold"] = mScatterDistanceThreshold;
         pPerFrameCB["planarThreshold"] = mScatterPlanarThreshold; 
@@ -755,10 +793,10 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         mpPhotonScatterVars["gLinearSampler"] = mpLinearSampler;
         mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", photonBuffer);
         mpPhotonScatterVars->setStructuredBuffer("gRayTask", mpPixelInfoBuffer);
-        mpPhotonScatterVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
-        mpPhotonScatterVars->setTexture("gNormalTex", mpGPassFbo->getColorTexture(0));
-        mpPhotonScatterVars->setTexture("gDiffuseTex", mpGPassFbo->getColorTexture(1));
-        mpPhotonScatterVars->setTexture("gSpecularTex", mpGPassFbo->getColorTexture(2));
+        mpPhotonScatterVars->setTexture("gDepthTex", gBuffer->mpGPassFbo->getDepthStencilTexture());
+        mpPhotonScatterVars->setTexture("gNormalTex", gBuffer->mpGPassFbo->getColorTexture(0));
+        mpPhotonScatterVars->setTexture("gDiffuseTex", gBuffer->mpGPassFbo->getColorTexture(1));
+        mpPhotonScatterVars->setTexture("gSpecularTex", gBuffer->mpGPassFbo->getColorTexture(2));
         mpPhotonScatterVars->setTexture("gGaussianTex", mpGaussianKernel);
         int instanceCount = mDispatchSize * mDispatchSize;
         GraphicsState::SharedPtr scatterState;
@@ -774,7 +812,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             scatterState->setVao(mpQuad->getMesh(0)->getVao());
         else
             scatterState->setVao(mpSphere->getMesh(0)->getVao());
-        scatterState->setFbo(mpCausticsFbo);
+        scatterState->setFbo(causticsFbo);
         if (mPhotonMode == 2)
         {
             pContext->drawIndexedInstanced(scatterState.get(), mpPhotonScatterVars.get(), 6, mDispatchSize* mDispatchSize, 0, 0, 0);
@@ -798,7 +836,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             uvec3((dimX + blockSize-1) / blockSize,   (dimY + blockSize-1) / blockSize, 1)
         };
         // build tile data
-        int2 screenSize(mpDepthTex->getWidth() / mCausticsMapResRatio, mpDepthTex->getHeight() / mCausticsMapResRatio);
+        int2 screenSize(mpRtOut->getWidth() / mCausticsMapResRatio, mpRtOut->getHeight() / mCausticsMapResRatio);
         for (int i = 0; i < 3; i++)
         {
             auto vars = mpAllocateTileVars[i];
@@ -832,14 +870,45 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         mpPhotonGatherVars->setStructuredBuffer("gPhotonBuffer", photonBuffer);
         mpPhotonGatherVars->setStructuredBuffer("gTileInfo", mpTileIDInfoBuffer);
         mpPhotonGatherVars->setRawBuffer("gIDBuffer", mpIDBuffer);
-        mpPhotonGatherVars->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
-        mpPhotonGatherVars->setTexture("gNormalTex",mpGPassFbo->getColorTexture(0));
-        mpPhotonGatherVars->setTexture("gPhotonTex", mpCausticsFbo->getColorTexture(0));
+        mpPhotonGatherVars->setTexture("gDepthTex", gBuffer->mpGPassFbo->getDepthStencilTexture());
+        mpPhotonGatherVars->setTexture("gNormalTex", gBuffer->mpGPassFbo->getColorTexture(0));
+        mpPhotonGatherVars->setTexture("gPhotonTex", causticsFbo->getColorTexture(0));
         static int groupSize = 16;
         uvec3 dispatchSize(
             (screenSize.x + groupSize - 1) / groupSize,
             (screenSize.y + groupSize - 1) / groupSize, 1);
         pContext->dispatch(mpPhotonGatherState.get(), mpPhotonGatherVars.get(), dispatchSize);
+    }
+
+    // Temporal filter
+    if (mTemporalFilter)
+    {
+        static float4x4 lastViewProj;
+        static float4x4 lastProj;
+        float4x4 thisViewProj = mpCamera->getViewProjMatrix();
+        float4x4 thisProj = mpCamera->getProjMatrix();
+        float4x4 reproj = lastViewProj *glm::inverse(thisViewProj);
+        int2 causticsDim(causticsFbo->getWidth(), causticsFbo->getHeight());
+        ConstantBuffer::SharedPtr pPerFrameCB = mpFilterVars["PerFrameCB"];
+        pPerFrameCB["causticsDim"] = causticsDim;
+        pPerFrameCB["gBufferDim"] = int2(mpRtOut->getWidth(), mpRtOut->getHeight());
+        pPerFrameCB["blendWeight"] = mFilterWeight;
+        pPerFrameCB["reprojMatrix"] = reproj;
+        pPerFrameCB["invProjMatThis"] = glm::inverse(thisProj);
+        pPerFrameCB["invProjMatLast"] = glm::inverse(lastProj);
+        pPerFrameCB["normalKernel"] = mTemporalNormalKernel;
+        pPerFrameCB["depthKernel"] = mTemporalDepthKernel;
+        mpFilterVars->setTexture("causticsTexThis", causticsFbo->getColorTexture(0));
+        mpFilterVars->setTexture("causticsTexLast", causticsFboLast->getColorTexture(0));
+        mpFilterVars->setTexture("depthTexThis", gBuffer->mpDepthTex);
+        mpFilterVars->setTexture("depthTexLast", gBufferLast->mpDepthTex);
+        mpFilterVars->setTexture("normalTexThis", gBuffer->mpNormalTex);
+        mpFilterVars->setTexture("normalTexLast", gBufferLast->mpNormalTex);
+        static int groupSize = 16;
+        uvec3 dim((causticsDim.x + groupSize - 1) / groupSize, (causticsDim.y + groupSize - 1) / groupSize, 1);
+        pContext->dispatch(mpFilterState.get(), mpFilterVars.get(), dim);
+        lastViewProj = thisViewProj;
+        lastProj = thisProj;
     }
 
 
@@ -871,9 +940,9 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         auto hitVars = mpCompositeRTVars->getHitVars(0);
         for (auto& hitVar : hitVars)
         {
-            hitVar->setTexture("gCausticsTex", mpCausticsFbo->getColorTexture(0));
-            hitVar->setTexture("gNormalTex", mpGPassFbo->getColorTexture(0));
-            hitVar->setTexture("gDepthTex", mpGPassFbo->getDepthStencilTexture());
+            hitVar->setTexture("gCausticsTex", causticsFbo->getColorTexture(0));
+            hitVar->setTexture("gNormalTex", gBuffer->mpGPassFbo->getColorTexture(0));
+            hitVar->setTexture("gDepthTex", gBuffer->mpGPassFbo->getDepthStencilTexture());
             hitVar["gLinearSampler"] = mpLinearSampler;
             hitVar["gPointSampler"] = mpPointSampler;
         }
@@ -884,11 +953,11 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     }
 
     {
-        mpCompositePass["gDepthTex"] = mpGPassFbo->getDepthStencilTexture();
-        mpCompositePass["gNormalTex"] = mpGPassFbo->getColorTexture(0);
-        mpCompositePass["gDiffuseTex"] = mpGPassFbo->getColorTexture(1);
-        mpCompositePass["gSpecularTex"] = mpGPassFbo->getColorTexture(2);
-        mpCompositePass["gPhotonTex"] = mpCausticsFbo->getColorTexture(0);
+        mpCompositePass["gDepthTex"] = gBuffer->mpGPassFbo->getDepthStencilTexture();
+        mpCompositePass["gNormalTex"] = gBuffer->mpGPassFbo->getColorTexture(0);
+        mpCompositePass["gDiffuseTex"] = gBuffer->mpGPassFbo->getColorTexture(1);
+        mpCompositePass["gSpecularTex"] = gBuffer->mpGPassFbo->getColorTexture(2);
+        mpCompositePass["gPhotonTex"] = causticsFbo->getColorTexture(0);
         mpCompositePass["gRaytracingTex"] = mpRtOut;
         mpCompositePass["gRayTex"] = mpRayDensityTex;
         mpCompositePass["gStatisticsTex"] = mpPhotonCountTex;
@@ -979,16 +1048,13 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
     mpIDBuffer = Buffer::create(tileDim.x * tileDim.y * avgTileIDCount * sizeof(uint32_t), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, Buffer::CpuAccess::None);
     mpIDCounterBuffer = Buffer::create(sizeof(uint32_t), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, Buffer::CpuAccess::None);
 
-    mpDepthTex = Texture::create2D(width, height, ResourceFormat::D24UnormS8, 1, 1, nullptr, Resource::BindFlags::DepthStencil | Resource::BindFlags::ShaderResource);
     createCausticsMap();
 
     mpRayDensityTex = Texture::create2D(CAUSTICS_MAP_SIZE, CAUSTICS_MAP_SIZE, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
     mpPhotonCountTex = Texture::create1D(width, ResourceFormat::R32Uint, 1, 1, nullptr, Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
 
-    mpNormalTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
-    mpDiffuseTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
-    mpSpecularTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
-    mpGPassFbo = Fbo::create({ mpNormalTex , mpDiffuseTex ,mpSpecularTex }, mpDepthTex);//Fbo::create2D(width, height, ResourceFormat::RGBA16Float, ResourceFormat::D24UnormS8);
+    createGBuffer(width, height, mGBuffer[0]);
+    createGBuffer(width, height, mGBuffer[1]);
 }
 
 int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd)

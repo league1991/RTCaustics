@@ -41,24 +41,29 @@ Texture2D gUniformNoise;
 shared cbuffer PerFrameCB
 {
     float4x4 invView;
+
     float2 viewportDims;
     uint2 coarseDim;
+
     float2 randomOffset;
     float emitSize;
     float roughThreshold;
-    float jitter;
+
     int launchRayTask;
     int rayTaskOffset;
     int maxDepth;
     float iorOverride;
+
     uint colorPhotonID;
     int photonIDScale;
     float traceColorThreshold;
     float cullColorThreshold;
+
     uint  gAreaType;
     float gIntensity;
     float gSplatSize;
     uint updatePhoton;
+
     float gMaxScreenRadius;
 };
 
@@ -517,7 +522,7 @@ bool getTask(out float2 lightUV, out uint2 pixelCoord, out float2 pixelSize)
         }
         RayTask task = gRayTask[taskIdx];
         pixelCoord = task.screenCoord;
-        lightUV = (task.screenCoord) / float2(coarseDim);
+        lightUV = (task.screenCoord + randomOffset * task.pixelSize) / float2(coarseDim);
         pixelSize = task.pixelSize;
     }
     else
@@ -531,8 +536,8 @@ bool getTask(out float2 lightUV, out uint2 pixelCoord, out float2 pixelSize)
         lightUV = float2(launchIndex.xy) / float2(coarseDim.xy);
         uint nw, nh, nl;
         gUniformNoise.GetDimensions(0, nw, nh, nl);
-        float2 noise = gUniformNoise.Load(uint3(launchIndex.xy % uint2(nw, nh), 0)).rg;
-        lightUV += (noise * jitter + randomOffset * 0) * pixelSize;
+        //float2 noise = gUniformNoise.Load(uint3(launchIndex.xy % uint2(nw, nh), 0)).rg;
+        lightUV += randomOffset / float2(coarseDim.xy);
     }
 
     if (updatePhoton)

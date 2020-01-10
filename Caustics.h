@@ -51,7 +51,6 @@ private:
     float mIntensity = 0.4f;
     float mRoughThreshold = 0.1f;
     uint32_t mAreaType = 0;
-    float mJitter = 0.f;
     float mIOROveride = 1.5f;
     int mColorPhoton = 0;
     int mPhotonIDScale = 50;
@@ -64,9 +63,9 @@ private:
     float mNormalThreshold = 0.2f;
     float mDistanceThreshold = 10.0f;
     float mPlanarThreshold = 2.0f;
-    float mMinPhotonPixelSize = 8.0f;
+    float mMinPhotonPixelSize = 10.0f;
     float mSmoothWeight = 0.15f;
-    int mMaxTaskCountPerPixel = 8000;
+    int mMaxTaskCountPerPixel = 1000;
     float mUpdateSpeed = 0.2f;
     float mVarianceGain = 0.0f;
     float mDerivativeGain = 0.0f;
@@ -103,6 +102,13 @@ private:
     int mTileSize = 16;
     bool mShowTileCount = false;
     float mDepthRadius = 0.1f;
+
+    // Temporal Filter
+    bool mTemporalFilter = true;
+    float mFilterWeight = 0.6f;
+    float mJitter = 0.3f;
+    float mTemporalNormalKernel = 0.7f;
+    float mTemporalDepthKernel = 0.2f;
 
     // Composite
     bool mRayTrace = true;
@@ -155,11 +161,15 @@ private:
 
     // g-pass
     RasterScenePass::SharedPtr mpGPass;
-    Texture::SharedPtr mpNormalTex;
-    Texture::SharedPtr mpDiffuseTex;
-    Texture::SharedPtr mpSpecularTex;
-    Texture::SharedPtr mpDepthTex;
-    Fbo::SharedPtr mpGPassFbo;
+    struct GBuffer
+    {
+        Texture::SharedPtr mpNormalTex;
+        Texture::SharedPtr mpDiffuseTex;
+        Texture::SharedPtr mpSpecularTex;
+        Texture::SharedPtr mpDepthTex;
+        Fbo::SharedPtr mpGPassFbo;
+    };
+    GBuffer mGBuffer[2];
 
     // photon trace
     struct PhotonTraceShader
@@ -199,7 +209,7 @@ private:
     GraphicsVars::SharedPtr mpPhotonScatterVars;
     GraphicsState::SharedPtr mpPhotonScatterBlendState;
     GraphicsState::SharedPtr mpPhotonScatterNoBlendState;
-    Fbo::SharedPtr mpCausticsFbo;
+    Fbo::SharedPtr mpCausticsFbo[2];
     Texture::SharedPtr mpGaussianKernel;
     Sampler::SharedPtr mpLinearSampler;
 
@@ -213,6 +223,11 @@ private:
     StructuredBuffer::SharedPtr mpTileIDInfoBuffer;
     Buffer::SharedPtr           mpIDBuffer;
     Buffer::SharedPtr           mpIDCounterBuffer;
+
+    // temporal filter
+    ComputeProgram::SharedPtr mpFilterProgram;
+    ComputeVars::SharedPtr mpFilterVars;
+    ComputeState::SharedPtr mpFilterState;
 
     // raytrace
     RtProgram::SharedPtr mpRaytraceProgram;
@@ -248,5 +263,13 @@ private:
     void loadSceneSetting(std::string path);
     void saveSceneSetting(std::string path);
     void createCausticsMap();
+    void createGBuffer(int width, int height, GBuffer& gbuffer)
+    {
+        gbuffer.mpDepthTex = Texture::create2D(width, height, ResourceFormat::D24UnormS8, 1, 1, nullptr, Resource::BindFlags::DepthStencil | Resource::BindFlags::ShaderResource);
+        gbuffer.mpNormalTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
+        gbuffer.mpDiffuseTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
+        gbuffer.mpSpecularTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
+        gbuffer.mpGPassFbo = Fbo::create({ gbuffer.mpNormalTex , gbuffer.mpDiffuseTex ,gbuffer.mpSpecularTex }, gbuffer.mpDepthTex);//Fbo::create2D(width, height, ResourceFormat::RGBA16Float, ResourceFormat::D24UnormS8);
+    }
     int2 getTileDim() const;
 };
