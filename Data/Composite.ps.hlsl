@@ -195,7 +195,7 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
         float4 photonClr = gPhotonTex.Sample(gPointSampler, texC);
         if (gDebugMode == ShowPhoton)
         {
-            color.rgb = lerp(color.rgb, photonClr.rgb, photonClr.a);
+            color.rgb = photonClr.rgb;// lerp(color.rgb, photonClr.rgb, photonClr.a);
         }
         else
         {
