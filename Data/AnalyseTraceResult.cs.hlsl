@@ -107,10 +107,12 @@ void addPhotonTaskFromTexture(uint3 groupID : SV_GroupID, uint groupIndex : SV_G
     }
     else
     {
-        int sampleDim = (int)ceil(sqrt(sampleCountF));
-        int sampleCount = sampleDim * sampleDim;
-        float sampleWeight = 1.0 / sqrt(float(sampleCount)) * sqrt(sampleCountF / sampleCount);
-        float pixelSize = 1 * sampleWeight;
+        float sampleCountSqrtF = sqrt(sampleCountF);
+        int sampleDimX = (int)max(sampleCountSqrtF,1);
+        int sampleDimY = (int)max(sampleCountF / sampleDimX + 0.5,1);
+        int sampleCount = sampleDimX * sampleDimY;
+        float sampleWeight = 1.0 / sqrt(float(sampleCount));
+        float2 pixelSize = 1 / float2(sampleDimX, sampleDimY);// *sqrt(sampleCountF / sampleCount);// *sampleWeight;
         int taskIdx = 0;
         InterlockedAdd(gRayArgument[0].rayTaskCount, sampleCount, taskIdx);
         float g = 1.32471795724474602596;
@@ -118,10 +120,10 @@ void addPhotonTaskFromTexture(uint3 groupID : SV_GroupID, uint groupIndex : SV_G
         float a2 = 1.0 / (g * g);
         for (uint i = 0; i < sampleCount; i++)
         {
-            uint yi = i / sampleDim;
-            uint xi = i - yi * sampleDim;
-            float x = (xi + 0.5) / sampleDim;// frac(randomOffset.y + a2 * (i + 1));
-            float y = (yi + 0.5) / sampleDim;// frac(randomOffset.x + a1 * (i + 1));
+            uint yi = i / sampleDimX;
+            uint xi = i - yi * sampleDimX;
+            float x = (xi + 0.5) / sampleDimX;// frac(randomOffset.y + a2 * (i + 1));
+            float y = (yi + 0.5) / sampleDimY;// frac(randomOffset.x + a1 * (i + 1));
 
             float2 uv = bilinearSample(v00, v10, v01, v11, float2(x, y));
             RayTask newTask;
