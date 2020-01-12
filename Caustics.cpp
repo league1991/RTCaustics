@@ -158,6 +158,13 @@ void Caustics::onGuiRender(Gui* pGui)
 
     if (pGui->beginGroup("Adaptive Resolution", true))
     {
+        
+        {
+            Gui::DropdownList debugModeList;
+            debugModeList.push_back({ 0, "Random" });
+            debugModeList.push_back({ 1, "Grid" });
+            pGui->addDropdown("Sample Placement", debugModeList, (uint32_t&)mSamplePlacement);
+        }
         pGui->addFloatVar("Luminance Threshold", mPixelLuminanceThreshold, 0.01f, 10.0, 0.01f);
         pGui->addFloatVar("Photon Size Threshold", mMinPhotonPixelSize, 1.f, 1000.0f, 0.1f);
         pGui->addFloatVar("Smooth Weight", mSmoothWeight, 0, 10.0f, 0.001f);
@@ -717,7 +724,8 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             pPerFrameCB["screenDim"] = int2(mpRtOut->getWidth(), mpRtOut->getHeight());
             pPerFrameCB["normalThreshold"] = mNormalThreshold;
             pPerFrameCB["distanceThreshold"] = mDistanceThreshold;
-            pPerFrameCB["planarThreshold"] = mPlanarThreshold;
+            pPerFrameCB["planarThreshold"] = mPlanarThreshold; 
+            pPerFrameCB["samplePlacement"] = (uint32_t)mSamplePlacement;
             pPerFrameCB["pixelLuminanceThreshold"] = mPixelLuminanceThreshold; 
             pPerFrameCB["minPhotonPixelSize"] = mMinPhotonPixelSize;
             static float2 offset(0.5,0.5);

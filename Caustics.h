@@ -78,6 +78,11 @@ private:
     float mUpdateSpeed = 0.2f;
     float mVarianceGain = 0.0f;
     float mDerivativeGain = 0.0f;
+    enum SamplePlacement
+    {
+        SAMPLE_PLACEMENT_RANDOM = 0,
+        SAMPLE_PLACEMENT_GRID = 1
+    } mSamplePlacement = SAMPLE_PLACEMENT_GRID;
 
     // smooth photon
     bool mMedianFilter = false;
@@ -99,7 +104,7 @@ private:
         DENSITY_ESTIMATION_SCATTER = 0,
         DENSITY_ESTIMATION_GATHER = 1,
         DENSITY_ESTIMATION_NONE = 2
-    } mScatterOrGather = DENSITY_ESTIMATION_GATHER;
+    } mScatterOrGather = DENSITY_ESTIMATION_SCATTER;
     float mSplatSize = 3.2f;
     float mKernelPower = 1.f;
     int mPhotonDisplayMode = 0;
