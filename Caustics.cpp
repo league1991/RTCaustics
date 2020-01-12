@@ -678,19 +678,19 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     }
 
     // photon tracing
-    if (mTraceType != 2)
+    if (mTraceType != TRACE_NONE)
     {
         auto photonTraceShader = getPhotonTraceShader();
         setPhotonTracingCommonVariable(photonTraceShader);
         GraphicsVars* pVars = photonTraceShader.mpPhotonTraceVars->getGlobalVars().get();
         ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
-        pCB["launchRayTask"] = int(mTraceType == 1);
-        uvec3 resolution = mTraceType == 0 ? uvec3(mDispatchSize, mDispatchSize, 1) : uvec3(4096, 4096, 1);
+        pCB["launchRayTask"] = int(mTraceType == TRACE_ADAPTIVE);
+        uvec3 resolution = mTraceType == TRACE_FIXED ? uvec3(mDispatchSize, mDispatchSize, 1) : uvec3(4096, 4096, 1);
         mpRtRenderer->renderScene(pContext, photonTraceShader.mpPhotonTraceVars, photonTraceShader.mpPhotonTraceState, resolution, mpCamera.get());
     }
 
     // analysis output
-    bool refinePhoton = mTraceType == 1;
+    bool refinePhoton = mTraceType == TRACE_ADAPTIVE;
     if(refinePhoton && mUpdatePhoton)
     {
         {
@@ -764,7 +764,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     }
 
     // photon scattering
-    if(mScatterOrGather == 0)
+    if(mScatterOrGather == DENSITY_ESTIMATION_SCATTER)
     {
         //pContext->clearFbo(mpCausticsFbo.get(), vec4(0, 0, 0, 0), 1.0, 0);
         pContext->clearRtv(causticsFbo->getColorTexture(0)->getRTV().get(), vec4(0, 0, 0, 0));
@@ -822,17 +822,25 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             pContext->drawIndexedIndirect(scatterState.get(), mpPhotonScatterVars.get(), mpDrawArgumentBuffer.get(), 0);
         }
     }
-    else if (mScatterOrGather == 1)
+    else if (mScatterOrGather == DENSITY_ESTIMATION_GATHER)
     {
         int2 tileDim = getTileDim();
-        int sqrtCount = int(sqrt(mMaxTaskCountPerPixel));
-        //int photonCount = mDispatchSize * mDispatchSize * mMaxTaskCountPerPixel;
-        int dimX = mDispatchSize * sqrtCount;
-        int dimY = mDispatchSize * sqrtCount;
+        int dimX, dimY;
+        if (mTraceType == TRACE_FIXED)
+        {
+            dimX = mDispatchSize;
+            dimY = mDispatchSize;
+        }
+        else
+        {
+            int photonCount = MAX_PHOTON_COUNT;
+            int sqrtCount = int(sqrt(mMaxTaskCountPerPixel));
+            dimX = dimY = sqrtCount;
+        }
         int blockSize = 32;
         uvec3 dispatchDim[] = {
             uvec3((dimX + blockSize-1) / blockSize,   (dimY + blockSize-1) / blockSize, 1),
-            uvec3((tileDim.x + 15) / 16,(tileDim.y + 15) / 16,1),
+            uvec3((tileDim.x + mTileSize-1) / mTileSize,(tileDim.y + mTileSize-1) / mTileSize,1),
             uvec3((dimX + blockSize-1) / blockSize,   (dimY + blockSize-1) / blockSize, 1)
         };
         // build tile data
@@ -873,10 +881,9 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         mpPhotonGatherVars->setTexture("gDepthTex", gBuffer->mpGPassFbo->getDepthStencilTexture());
         mpPhotonGatherVars->setTexture("gNormalTex", gBuffer->mpGPassFbo->getColorTexture(0));
         mpPhotonGatherVars->setTexture("gPhotonTex", causticsFbo->getColorTexture(0));
-        static int groupSize = 16;
         uvec3 dispatchSize(
-            (screenSize.x + groupSize - 1) / groupSize,
-            (screenSize.y + groupSize - 1) / groupSize, 1);
+            (screenSize.x + mTileSize - 1) / mTileSize,
+            (screenSize.y + mTileSize - 1) / mTileSize, 1);
         pContext->dispatch(mpPhotonGatherState.get(), mpPhotonGatherVars.get(), dispatchSize);
     }
 
@@ -1031,26 +1038,26 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
     }
 
     RtProgram::SharedPtr photonTraceProgram = mPhotonTraceShaderList.begin()->second.mpPhotonTraceProgram;
-#define CAUSTICS_MAP_SIZE 2048
-#define TASK_SIZE 4096*4096
-    mpRayTaskBuffer = StructuredBuffer::create(mpAnalyseProgram.get(), std::string("gRayTask"), TASK_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
-    mpPixelInfoBuffer = StructuredBuffer::create(mpUpdateRayDensityProgram.get(), std::string("gPixelInfo"), CAUSTICS_MAP_SIZE* CAUSTICS_MAP_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
+    mpRayTaskBuffer = StructuredBuffer::create(mpAnalyseProgram.get(), std::string("gRayTask"), MAX_PHOTON_COUNT, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
+    mpPixelInfoBuffer = StructuredBuffer::create(mpUpdateRayDensityProgram.get(), std::string("gPixelInfo"), MAX_CAUSTICS_MAP_SIZE* MAX_CAUSTICS_MAP_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     //mpPixelInfoBufferDisplay = StructuredBuffer::create(mpUpdateRayDensityProgram.get(), std::string("gPixelInfo"), CAUSTICS_MAP_SIZE * CAUSTICS_MAP_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
-    mpPhotonBuffer = StructuredBuffer::create(photonTraceProgram->getHitProgram(0).get(), std::string("gPhotonBuffer"), TASK_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
-    mpPhotonBuffer2 = StructuredBuffer::create(photonTraceProgram->getHitProgram(0).get(), std::string("gPhotonBuffer"), TASK_SIZE, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
+    mpPhotonBuffer = StructuredBuffer::create(photonTraceProgram->getHitProgram(0).get(), std::string("gPhotonBuffer"), MAX_PHOTON_COUNT, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
+    mpPhotonBuffer2 = StructuredBuffer::create(photonTraceProgram->getHitProgram(0).get(), std::string("gPhotonBuffer"), MAX_PHOTON_COUNT, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpDrawArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gDrawArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg | Resource::BindFlags::ShaderResource);
     mpRayArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gRayArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg);
     mpRtOut = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
 
-    int2 tileDim = getTileDim();
-    int avgTileIDCount = 8192;
+    int2 tileDim(
+        (mpRtOut->getWidth() + mTileSize - 1) / mTileSize,
+        (mpRtOut->getHeight() + mTileSize - 1) / mTileSize);
+    int avgTileIDCount = 65536;
     mpTileIDInfoBuffer = StructuredBuffer::create(mpAllocateTileProgram[0].get(), std::string("gTileInfo"), tileDim.x * tileDim.y, ResourceBindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
     mpIDBuffer = Buffer::create(tileDim.x * tileDim.y * avgTileIDCount * sizeof(uint32_t), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, Buffer::CpuAccess::None);
     mpIDCounterBuffer = Buffer::create(sizeof(uint32_t), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, Buffer::CpuAccess::None);
 
     createCausticsMap();
 
-    mpRayDensityTex = Texture::create2D(CAUSTICS_MAP_SIZE, CAUSTICS_MAP_SIZE, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
+    mpRayDensityTex = Texture::create2D(MAX_CAUSTICS_MAP_SIZE, MAX_CAUSTICS_MAP_SIZE, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
     mpPhotonCountTex = Texture::create1D(width, ResourceFormat::R32Uint, 1, 1, nullptr, Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
 
     createGBuffer(width, height, mGBuffer[0]);

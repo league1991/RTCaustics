@@ -39,6 +39,7 @@ shared cbuffer PerFrameCB
     float gSplatSize;
 };
 
+#define PHOTON_COUNT_BLOCK_SIZE 32
 
 RWStructuredBuffer<DrawArguments> gDrawArgument;
 StructuredBuffer<Photon> gPhotonBuffer;
@@ -111,10 +112,10 @@ bool checkPhoton(Photon p)
 
 int threadIDToPhotonID(uint3 threadIdx)
 {
-    return threadIdx.y * blockCount.x * 32 + threadIdx.x;
+    return threadIdx.y * blockCount.x * PHOTON_COUNT_BLOCK_SIZE + threadIdx.x;
 }
 
-[numthreads(32, 32, 1)]
+[numthreads(PHOTON_COUNT_BLOCK_SIZE, PHOTON_COUNT_BLOCK_SIZE, 1)]
 void CountTilePhoton(uint3 threadIdx : SV_DispatchThreadID)
 {
     int photonID = threadIDToPhotonID(threadIdx);
@@ -146,7 +147,7 @@ void CountTilePhoton(uint3 threadIdx : SV_DispatchThreadID)
     }
 }
 
-[numthreads(16, 16, 1)]
+[numthreads(GATHER_TILE_SIZE, GATHER_TILE_SIZE, 1)]
 void AllocateMemory(uint3 threadIdx : SV_DispatchThreadID)
 {
     int2 tileID = threadIdx.xy;
@@ -163,7 +164,7 @@ void AllocateMemory(uint3 threadIdx : SV_DispatchThreadID)
     gTileInfo[offset].count = 0;
 }
 
-[numthreads(32, 32, 1)]
+[numthreads(PHOTON_COUNT_BLOCK_SIZE, PHOTON_COUNT_BLOCK_SIZE, 1)]
 void StoreTilePhoton(uint3 threadIdx : SV_DispatchThreadID)
 {
     int photonID = threadIDToPhotonID(threadIdx);

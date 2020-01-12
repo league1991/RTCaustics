@@ -29,6 +29,9 @@
 #include "Falcor.h"
 #include "FalcorExperimental.h"
 
+#define MAX_CAUSTICS_MAP_SIZE 2048
+#define MAX_PHOTON_COUNT 4096*4096
+
 using namespace Falcor;
 
 class Caustics : public IRenderer
@@ -44,8 +47,14 @@ public:
 
 private:
     // Photon trace
-    int mTraceType = 1;
-    int mDispatchSize=64;
+    enum TraceType
+    {
+        TRACE_FIXED = 0,
+        TRACE_ADAPTIVE = 1,
+        TRACE_NONE = 2
+    };
+    TraceType mTraceType = TRACE_FIXED;
+    int mDispatchSize=2048;
     int mMaxTraceDepth = 10;
     float mEmitSize = 30.0;
     float mIntensity = 0.4f;
@@ -84,9 +93,14 @@ private:
         SCATTER_GEOMETRY_SPHERE = 1,
     };
     ScatterGeometry mScatterGeometry= SCATTER_GEOMETRY_QUAD;
-    int   mCausticsMapResRatio = 2;
-    int   mScatterOrGather = 0;
-    float mSplatSize = 4.0f;
+    int   mCausticsMapResRatio = 1;
+    enum DensityEstimation
+    {
+        DENSITY_ESTIMATION_SCATTER = 0,
+        DENSITY_ESTIMATION_GATHER = 1,
+        DENSITY_ESTIMATION_NONE = 2
+    } mScatterOrGather = DENSITY_ESTIMATION_GATHER;
+    float mSplatSize = 3.2f;
     float mKernelPower = 1.f;
     int mPhotonDisplayMode = 0;
     uint32_t mPhotonMode = 0;
@@ -104,7 +118,7 @@ private:
     float mDepthRadius = 0.1f;
 
     // Temporal Filter
-    bool mTemporalFilter = true;
+    bool mTemporalFilter = false;
     float mFilterWeight = 0.6f;
     float mJitter = 0.3f;
     float mTemporalNormalKernel = 0.7f;
