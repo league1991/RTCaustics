@@ -431,10 +431,10 @@ float getArea(float3 dPdx, float3 dPdy)
 }
 
 
-void initFromLight(float2 lightUV, float2 pixelSize, out RayDesc ray, out PrimaryRayData hitData)
+void initFromLight(float2 lightUV, float pixelSize0, float intensity, out RayDesc ray, out PrimaryRayData hitData)
 {
     lightUV = lightUV * 2 - 1;
-    pixelSize *= emitSize / float2(coarseDim.xy);
+    float2 pixelSize = pixelSize0 * emitSize / float2(coarseDim.xy);
 
     float3 lightOrigin = gLights[0].dirW * -100;// gLights[0].posW;
     float3 lightDirZ = gLights[0].dirW;
@@ -452,7 +452,7 @@ void initFromLight(float2 lightUV, float2 pixelSize, out RayDesc ray, out Primar
         uint3 launchIndex = DispatchRaysIndex();
         color0.xyz = frac(launchIndex.xyz / float(photonIDScale)) * 0.8 + 0.2;
     }
-    hitData.color = color0 * pixelSize.x * pixelSize.y * 512 * 512 * 0.5 * gIntensity;
+    hitData.color = color0 * pixelSize.x * pixelSize.y * 512 * 512 * 0.5 * gIntensity * intensity;
     hitData.nextDir = ray.Direction;
     hitData.isContinue = 1;
 #ifdef RAY_DIFFERENTIAL
@@ -509,7 +509,7 @@ void StorePhoton(RayDesc ray, PrimaryRayData hitData, uint2 pixelCoord)
     }
 }
 
-bool getTask(out float2 lightUV, out uint2 pixelCoord, out float2 pixelSize)
+bool getTask(out float2 lightUV, out uint2 pixelCoord, out float pixelSize, out float intensity)
 {
     uint3 launchIndex = DispatchRaysIndex();
     uint3 launchDimension = DispatchRaysDimensions();
@@ -524,6 +524,7 @@ bool getTask(out float2 lightUV, out uint2 pixelCoord, out float2 pixelSize)
         pixelCoord = task.screenCoord;
         lightUV = (task.screenCoord + randomOffset * task.pixelSize) / float2(coarseDim);
         pixelSize = task.pixelSize;
+        intensity = task.intensity;
     }
     else
     {
@@ -531,13 +532,14 @@ bool getTask(out float2 lightUV, out uint2 pixelCoord, out float2 pixelSize)
         {
             return false;
         }
-        pixelSize = float2(1, 1);
+        pixelSize = 1;
         pixelCoord = launchIndex.xy;
         lightUV = float2(launchIndex.xy) / float2(coarseDim.xy);
         uint nw, nh, nl;
         gUniformNoise.GetDimensions(0, nw, nh, nl);
         //float2 noise = gUniformNoise.Load(uint3(launchIndex.xy % uint2(nw, nh), 0)).rg;
         lightUV += randomOffset / float2(coarseDim.xy);
+        intensity = 1;
     }
 
     if (updatePhoton)
@@ -558,14 +560,15 @@ void rayGen()
     // fetch task
     float2 lightUV;
     uint2 pixelCoord;
-    float2 pixelSize;
-    if (!getTask(lightUV, pixelCoord, pixelSize))
+    float pixelSize;
+    float intensity;
+    if (!getTask(lightUV, pixelCoord, pixelSize, intensity))
         return;
 
     // Init ray and hit data
     RayDesc ray;
     PrimaryRayData hitData;
-    initFromLight(lightUV, pixelSize, ray, hitData);
+    initFromLight(lightUV, pixelSize, intensity, ray, hitData);
 
     // Photon trace
     int depth;

@@ -201,7 +201,7 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
         }
         else
         {
-            color.rgb += photonClr.rgb;
+            color.rgb += photonClr.rgb * sd.diffuse;
         }
     }
 

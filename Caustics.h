@@ -72,7 +72,7 @@ private:
     float mNormalThreshold = 0.2f;
     float mDistanceThreshold = 10.0f;
     float mPlanarThreshold = 2.0f;
-    float mMinPhotonPixelSize = 10.0f;
+    float mMinPhotonPixelSize = 15.0f;
     float mSmoothWeight = 0.15f;
     float mMaxTaskCountPerPixel = 8192;
     float mUpdateSpeed = 0.2f;
