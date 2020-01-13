@@ -75,6 +75,7 @@ cbuffer PerImageCB
     float gMaxPixelArea;
     int gRayTexScale;
     uint gStatisticsOffset;
+    float gMaxPhotonCount;
 };
 
 float4 main(float2 texC  : TEXCOORD) : SV_TARGET
@@ -146,8 +147,9 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
             {
                 value = info.count;
             }
-            if (value <= gMaxPixelArea)
-                color = float4(value.xxx / gMaxPixelArea, 1);
+            float maxVal = gMaxPixelArea;
+            if (value <= maxVal)
+                color = float4(value.xxx / maxVal, 1);
             else
                 color = float4(1, 0, 1, 1);
         }
@@ -160,7 +162,7 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
         int2 screenPixel = texC * screenDim;
         int texelPos = (gStatisticsOffset - screenPixel.x + screenDim.x) % screenDim.x;
         uint valueI = gStatisticsTex[texelPos].r;
-        valueI = valueI * screenDim.y / gMaxPixelArea;
+        valueI = valueI * screenDim.y / gMaxPhotonCount;
         uint segmentWidth = screenDim.y / 4;
         float4 graphColor;
         float alpha = 0.3;

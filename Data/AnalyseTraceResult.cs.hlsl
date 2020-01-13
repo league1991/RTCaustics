@@ -107,15 +107,19 @@ void addPhotonTaskFromTexture(uint3 groupID : SV_GroupID, uint groupIndex : SV_G
     }
     else
     {
+        int round = 3;
+        //sampleCountF = ceil(sampleCountF / round) * round;
         int sampleDim = (int)ceil(sqrt(sampleCountF));
         int sampleCount = sampleDim * sampleDim;
         float sampleWeight = 1.0 / sqrt(float(sampleCount)) * sqrt(sampleCountF / sampleCount);
         float pixelSize = 1 * sampleWeight;
         int taskIdx = 0;
         InterlockedAdd(gRayArgument[0].rayTaskCount, sampleCount, taskIdx);
-        float g = 1.32471795724474602596;
-        float a1 = 1.0 / g;
-        float a2 = 1.0 / (g * g);
+        if (sampleCount == 1)
+        {
+            v00 = v10 = v01 = v11 = 1;
+            pixelSize = 1;
+        }
         for (uint i = 0; i < sampleCount; i++)
         {
             uint yi = i / sampleDim;

@@ -96,6 +96,7 @@ void Caustics::onGuiRender(Gui* pGui)
             pGui->addDropdown("Composite mode", debugModeList, (uint32_t&)mDebugMode);
         }
         pGui->addFloatVar("Max Pixel Value", mMaxPixelArea, 0, 1000000000, 5.f);
+        pGui->addFloatVar("Max Photon Count", mMaxPhotonCount, 0, 1000000000, 5.f);
         {
             Gui::DropdownList debugModeList;
             debugModeList.push_back({ 1, "x1" });
@@ -418,12 +419,28 @@ void Caustics::createCausticsMap()
     mpCausticsFbo[1] = Fbo::create({ pPhotonMapTex }, depthTex);
 }
 
+void Caustics::createGBuffer(int width, int height, GBuffer& gbuffer)
+{
+    gbuffer.mpDepthTex = Texture::create2D(width, height, ResourceFormat::D24UnormS8, 1, 1, nullptr, Resource::BindFlags::DepthStencil | Resource::BindFlags::ShaderResource);
+    gbuffer.mpNormalTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
+    gbuffer.mpDiffuseTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
+    gbuffer.mpSpecularTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
+    gbuffer.mpGPassFbo = Fbo::create({ gbuffer.mpNormalTex , gbuffer.mpDiffuseTex ,gbuffer.mpSpecularTex }, gbuffer.mpDepthTex);//Fbo::create2D(width, height, ResourceFormat::RGBA16Float, ResourceFormat::D24UnormS8);
+}
+
 int2 Caustics::getTileDim() const
 {
     int2 tileDim;
     tileDim.x = (mpRtOut->getWidth() / mCausticsMapResRatio + mTileSize - 1) / mTileSize;
     tileDim.y = (mpRtOut->getHeight() / mCausticsMapResRatio + mTileSize - 1) / mTileSize;
     return tileDim;
+}
+
+float Caustics::resolutionFactor()
+{
+    float2 res(mpRtOut->getWidth(), mpRtOut->getHeight());
+    float2 refRes(1920, 1080);
+    return glm::length(res) / glm::length(refRes);
 }
 
 void Caustics::loadShader()
@@ -631,7 +648,7 @@ void Caustics::setPhotonTracingCommonVariable(Caustics::PhotonTraceShader& shade
     pCB["gIntensity"] = mIntensity / 1000;
     pCB["gSplatSize"] = mSplatSize;
     pCB["updatePhoton"] = (uint32_t)mUpdatePhoton;
-    pCB["gMaxScreenRadius"] = mMaxPhotonPixelRadius;
+    pCB["gMaxScreenRadius"] = mMaxPhotonPixelRadius * resolutionFactor();
     auto rayGenVars = shader.mpPhotonTraceVars->getRayGenVars();
     rayGenVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
     rayGenVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
@@ -704,7 +721,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         {
             ConstantBuffer::SharedPtr pPerFrameCB = mpUpdateRayDensityVars["PerFrameCB"];
             pPerFrameCB["coarseDim"] = int2(mDispatchSize, mDispatchSize);
-            pPerFrameCB["minPhotonPixelSize"] = mMinPhotonPixelSize;
+            pPerFrameCB["minPhotonPixelSize"] = mMinPhotonPixelSize * resolutionFactor();
             pPerFrameCB["smoothWeight"] = mSmoothWeight;
             pPerFrameCB["maxTaskPerPixel"] = (int)mMaxTaskCountPerPixel;
             pPerFrameCB["updateSpeed"] = mUpdateSpeed;
@@ -728,10 +745,10 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             pPerFrameCB["planarThreshold"] = mPlanarThreshold; 
             pPerFrameCB["samplePlacement"] = (uint32_t)mSamplePlacement;
             pPerFrameCB["pixelLuminanceThreshold"] = mPixelLuminanceThreshold; 
-            pPerFrameCB["minPhotonPixelSize"] = mMinPhotonPixelSize;
+            pPerFrameCB["minPhotonPixelSize"] = mMinPhotonPixelSize * resolutionFactor();
             static float2 offset(0.5,0.5);
             static float speed = 0.0f;
-            pPerFrameCB["randomOffset"] = offset;// mMinPhotonPixelSize;
+            pPerFrameCB["randomOffset"] = offset;
             offset += speed;
             mpAnalyseVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
             mpAnalyseVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
@@ -757,7 +774,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pPerFrameCB["distanceThreshold"] = mDistanceThreshold;
         pPerFrameCB["planarThreshold"] = mPlanarThreshold;
         pPerFrameCB["pixelLuminanceThreshold"] = mPixelLuminanceThreshold;
-        pPerFrameCB["minPhotonPixelSize"] = mMinPhotonPixelSize;
+        pPerFrameCB["minPhotonPixelSize"] = mMinPhotonPixelSize * resolutionFactor();
         pPerFrameCB["trimDirectionThreshold"] = trimDirectionThreshold;
         pPerFrameCB["enableMedianFilter"] = uint32_t(mMedianFilter);
         pPerFrameCB["removeIsolatedPhoton"] = uint32_t(mRemoveIsolatedPhoton);
@@ -798,7 +815,6 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pPerFrameCB["gCameraPos"] = mpCamera->getPosition();
         pPerFrameCB["gZTolerance"] = mZTolerance;
         pPerFrameCB["gResRatio"] = mCausticsMapResRatio;
-        //pPerFrameCB["gMaxScreenRadius"] = mMaxPhotonPixelRadius;
         mpPhotonScatterVars["gLinearSampler"] = mpLinearSampler;
         mpPhotonScatterVars->setStructuredBuffer("gPhotonBuffer", photonBuffer);
         mpPhotonScatterVars->setStructuredBuffer("gRayTask", mpPixelInfoBuffer);
@@ -986,7 +1002,8 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pCompCB["gCameraPos"] = mpCamera->getPosition(); 
         pCompCB["screenDim"] = int2(mpRtOut->getWidth(), mpRtOut->getHeight());
         pCompCB["dispatchSize"] = int2(mDispatchSize, mDispatchSize);
-        pCompCB["gMaxPixelArea"] = mMaxPixelArea; 
+        pCompCB["gMaxPixelArea"] = mMaxPixelArea;
+        pCompCB["gMaxPhotonCount"] = mMaxPhotonCount;
         pCompCB["gRayTexScale"] = mRayTexScaleFactor;
         pCompCB["gStatisticsOffset"] = statisticsOffset;
         mpCompositePass->getVars()->setStructuredBuffer("gPixelInfo", mpPixelInfoBuffer);
@@ -1059,7 +1076,7 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
     int2 tileDim(
         (mpRtOut->getWidth() + mTileSize - 1) / mTileSize,
         (mpRtOut->getHeight() + mTileSize - 1) / mTileSize);
-    int avgTileIDCount = 65536;
+    int avgTileIDCount = 8192;
     mpTileIDInfoBuffer = StructuredBuffer::create(mpAllocateTileProgram[0].get(), std::string("gTileInfo"), tileDim.x * tileDim.y, ResourceBindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
     mpIDBuffer = Buffer::create(tileDim.x * tileDim.y * avgTileIDCount * sizeof(uint32_t), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, Buffer::CpuAccess::None);
     mpIDCounterBuffer = Buffer::create(sizeof(uint32_t), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, Buffer::CpuAccess::None);

@@ -30,7 +30,7 @@
 #include "FalcorExperimental.h"
 
 #define MAX_CAUSTICS_MAP_SIZE 2048
-#define MAX_PHOTON_COUNT 4096*4096
+#define MAX_PHOTON_COUNT 2048*2048
 
 using namespace Falcor;
 
@@ -149,6 +149,7 @@ private:
     };
     Display mDebugMode = ShowRayTracing;
     float mMaxPixelArea = 100;
+    float mMaxPhotonCount = 1000000;
     int mRayTexScaleFactor = 4;
     int mFrameCounter = 0;
     float mUVKernel = 0.7f;
@@ -282,13 +283,7 @@ private:
     void loadSceneSetting(std::string path);
     void saveSceneSetting(std::string path);
     void createCausticsMap();
-    void createGBuffer(int width, int height, GBuffer& gbuffer)
-    {
-        gbuffer.mpDepthTex = Texture::create2D(width, height, ResourceFormat::D24UnormS8, 1, 1, nullptr, Resource::BindFlags::DepthStencil | Resource::BindFlags::ShaderResource);
-        gbuffer.mpNormalTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
-        gbuffer.mpDiffuseTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
-        gbuffer.mpSpecularTex = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource);
-        gbuffer.mpGPassFbo = Fbo::create({ gbuffer.mpNormalTex , gbuffer.mpDiffuseTex ,gbuffer.mpSpecularTex }, gbuffer.mpDepthTex);//Fbo::create2D(width, height, ResourceFormat::RGBA16Float, ResourceFormat::D24UnormS8);
-    }
+    void createGBuffer(int width, int height, GBuffer& gbuffer);
     int2 getTileDim() const;
+    float resolutionFactor();
 };
