@@ -53,8 +53,8 @@ private:
         TRACE_ADAPTIVE = 1,
         TRACE_NONE = 2
     };
-    TraceType mTraceType = TRACE_FIXED;
-    int mDispatchSize=2048;
+    TraceType mTraceType = TRACE_ADAPTIVE;
+    int mDispatchSize = 64;
     int mMaxTraceDepth = 10;
     float mEmitSize = 30.0;
     float mIntensity = 0.4f;
@@ -74,7 +74,7 @@ private:
     float mPlanarThreshold = 2.0f;
     float mMinPhotonPixelSize = 10.0f;
     float mSmoothWeight = 0.15f;
-    int mMaxTaskCountPerPixel = 1000;
+    float mMaxTaskCountPerPixel = 8192;
     float mUpdateSpeed = 0.2f;
     float mVarianceGain = 0.0f;
     float mDerivativeGain = 0.0f;
@@ -105,7 +105,7 @@ private:
         DENSITY_ESTIMATION_GATHER = 1,
         DENSITY_ESTIMATION_NONE = 2
     } mScatterOrGather = DENSITY_ESTIMATION_SCATTER;
-    float mSplatSize = 3.2f;
+    float mSplatSize = 2.8f;
     float mKernelPower = 1.f;
     int mPhotonDisplayMode = 0;
     uint32_t mPhotonMode = 0;
@@ -159,7 +159,7 @@ private:
     // Others
     bool mUseDOF = false;
     uint32_t mSampleIndex = 0xdeadbeef;
-    float2 mLightAngle{0.4f,2.f};
+    float2 mLightAngle{3.01f,2.f};
     float3 mLightDirection;
     float2 mLightAngleSpeed{0,0};
 

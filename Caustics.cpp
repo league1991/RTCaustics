@@ -171,7 +171,7 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addFloatVar("Proportional Gain", mUpdateSpeed, 0, 1, 0.01f);
         pGui->addFloatVar("Variance Gain", mVarianceGain, 0, 10, 0.0001f);
         pGui->addFloatVar("Derivative Gain", mDerivativeGain, -10, 10, 0.1f);
-        pGui->addIntVar("Max Task Per Pixel", mMaxTaskCountPerPixel, 1);
+        pGui->addFloatVar("Max Task Per Pixel", mMaxTaskCountPerPixel, 1.0, 1000000, 5);
         pGui->endGroup();
     }
 
@@ -562,6 +562,7 @@ void Caustics::onLoad(RenderContext* pRenderContext)
     }
 
     loadScene(kDefaultScene, gpFramework->getTargetFbo().get());
+    loadSceneSetting("Data/init.ini");
     loadShader();
 }
 
@@ -705,7 +706,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             pPerFrameCB["coarseDim"] = int2(mDispatchSize, mDispatchSize);
             pPerFrameCB["minPhotonPixelSize"] = mMinPhotonPixelSize;
             pPerFrameCB["smoothWeight"] = mSmoothWeight;
-            pPerFrameCB["maxTaskPerPixel"] = mMaxTaskCountPerPixel;
+            pPerFrameCB["maxTaskPerPixel"] = (int)mMaxTaskCountPerPixel;
             pPerFrameCB["updateSpeed"] = mUpdateSpeed;
             pPerFrameCB["varianceGain"] = mVarianceGain;
             pPerFrameCB["derivativeGain"] = mDerivativeGain;
