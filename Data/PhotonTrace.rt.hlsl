@@ -516,51 +516,32 @@ void StorePhoton(RayDesc ray, PrimaryRayData hitData, uint2 pixelCoord)
 bool getSamplePos(uint threadId, out uint2 pixelPos, out uint sampleIdx)
 {
     pixelPos = 0;
-    //int step = (coarseDim.x >> 1);
-    uint index = threadId;
-    for (int mip = 0; mip < gMipmap; mip++)//gMipmap
+    sampleIdx = threadId;
+    uint4 value = gRayCountQuadTree[0];
+    if (threadId >= value.w)
+        return false;
+    for (int mip = 1; mip <= gMipmap; mip++)
     {
-        int nodeOffset = getTextureOffset(pixelPos, mip);
-        uint4 value = gRayCountQuadTree[nodeOffset];
-        pixelPos = pixelPos * 2;
-        if (index >= value.w)
-        {
-            return false;
-        }
-        else if(index >= value.b)
+        pixelPos <<= 1;
+        if(sampleIdx >= value.b)
         {
             pixelPos += int2(1, 1);
-            index -= value.b;
+            sampleIdx -= value.b;
         }
-        else if (index >= value.g)
+        else if (sampleIdx >= value.g)
         {
             pixelPos += int2(0, 1);
-            index -= value.g;
+            sampleIdx -= value.g;
         }
-        else if (index >= value.r)
+        else if (sampleIdx >= value.r)
         {
             pixelPos += int2(1, 0);
-            index -= value.r;
+            sampleIdx -= value.r;
         }
 
-        //int4 sign = ((index >= value) & 0x1);
-        //int childOffset = sign.x + sign.y + sign.z + sign.w;
-        //if (childOffset == 3)
-        //{
-        //    return false;
-        //}
-        //int offsetX = (childOffset & 0x1);
-        //int offsetY = (childOffset >> 1);
-        //pixelPos = pixelPos * 2 + int2(offsetX, offsetY);
-        //index -= value[childOffset];
+        int nodeOffset = getTextureOffset(pixelPos, mip);
+        value = gRayCountQuadTree[nodeOffset];
     }
-    //pixelPos = clamp(uint2(threadId % 128, threadId / 128),0,127);
-    //uint4 value = gRayCountQuadTree[getTextureOffset(pixelPos, 7)];
-    //if (value.a <= 4)
-    //{
-    //    pixelPos = 0;
-    //}
-    sampleIdx = index;
     return true;
 }
 
@@ -591,6 +572,22 @@ void getRaySample(uint2 pixel00, uint sampleIdx, inout float2 screenCoord, inout
     pixelSize = pixelSize* sqrt(sampleCount / (bilinearIntepolation(v00, v10, v01, v11, uv)));
     intensity = sampleCountF / sampleCount;
 }
+
+uint part1By1(uint x)
+{
+    x &= 0x0000ffff;                  // x = ---- ---- ---- ---- fedc ba98 7654 3210
+    x = (x ^ (x << 8)) & 0x00ff00ff; // x = ---- ---- fedc ba98 ---- ---- 7654 3210
+    x = (x ^ (x << 4)) & 0x0f0f0f0f; // x = ---- fedc ---- ba98 ---- 7654 ---- 3210
+    x = (x ^ (x << 2)) & 0x33333333; // x = --fe --dc --ba --98 --76 --54 --32 --10
+    x = (x ^ (x << 1)) & 0x55555555; // x = -f-e -d-c -b-a -9-8 -7-6 -5-4 -3-2 -1-0
+    return x;
+}
+
+uint encodeMorton2(uint2 idx)
+{
+    return (part1By1(idx.y) << 1) + part1By1(idx.x);
+}
+
 #endif
 
 bool getTask(out float2 lightUV, out uint2 pixelCoord, out float pixelSize, out float intensity)
@@ -634,6 +631,7 @@ bool getTask(out float2 lightUV, out uint2 pixelCoord, out float pixelSize, out 
         pixelSize = 1;
         intensity = 1;
         pixelCoord = 0;
+        //taskIdx = encodeMorton2(launchIndex.xy);
         if (!getSamplePos(taskIdx, pixelPosI, sampleIdx))
             return false;
         getRaySample(pixelPosI, sampleIdx, screenCoord, pixelSize, intensity);

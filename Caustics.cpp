@@ -746,7 +746,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         setPhotonTracingCommonVariable(photonTraceShader);
         GraphicsVars* pVars = photonTraceShader.mpPhotonTraceVars->getGlobalVars().get();
         ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
-        uvec3 resolution = mTraceType == TRACE_FIXED ? uvec3(mDispatchSize, mDispatchSize, 1) : uvec3(4096, 4096, 1);
+        uvec3 resolution = mTraceType == TRACE_FIXED ? uvec3(mDispatchSize, mDispatchSize, 1) : uvec3(2048, 2048, 1);
         mpRtRenderer->renderScene(pContext, photonTraceShader.mpPhotonTraceVars, photonTraceShader.mpPhotonTraceState, resolution, mpCamera.get());
     }
 
