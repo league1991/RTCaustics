@@ -36,6 +36,10 @@ RWStructuredBuffer<DrawArguments> gDrawArgument;
 RWStructuredBuffer<RayArgument> gRayArgument;
 RWStructuredBuffer<RayTask> gRayTask;
 RWStructuredBuffer<PixelInfo> gPixelInfo;
+
+StructuredBuffer<uint4> gRayCountQuadTree;
+Texture2D<float4> gRayDensityTex;
+
 Texture2D gUniformNoise;
 
 shared cbuffer PerFrameCB
@@ -49,7 +53,7 @@ shared cbuffer PerFrameCB
     float emitSize;
     float roughThreshold;
 
-    int launchRayTask;
+    int gMipmap;
     int rayTaskOffset;
     int maxDepth;
     float iorOverride;
@@ -495,10 +499,9 @@ void StorePhoton(RayDesc ray, PrimaryRayData hitData, uint2 pixelCoord)
             photon.dPdx = dPdx;
             photon.dPdy = dPdy;
             gPhotonBuffer[instanceIdx] = photon;
-            if (!launchRayTask)
-            {
-                gPixelInfo[pixelLoc].photonIdx = instanceIdx;
-            }
+#ifdef TRACE_FIXED
+            gPixelInfo[pixelLoc].photonIdx = instanceIdx;
+#endif
         }
 
         uint oldV;
@@ -509,12 +512,93 @@ void StorePhoton(RayDesc ray, PrimaryRayData hitData, uint2 pixelCoord)
     }
 }
 
+#ifdef TRACE_ADAPTIVE_RAY_MIP_MAP
+bool getSamplePos(uint threadId, out uint2 pixelPos, out uint sampleIdx)
+{
+    pixelPos = 0;
+    //int step = (coarseDim.x >> 1);
+    uint index = threadId;
+    for (int mip = 0; mip < gMipmap; mip++)//gMipmap
+    {
+        int nodeOffset = getTextureOffset(pixelPos, mip);
+        uint4 value = gRayCountQuadTree[nodeOffset];
+        pixelPos = pixelPos * 2;
+        if (index >= value.w)
+        {
+            return false;
+        }
+        else if(index >= value.b)
+        {
+            pixelPos += int2(1, 1);
+            index -= value.b;
+        }
+        else if (index >= value.g)
+        {
+            pixelPos += int2(0, 1);
+            index -= value.g;
+        }
+        else if (index >= value.r)
+        {
+            pixelPos += int2(1, 0);
+            index -= value.r;
+        }
+
+        //int4 sign = ((index >= value) & 0x1);
+        //int childOffset = sign.x + sign.y + sign.z + sign.w;
+        //if (childOffset == 3)
+        //{
+        //    return false;
+        //}
+        //int offsetX = (childOffset & 0x1);
+        //int offsetY = (childOffset >> 1);
+        //pixelPos = pixelPos * 2 + int2(offsetX, offsetY);
+        //index -= value[childOffset];
+    }
+    //pixelPos = clamp(uint2(threadId % 128, threadId / 128),0,127);
+    //uint4 value = gRayCountQuadTree[getTextureOffset(pixelPos, 7)];
+    //if (value.a <= 4)
+    //{
+    //    pixelPos = 0;
+    //}
+    sampleIdx = index;
+    return true;
+}
+
+void getRaySample(uint2 pixel00, uint sampleIdx, inout float2 screenCoord, inout float pixelSize, inout float intensity)
+{
+    float v00 = gRayDensityTex.Load(int3(pixel00 + int2(0, 0), 0)).r;
+    float v10 = gRayDensityTex.Load(int3(pixel00 + int2(1, 0), 0)).r;
+    float v01 = gRayDensityTex.Load(int3(pixel00 + int2(0, 1), 0)).r;
+    float v11 = gRayDensityTex.Load(int3(pixel00 + int2(1, 1), 0)).r;
+    float sampleCountF = 0.25 * (v00 + v10 + v01 + v11);
+
+    int sampleDim = (int)ceil(sqrt(sampleCountF));
+    int sampleCount = sampleDim * sampleDim;
+    float sampleWeight = 1.0 / sqrt(float(sampleCount)) * sqrt(sampleCountF / sampleCount);
+    pixelSize = 1.0 / sqrt(float(sampleCount));
+    if (sampleCount == 1)
+    {
+        v00 = v10 = v01 = v11 = 1;
+        pixelSize = 1;
+    }
+    uint yi = sampleIdx / sampleDim;
+    uint xi = sampleIdx - yi * sampleDim;
+    float x = (xi + 0.5) / sampleDim;
+    float y = (yi + 0.5) / sampleDim;
+    float2 uv = bilinearSample(v00, v10, v01, v11, float2(x, y));
+
+    screenCoord = pixel00  +uv + 0.5;
+    pixelSize = pixelSize* sqrt(sampleCount / (bilinearIntepolation(v00, v10, v01, v11, uv)));
+    intensity = sampleCountF / sampleCount;
+}
+#endif
+
 bool getTask(out float2 lightUV, out uint2 pixelCoord, out float pixelSize, out float intensity)
 {
     uint3 launchIndex = DispatchRaysIndex();
     uint3 launchDimension = DispatchRaysDimensions();
     uint taskIdx = launchIndex.y * launchDimension.x + launchIndex.x;
-    if (launchRayTask)
+#ifdef TRACE_ADAPTIVE
     {
         if (taskIdx >= gRayArgument[0].rayTaskCount)
         {
@@ -526,31 +610,49 @@ bool getTask(out float2 lightUV, out uint2 pixelCoord, out float pixelSize, out 
         pixelSize = task.pixelSize;
         intensity = task.intensity;
     }
-    else
+#elif defined(TRACE_FIXED)
     {
+        pixelSize = 1;
+        pixelCoord = launchIndex.xy;
+        lightUV = float2(launchIndex.xy) / float2(coarseDim.xy);
+        lightUV += randomOffset / float2(coarseDim.xy);
+        intensity = 1;
         if (any(launchIndex.xy >= coarseDim))
         {
             return false;
         }
-        pixelSize = 1;
-        pixelCoord = launchIndex.xy;
-        lightUV = float2(launchIndex.xy) / float2(coarseDim.xy);
-        uint nw, nh, nl;
-        gUniformNoise.GetDimensions(0, nw, nh, nl);
-        //float2 noise = gUniformNoise.Load(uint3(launchIndex.xy % uint2(nw, nh), 0)).rg;
-        lightUV += randomOffset / float2(coarseDim.xy);
-        intensity = 1;
     }
+#elif defined(TRACE_NONE)
+    {
+        return false;
+    }
+#elif defined(TRACE_ADAPTIVE_RAY_MIP_MAP)
+    {
+        uint2 pixelPosI;
+        uint sampleIdx;
+        float2 screenCoord = 0;
+        pixelSize = 1;
+        intensity = 1;
+        pixelCoord = 0;
+        if (!getSamplePos(taskIdx, pixelPosI, sampleIdx))
+            return false;
+        getRaySample(pixelPosI, sampleIdx, screenCoord, pixelSize, intensity);
+        pixelCoord = screenCoord;
+        lightUV = (screenCoord + randomOffset * pixelSize) / float2(coarseDim);
+        //lightUV = pixelPosI / float2(coarseDim); //
+    }
+#endif
 
     if (updatePhoton)
     {
         gPixelInfo[taskIdx].photonIdx = -1;
     }
-    if (!launchRayTask)
+#ifdef TRACE_FIXED
     {
         gRayTask[taskIdx].screenCoord = launchIndex.xy;
         gRayTask[taskIdx].pixelSize = 1;
     }
+#endif
     return true;
 }
 

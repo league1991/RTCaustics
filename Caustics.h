@@ -51,9 +51,10 @@ private:
     {
         TRACE_FIXED = 0,
         TRACE_ADAPTIVE = 1,
-        TRACE_NONE = 2
+        TRACE_NONE = 2,
+        TRACE_ADAPTIVE_RAY_MIP_MAP = 3,
     };
-    TraceType mTraceType = TRACE_ADAPTIVE;
+    TraceType mTraceType = TRACE_ADAPTIVE_RAY_MIP_MAP;
     int mDispatchSize = 64;
     int mMaxTraceDepth = 10;
     float mEmitSize = 30.0;
@@ -151,7 +152,7 @@ private:
     Display mDebugMode = ShowRayTracing;
     float mMaxPixelArea = 100;
     float mMaxPhotonCount = 1000000;
-    int mRayCountMipIdx = 0;
+    int mRayCountMipIdx = 5;
     int mRayTexScaleFactor = 4;
     float mUVKernel = 0.7f;
     float mZKernel = 4.5f;
@@ -207,7 +208,7 @@ private:
         RAY_NONE = 2
     };
     PhotonTraceMacro mPhotonTraceMacro = RAY_DIFFERENTIAL;
-    std::unordered_map<PhotonTraceMacro, PhotonTraceShader> mPhotonTraceShaderList;
+    std::unordered_map<uint32_t, PhotonTraceShader> mPhotonTraceShaderList;
     Texture::SharedPtr mpUniformNoise;
 
     // update ray density result
@@ -299,4 +300,11 @@ private:
     void createGBuffer(int width, int height, GBuffer& gbuffer);
     int2 getTileDim() const;
     float resolutionFactor();
+    uint photonMacroToFlags()
+    {
+        uint flags = 0;
+        flags |= (1 << mPhotonTraceMacro); // 3 bits
+        flags |= ((1 << mTraceType) << 3); // 4 bits
+        return flags;
+    }
 };

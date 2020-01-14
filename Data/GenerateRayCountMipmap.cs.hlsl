@@ -80,11 +80,11 @@ void generateMip0(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, u
     float v22 = gRayDensityTex.Load(int3(pixel00 + int2(2, 2), 0)).r;
 
     uint count00 = getSampleCount(v00, v10, v01, v11);
-    uint count10 = getSampleCount(v10, v20, v11, v21);
-    uint count01 = getSampleCount(v01, v11, v02, v12);
-    uint count11 = getSampleCount(v11, v21, v12, v22);
-    int sampleCount = count00 + count10 + count01 + count11;
-    int taskIdx = 0;
+    uint count10 = count00 + getSampleCount(v10, v20, v11, v21);
+    uint count01 = count10 + getSampleCount(v01, v11, v02, v12);
+    uint count11 = count01 + getSampleCount(v11, v21, v12, v22);
+    //int sampleCount = count00 + count10 + count01 + count11;
+    //int taskIdx = 0;
     //InterlockedAdd(gRayArgument[0].rayTaskCount, sampleCount, taskIdx);
 
     int offset = getTextureOffset(threadIdx.xy, mipLevel);
@@ -108,9 +108,9 @@ void generateMipLevel(uint3 threadIdx : SV_DispatchThreadID)
     uint4 count11 = gRayCountQuadTree[getTextureOffset(pixel00 + int2(1, 1), nextMipLevel)];
 
     uint4 value;
-    value.x = count00.x + count00.y + count00.z + count00.w;
-    value.y = count10.x + count10.y + count10.z + count10.w;
-    value.z = count01.x + count01.y + count01.z + count01.w;
-    value.w = count11.x + count11.y + count11.z + count11.w;
+    value.x = count00.w;
+    value.y = value.x + count10.w;
+    value.z = value.y + count01.w;
+    value.w = value.z + count11.w;
     gRayCountQuadTree[getTextureOffset(threadIdx.xy, mipLevel)] = value;// value;
 }

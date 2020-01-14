@@ -108,7 +108,6 @@ void addPhotonTaskFromTexture(uint3 groupID : SV_GroupID, uint groupIndex : SV_G
     }
     else
     {
-        int round = 3;
         //sampleCountF = ceil(sampleCountF / round) * round;
         int sampleDim = (int)ceil(sqrt(sampleCountF));
         int sampleCount = sampleDim * sampleDim;

@@ -118,6 +118,7 @@ void Caustics::onGuiRender(Gui* pGui)
             debugModeList.push_back({ 0, "Fixed Resolution" });
             debugModeList.push_back({ 1, "Adaptive Resolution" });
             debugModeList.push_back({ 2, "None" });
+            debugModeList.push_back({ 3, "Adaptive Resolution With Ray Mipmap" });
             pGui->addDropdown("Trace Type", debugModeList, (uint32_t&)mTraceType);
         }
         {
@@ -335,9 +336,12 @@ void Caustics::loadScene(const std::string& filename, const Fbo* pTargetFbo)
     mpUniformNoise = Texture::createFromFile("Caustics/uniform.png", true, false);
 }
 
+
+
 Caustics::PhotonTraceShader Caustics::getPhotonTraceShader()
 {
-    auto pIter = mPhotonTraceShaderList.find(mPhotonTraceMacro);
+    uint flag = photonMacroToFlags();
+    auto pIter = mPhotonTraceShaderList.find(flag);
     if (pIter == mPhotonTraceShaderList.end())
     {
         RtProgram::Desc desc;
@@ -359,6 +363,23 @@ Caustics::PhotonTraceShader Caustics::getPhotonTraceShader()
         default:
             break;
         }
+        switch (mTraceType)
+        {
+        case Caustics::TRACE_FIXED:
+            desc.addDefine("TRACE_FIXED", "1");
+            break;
+        case Caustics::TRACE_ADAPTIVE:
+            desc.addDefine("TRACE_ADAPTIVE", "1");
+            break;
+        case Caustics::TRACE_NONE:
+            desc.addDefine("TRACE_NONE", "1");
+            break;
+        case Caustics::TRACE_ADAPTIVE_RAY_MIP_MAP:
+            desc.addDefine("TRACE_ADAPTIVE_RAY_MIP_MAP", "1");
+            break;
+        default:
+            break;
+        }
         //photonTraceProgDesc.addHitGroup(1, "", "shadowAnyHit");
         //photonTraceProgDesc.addMiss(1, "shadowMiss");
         auto pPhotonTraceProgram = RtProgram::create(desc, 80U);
@@ -366,9 +387,9 @@ Caustics::PhotonTraceShader Caustics::getPhotonTraceShader()
         pPhotonTraceState->setProgram(pPhotonTraceProgram);
         auto pPhotonTraceVars = RtProgramVars::create(pPhotonTraceProgram, mpScene);
         //mpPhotonTraceRenderer = RtSceneRenderer::create(mpScene);
-        mPhotonTraceShaderList[mPhotonTraceMacro] = { pPhotonTraceProgram , pPhotonTraceVars ,pPhotonTraceState };
+        mPhotonTraceShaderList[flag] = { pPhotonTraceProgram , pPhotonTraceVars ,pPhotonTraceState };
     }
-    return mPhotonTraceShaderList[mPhotonTraceMacro];
+    return mPhotonTraceShaderList[flag];
 }
 
 void Caustics::loadSceneSetting(std::string path)
@@ -649,7 +670,6 @@ void Caustics::setPhotonTracingCommonVariable(Caustics::PhotonTraceShader& shade
     pCB["emitSize"] = mEmitSize;
     pCB["roughThreshold"] = mRoughThreshold;
     pCB["randomOffset"] = mTemporalFilter ? randomOffset : float2(0,0);
-    pCB["launchRayTask"] = 0;
     pCB["rayTaskOffset"] = mDispatchSize * mDispatchSize;
     pCB["coarseDim"] = uint2(mDispatchSize, mDispatchSize);
     pCB["maxDepth"] = mMaxTraceDepth;
@@ -663,6 +683,7 @@ void Caustics::setPhotonTracingCommonVariable(Caustics::PhotonTraceShader& shade
     pCB["gSplatSize"] = mSplatSize;
     pCB["updatePhoton"] = (uint32_t)mUpdatePhoton;
     pCB["gMaxScreenRadius"] = mMaxPhotonPixelRadius * resolutionFactor();
+    pCB["gMipmap"] = int(log(mDispatchSize) / log(2));
     auto rayGenVars = shader.mpPhotonTraceVars->getRayGenVars();
     rayGenVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
     rayGenVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
@@ -670,6 +691,8 @@ void Caustics::setPhotonTracingCommonVariable(Caustics::PhotonTraceShader& shade
     rayGenVars->setStructuredBuffer("gPixelInfo", mpPixelInfoBuffer);
     rayGenVars->setTexture("gUniformNoise", mpUniformNoise);
     rayGenVars->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
+    rayGenVars->setStructuredBuffer("gRayCountQuadTree", mpRayCountQuadTree);
+    rayGenVars->setTexture("gRayDensityTex", mpRayDensityTex);
     auto hitVars = shader.mpPhotonTraceVars->getHitVars(0);
     for (auto& hitVar : hitVars)
     {
@@ -723,14 +746,14 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         setPhotonTracingCommonVariable(photonTraceShader);
         GraphicsVars* pVars = photonTraceShader.mpPhotonTraceVars->getGlobalVars().get();
         ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
-        pCB["launchRayTask"] = int(mTraceType == TRACE_ADAPTIVE);
         uvec3 resolution = mTraceType == TRACE_FIXED ? uvec3(mDispatchSize, mDispatchSize, 1) : uvec3(4096, 4096, 1);
         mpRtRenderer->renderScene(pContext, photonTraceShader.mpPhotonTraceVars, photonTraceShader.mpPhotonTraceState, resolution, mpCamera.get());
     }
 
     // analysis output
-    if(mTraceType == TRACE_ADAPTIVE && mUpdatePhoton)
+    if ( mUpdatePhoton)
     {
+        if(mTraceType == TRACE_ADAPTIVE || mTraceType == TRACE_ADAPTIVE_RAY_MIP_MAP)
         {
             ConstantBuffer::SharedPtr pPerFrameCB = mpUpdateRayDensityVars["PerFrameCB"];
             pPerFrameCB["coarseDim"] = int2(mDispatchSize, mDispatchSize);
@@ -747,6 +770,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             pContext->dispatch(mpUpdateRayDensityState.get(), mpUpdateRayDensityVars.get(), uvec3(mDispatchSize / groupSize, mDispatchSize / groupSize, 1));
         }
 
+        if (mTraceType == TRACE_ADAPTIVE)
         {
             ConstantBuffer::SharedPtr pPerFrameCB = mpAnalyseVars["PerFrameCB"];
             glm::mat4 wvp = mpCamera->getProjMatrix() * mpCamera->getViewMatrix();
@@ -755,11 +779,11 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             pPerFrameCB["screenDim"] = int2(mpRtOut->getWidth(), mpRtOut->getHeight());
             pPerFrameCB["normalThreshold"] = mNormalThreshold;
             pPerFrameCB["distanceThreshold"] = mDistanceThreshold;
-            pPerFrameCB["planarThreshold"] = mPlanarThreshold; 
+            pPerFrameCB["planarThreshold"] = mPlanarThreshold;
             pPerFrameCB["samplePlacement"] = (uint32_t)mSamplePlacement;
-            pPerFrameCB["pixelLuminanceThreshold"] = mPixelLuminanceThreshold; 
+            pPerFrameCB["pixelLuminanceThreshold"] = mPixelLuminanceThreshold;
             pPerFrameCB["minPhotonPixelSize"] = mMinPhotonPixelSize * resolutionFactor();
-            static float2 offset(0.5,0.5);
+            static float2 offset(0.5, 0.5);
             static float speed = 0.0f;
             pPerFrameCB["randomOffset"] = offset;
             offset += speed;
@@ -769,12 +793,14 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             mpAnalyseVars->setStructuredBuffer("gPixelInfo", mpPixelInfoBuffer);
             mpAnalyseVars->setTexture("gDepthTex", gBuffer->mpGPassFbo->getDepthStencilTexture());
             mpAnalyseVars->setTexture("gRayDensityTex", mpRayDensityTex);
-            int2 groupSize(32,16);
+            int2 groupSize(32, 16);
             pContext->dispatch(mpAnalyseState.get(), mpAnalyseVars.get(), uvec3(mDispatchSize / groupSize.x, mDispatchSize / groupSize.y, 1));
         }
-        static bool isRay = true;
+    }
+
+    //if(mTraceType == TRACE_ADAPTIVE_RAY_MIP_MAP && mUpdatePhoton)
+    {
         int startMipLevel = int(log(mDispatchSize) / log(2)) - 1;
-        if(isRay)
         {
             ConstantBuffer::SharedPtr pPerFrameCB = mpGenerateRayCountVars["PerFrameCB"];
             pPerFrameCB["taskDim"] = int2(mDispatchSize, mDispatchSize);

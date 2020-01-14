@@ -133,7 +133,7 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
         {
             int offset = getTextureOffset(texelPos.xy, gRayCountMip);
             uint4 v = gRayCountQuadTree[offset];// .Load(int3(texelPos, gRayCountMip));
-            uint sum = v.r + v.g + v.b + v.a;
+            uint sum = v.a;
             if (sum <= gMaxPixelArea)
                 color = float4(sum / gMaxPixelArea, 1);
             else
