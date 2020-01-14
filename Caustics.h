@@ -63,7 +63,7 @@ private:
     float mIOROveride = 1.5f;
     int mColorPhoton = 0;
     int mPhotonIDScale = 50;
-    float mTraceColorThreshold = 0.002f;
+    float mTraceColorThreshold = 0.0005f;
     float mCullColorThreshold = 0.2f;
     bool mUpdatePixelInfo = true;
     bool mUpdatePhoton = true;
