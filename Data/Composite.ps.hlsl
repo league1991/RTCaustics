@@ -41,6 +41,7 @@ Texture2D gPhotonTex;
 Texture2D gRaytracingTex;
 Texture2D<float4> gRayTex;
 Texture1D<uint> gStatisticsTex;
+Texture2D<uint4> gRayCountTex;
 StructuredBuffer<PixelInfo> gPixelInfo;
 
 // Debug modes
@@ -57,6 +58,7 @@ StructuredBuffer<PixelInfo> gPixelInfo;
 #define ShowAvgScreenAreaVariance 11
 #define ShowCount 12
 #define ShowTotalPhoton 13
+#define ShowRayCountMipTex 14
 
 cbuffer PerImageCB
 {
@@ -75,7 +77,9 @@ cbuffer PerImageCB
     float gMaxPixelArea;
     int gRayTexScale;
     uint gStatisticsOffset;
+
     float gMaxPhotonCount;
+    int gRayCountMip;
 };
 
 float4 main(float2 texC  : TEXCOORD) : SV_TARGET
@@ -89,7 +93,7 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
     float4 specularVal = gSpecularTex.Sample(gPointSampler, texC);
     float4 rtColor = gRaytracingTex.Sample(gPointSampler, texC);
 
-    float4 color = 0;
+    float4 color = rtColor;
     if (gDebugMode == ShowDepth)
     {
         float4 viewPnt = mul(screenPnt, gInvPMat);
@@ -120,6 +124,19 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
             color = float4(v.rgb / gMaxPixelArea, 1);
         else
             color = float4(1, 0, 1, 1);
+    }
+    else if (gDebugMode == ShowRayCountMipTex)
+    {
+        int2 screenPixel = texC * screenDim;
+        int2 texelPos = screenPixel.xy / gRayTexScale;
+        if (all(texelPos < dispatchSize/2))
+        {
+            uint4 v = gRayCountTex.Load(int3(texelPos, gRayCountMip));
+            if (v.r <= gMaxPixelArea)
+                color = float4((v.r + v.g + v.b + v.a) / gMaxPixelArea, 1);
+            else
+                color = float4(1, 0, 1, 1);
+        }
     }
     else if (gDebugMode == ShowRayTracing)
     {
@@ -153,8 +170,6 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
             else
                 color = float4(1, 0, 1, 1);
         }
-        else
-            color = rtColor;
     }
     else if (gDebugMode == ShowTotalPhoton)
     {

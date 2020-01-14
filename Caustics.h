@@ -146,18 +146,20 @@ private:
         ShowAvgScreenAreaVariance = 11,
         ShowCount = 12,
         ShowTotalPhoton = 13,
+        ShowRayCountMipmap = 14,
     };
     Display mDebugMode = ShowRayTracing;
     float mMaxPixelArea = 100;
     float mMaxPhotonCount = 1000000;
+    int mRayCountMipIdx = 0;
     int mRayTexScaleFactor = 4;
-    int mFrameCounter = 0;
     float mUVKernel = 0.7f;
     float mZKernel = 4.5f;
     float mNormalKernel = 4.0f;
     bool mFilterCausticsMap = true;
 
     // Others
+    int mFrameCounter = 0;
     bool mUseDOF = false;
     uint32_t mSampleIndex = 0xdeadbeef;
     float2 mLightAngle{3.01f,2.f};
@@ -218,6 +220,12 @@ private:
     ComputeVars::SharedPtr mpAnalyseVars;
     ComputeState::SharedPtr mpAnalyseState;
     StructuredBuffer::SharedPtr  mpRayArgumentBuffer;
+    Texture::SharedPtr mpRayCountMipmap;
+
+    // generate ray count
+    ComputeProgram::SharedPtr mpGenerateRayCountProgram;
+    ComputeVars::SharedPtr mpGenerateRayCountVars;
+    ComputeState::SharedPtr mpGenerateRayCountState;
 
     // smooth photon
     ComputeProgram::SharedPtr mpSmoothProgram;
@@ -286,4 +294,5 @@ private:
     void createGBuffer(int width, int height, GBuffer& gbuffer);
     int2 getTileDim() const;
     float resolutionFactor();
+    void createRayCountMipmap();
 };
