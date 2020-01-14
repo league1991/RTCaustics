@@ -41,7 +41,7 @@ Texture2D gPhotonTex;
 Texture2D gRaytracingTex;
 Texture2D<float4> gRayTex;
 Texture1D<uint> gStatisticsTex;
-Texture2D<uint4> gRayCountTex;
+StructuredBuffer<uint4>gRayCountQuadTree;
 StructuredBuffer<PixelInfo> gPixelInfo;
 
 // Debug modes
@@ -129,11 +129,13 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
     {
         int2 screenPixel = texC * screenDim;
         int2 texelPos = screenPixel.xy / gRayTexScale;
-        if (all(texelPos < dispatchSize/2))
+        if (all(texelPos < getMipSize(gRayCountMip)))
         {
-            uint4 v = gRayCountTex.Load(int3(texelPos, gRayCountMip));
-            if (v.r <= gMaxPixelArea)
-                color = float4((v.r + v.g + v.b + v.a) / gMaxPixelArea, 1);
+            int offset = getTextureOffset(texelPos.xy, gRayCountMip);
+            uint4 v = gRayCountQuadTree[offset];// .Load(int3(texelPos, gRayCountMip));
+            uint sum = v.r + v.g + v.b + v.a;
+            if (sum <= gMaxPixelArea)
+                color = float4(sum / gMaxPixelArea, 1);
             else
                 color = float4(1, 0, 1, 1);
         }

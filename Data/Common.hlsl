@@ -104,3 +104,20 @@ float toViewSpace(float4x4 invProj, float depth)
 {
     return (invProj[2][2] * depth + invProj[3][2]) / (invProj[2][3] * depth + invProj[3][3]);
 }
+
+int getMipOffset(int mip)
+{
+    return ((1 << (mip << 1)) - 1) / 3;
+}
+
+int getTextureOffset(int2 pos, int mip)
+{
+    int mipSize = (1 << mip);
+    int mipOffset = ((1 << (mip << 1)) - 1) / 3;
+    return mipOffset + pos.y * mipSize + pos.x;
+}
+
+int getMipSize(int mip)
+{
+    return (1 << mip);
+}

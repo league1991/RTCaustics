@@ -98,6 +98,7 @@ void Caustics::onGuiRender(Gui* pGui)
         }
         pGui->addFloatVar("Max Pixel Value", mMaxPixelArea, 0, 1000000000, 5.f);
         pGui->addFloatVar("Max Photon Count", mMaxPhotonCount, 0, 1000000000, 5.f);
+        pGui->addIntVar("Ray Count Mipmap", mRayCountMipIdx, 0, 11);
         {
             Gui::DropdownList debugModeList;
             debugModeList.push_back({ 1, "x1" });
@@ -135,10 +136,6 @@ void Caustics::onGuiRender(Gui* pGui)
             debugModeList.push_back({ 1024, "1024" });
             debugModeList.push_back({ 2048, "2048" });
             pGui->addDropdown("Dispatch Size", debugModeList, (uint32_t&)mDispatchSize);
-            if (mDispatchSize != mpRayCountMipmap->getWidth() * 2)
-            {
-                createRayCountMipmap();
-            }
         }
         {
             Gui::DropdownList debugModeList;
@@ -448,11 +445,6 @@ float Caustics::resolutionFactor()
     return glm::length(res) / glm::length(refRes);
 }
 
-void Caustics::createRayCountMipmap()
-{
-    mpRayCountMipmap = Texture::create2D(mDispatchSize/2, mDispatchSize/2, ResourceFormat::RGBA32Uint, 1, Resource::kMaxPossible, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
-}
-
 void Caustics::loadShader()
 {
     // raytrace
@@ -511,6 +503,12 @@ void Caustics::loadShader()
     mpGenerateRayCountState = ComputeState::create();
     mpGenerateRayCountState->setProgram(mpGenerateRayCountProgram);
     mpGenerateRayCountVars = ComputeVars::create(mpGenerateRayCountProgram.get());
+
+    // generate ray count mip tex
+    mpGenerateRayCountMipProgram = ComputeProgram::createFromFile("GenerateRayCountMipmap.cs.hlsl", "generateMipLevel");
+    mpGenerateRayCountMipState = ComputeState::create();
+    mpGenerateRayCountMipState->setProgram(mpGenerateRayCountMipProgram);
+    mpGenerateRayCountMipVars = ComputeVars::create(mpGenerateRayCountMipProgram.get());
 
     // smooth photon
     mpSmoothProgram = ComputeProgram::createFromFile("SmoothPhoton.cs.hlsl", "main");
@@ -774,30 +772,34 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             int2 groupSize(32,16);
             pContext->dispatch(mpAnalyseState.get(), mpAnalyseVars.get(), uvec3(mDispatchSize / groupSize.x, mDispatchSize / groupSize.y, 1));
         }
-
+        static bool isRay = true;
+        int startMipLevel = int(log(mDispatchSize) / log(2)) - 1;
+        if(isRay)
         {
             ConstantBuffer::SharedPtr pPerFrameCB = mpGenerateRayCountVars["PerFrameCB"];
-            glm::mat4 wvp = mpCamera->getProjMatrix() * mpCamera->getViewMatrix();
-            pPerFrameCB["viewProjMat"] = wvp;// mpCamera->getViewProjMatrix();
             pPerFrameCB["taskDim"] = int2(mDispatchSize, mDispatchSize);
             pPerFrameCB["screenDim"] = int2(mpRtOut->getWidth(), mpRtOut->getHeight());
-            pPerFrameCB["normalThreshold"] = mNormalThreshold;
-            pPerFrameCB["distanceThreshold"] = mDistanceThreshold;
-            pPerFrameCB["planarThreshold"] = mPlanarThreshold;
-            //pPerFrameCB["samplePlacement"] = (uint32_t)mSamplePlacement;
-            pPerFrameCB["pixelLuminanceThreshold"] = mPixelLuminanceThreshold;
-            pPerFrameCB["minPhotonPixelSize"] = mMinPhotonPixelSize * resolutionFactor();
-            static float2 offset(0.5, 0.5);
-            static float speed = 0.0f;
-            pPerFrameCB["randomOffset"] = offset;
-            offset += speed;
+            pPerFrameCB["mipLevel"] = startMipLevel;
             mpGenerateRayCountVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
             mpGenerateRayCountVars->setTexture("gRayDensityTex", mpRayDensityTex);
-            //mpGenerateRayCountVars->setTexture("gRayCountMipmap", mpRayCountMipmap);
-            mpGenerateRayCountVars->setUav(0, 1, 0, mpRayCountMipmap->getUAV(0));
+            mpGenerateRayCountVars->setStructuredBuffer("gRayCountQuadTree", mpRayCountQuadTree);
             int2 groupSize(8, 8);
             uvec3 blockCount(mDispatchSize / groupSize.x / 2, mDispatchSize / groupSize.y / 2, 1);
             pContext->dispatch(mpGenerateRayCountState.get(), mpGenerateRayCountVars.get(), blockCount);
+        }
+
+        for (int mipLevel = startMipLevel-1, dispatchSize = mDispatchSize/4; mipLevel >= 0; mipLevel--, dispatchSize >>= 1)
+        {
+            ConstantBuffer::SharedPtr pPerFrameCB = mpGenerateRayCountMipVars["PerFrameCB"];
+            pPerFrameCB["taskDim"] = int2(mDispatchSize, mDispatchSize);
+            pPerFrameCB["screenDim"] = int2(mpRtOut->getWidth(), mpRtOut->getHeight());
+            pPerFrameCB["mipLevel"] = mipLevel;
+            mpGenerateRayCountMipVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
+            mpGenerateRayCountMipVars->setTexture("gRayDensityTex", mpRayDensityTex);
+            mpGenerateRayCountMipVars->setStructuredBuffer("gRayCountQuadTree", mpRayCountQuadTree);
+            int2 groupSize(8, 8);
+            uvec3 blockCount((dispatchSize + groupSize.x - 1) / groupSize.x, (dispatchSize + groupSize.y - 1) / groupSize.y, 1);
+            pContext->dispatch(mpGenerateRayCountMipState.get(), mpGenerateRayCountMipVars.get(), blockCount);
         }
     }
 
@@ -1031,7 +1033,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         mpCompositePass["gDiffuseTex"] = gBuffer->mpGPassFbo->getColorTexture(1);
         mpCompositePass["gSpecularTex"] = gBuffer->mpGPassFbo->getColorTexture(2);
         mpCompositePass["gPhotonTex"] = causticsFbo->getColorTexture(0);
-        mpCompositePass["gRayCountTex"] = mpRayCountMipmap;
+        mpCompositePass["gRayCountQuadTree"] = mpRayCountQuadTree;
         mpCompositePass["gRaytracingTex"] = mpRtOut;
         mpCompositePass["gRayTex"] = mpRayDensityTex;
         mpCompositePass["gStatisticsTex"] = mpPhotonCountTex;
@@ -1114,6 +1116,7 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
     mpPhotonBuffer2 = StructuredBuffer::create(photonTraceProgram->getHitProgram(0).get(), std::string("gPhotonBuffer"), MAX_PHOTON_COUNT, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpDrawArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gDrawArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg | Resource::BindFlags::ShaderResource);
     mpRayArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gRayArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg);
+    mpRayCountQuadTree = StructuredBuffer::create(mpGenerateRayCountProgram.get(), std::string("gRayCountQuadTree"), MAX_CAUSTICS_MAP_SIZE * MAX_CAUSTICS_MAP_SIZE * 2, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpRtOut = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
 
     int2 tileDim(
@@ -1125,7 +1128,6 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
     mpIDCounterBuffer = Buffer::create(sizeof(uint32_t), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, Buffer::CpuAccess::None);
 
     createCausticsMap();
-    createRayCountMipmap();
 
     mpRayDensityTex = Texture::create2D(MAX_CAUSTICS_MAP_SIZE, MAX_CAUSTICS_MAP_SIZE, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
     mpPhotonCountTex = Texture::create1D(width, ResourceFormat::R32Uint, 1, 1, nullptr, Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);

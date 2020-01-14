@@ -220,12 +220,17 @@ private:
     ComputeVars::SharedPtr mpAnalyseVars;
     ComputeState::SharedPtr mpAnalyseState;
     StructuredBuffer::SharedPtr  mpRayArgumentBuffer;
-    Texture::SharedPtr mpRayCountMipmap;
 
     // generate ray count
     ComputeProgram::SharedPtr mpGenerateRayCountProgram;
     ComputeVars::SharedPtr mpGenerateRayCountVars;
     ComputeState::SharedPtr mpGenerateRayCountState;
+    StructuredBuffer::SharedPtr mpRayCountQuadTree;
+
+    // generate ray count mipmap
+    ComputeProgram::SharedPtr mpGenerateRayCountMipProgram;
+    ComputeVars::SharedPtr mpGenerateRayCountMipVars;
+    ComputeState::SharedPtr mpGenerateRayCountMipState;
 
     // smooth photon
     ComputeProgram::SharedPtr mpSmoothProgram;
@@ -294,5 +299,4 @@ private:
     void createGBuffer(int width, int height, GBuffer& gbuffer);
     int2 getTileDim() const;
     float resolutionFactor();
-    void createRayCountMipmap();
 };

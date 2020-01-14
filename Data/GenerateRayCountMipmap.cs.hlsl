@@ -29,26 +29,10 @@
 
 shared cbuffer PerFrameCB
 {
-    float4x4 viewProjMat;
     int2 taskDim;
     int2 screenDim;
-    float2 randomOffset;
-    float normalThreshold;
-    float distanceThreshold;
-    float planarThreshold;
-    float pixelLuminanceThreshold;
-    float minPhotonPixelSize;
-    //uint samplePlacement;
+    int mipLevel;
 };
-
-//struct DrawArguments
-//{
-//    uint indexCountPerInstance;
-//    uint instanceCount;
-//    uint startIndexLocation;
-//    int  baseVertexLocation;
-//    uint startInstanceLocation;
-//};
 
 //RWStructuredBuffer<Photon> gPhotonBuffer;
 //RWStructuredBuffer<DrawArguments> gDrawArgument;
@@ -57,8 +41,7 @@ RWStructuredBuffer<RayArgument> gRayArgument;
 //StructuredBuffer<PixelInfo> gPixelInfo;
 //Texture2D gDepthTex;
 Texture2D<float4> gRayDensityTex;
-
-RWTexture2D<uint4> gRayCountMipmap: register(u1);
+RWStructuredBuffer<uint4> gRayCountQuadTree;
 
 int getRayTaskID(uint2 pos)
 {
@@ -76,7 +59,7 @@ uint getSampleCount(float v00, float v10, float v01, float v11)
 [numthreads(8, 8, 1)]
 void generateMip0(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, uint3 threadIdx : SV_DispatchThreadID)
 {
-    //uint rayIdx = getRayTaskID(threadIdx.xy);
+    uint rayIdx = getRayTaskID(threadIdx.xy);
     //gPixelInfo[rayIdx].screenArea = 0;
     //gPixelInfo[rayIdx].screenAreaSq = 0;
     //gPixelInfo[rayIdx].count = 0;
@@ -102,6 +85,32 @@ void generateMip0(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, u
     uint count11 = getSampleCount(v11, v21, v12, v22);
     int sampleCount = count00 + count10 + count01 + count11;
     int taskIdx = 0;
-    InterlockedAdd(gRayArgument[0].rayTaskCount, sampleCount, taskIdx);
-    gRayCountMipmap[threadIdx.xy] = uint4(count00, count10, count01, count11);
+    //InterlockedAdd(gRayArgument[0].rayTaskCount, sampleCount, taskIdx);
+
+    int offset = getTextureOffset(threadIdx.xy, mipLevel);
+    gRayCountQuadTree[offset] = uint4(count00, count10, count01, count11);
+}
+
+[numthreads(8, 8, 1)]
+void generateMipLevel(uint3 threadIdx : SV_DispatchThreadID)
+{
+    int mipDim = getMipSize(mipLevel);
+    if (any(threadIdx.xy >= mipDim))
+    {
+        return;
+    }
+
+    int2 pixel00 = threadIdx.xy * 2;
+    int nextMipLevel = mipLevel + 1;
+    uint4 count00 = gRayCountQuadTree[getTextureOffset(pixel00 + int2(0, 0), nextMipLevel)];
+    uint4 count10 = gRayCountQuadTree[getTextureOffset(pixel00 + int2(1, 0), nextMipLevel)];
+    uint4 count01 = gRayCountQuadTree[getTextureOffset(pixel00 + int2(0, 1), nextMipLevel)];
+    uint4 count11 = gRayCountQuadTree[getTextureOffset(pixel00 + int2(1, 1), nextMipLevel)];
+
+    uint4 value;
+    value.x = count00.x + count00.y + count00.z + count00.w;
+    value.y = count10.x + count10.y + count10.z + count10.w;
+    value.z = count01.x + count01.y + count01.z + count01.w;
+    value.w = count11.x + count11.y + count11.z + count11.w;
+    gRayCountQuadTree[getTextureOffset(threadIdx.xy, mipLevel)] = value;// value;
 }
