@@ -255,9 +255,10 @@ private:
     Sampler::SharedPtr mpLinearSampler;
 
     // photon gather
-    ComputeProgram::SharedPtr   mpAllocateTileProgram[3];
-    ComputeVars::SharedPtr      mpAllocateTileVars[3];
-    ComputeState::SharedPtr     mpAllocateTileState[3];
+#define GATHER_PROCESSING_SHADER_COUNT 4
+    ComputeProgram::SharedPtr   mpAllocateTileProgram[GATHER_PROCESSING_SHADER_COUNT];
+    ComputeVars::SharedPtr      mpAllocateTileVars[GATHER_PROCESSING_SHADER_COUNT];
+    ComputeState::SharedPtr     mpAllocateTileState[GATHER_PROCESSING_SHADER_COUNT];
     ComputeProgram::SharedPtr   mpPhotonGatherProgram;
     ComputeVars::SharedPtr      mpPhotonGatherVars;
     ComputeState::SharedPtr     mpPhotonGatherState;

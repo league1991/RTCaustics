@@ -539,8 +539,8 @@ void Caustics::loadShader()
     mpSmoothVars = ComputeVars::create(mpSmoothProgram.get());
 
     // allocate tile
-    const char* shaderEntries[] = { "CountTilePhoton","AllocateMemory","StoreTilePhoton" };
-    for (int i = 0; i < 3; i++)
+    const char* shaderEntries[] = { "OrthogonalizePhoton", "CountTilePhoton","AllocateMemory","StoreTilePhoton" };
+    for (int i = 0; i < GATHER_PROCESSING_SHADER_COUNT; i++)
     {
         mpAllocateTileProgram[i] = ComputeProgram::createFromFile("AllocateTilePhoton.cs.hlsl", shaderEntries[i]);
         mpAllocateTileState[i] = ComputeState::create();
@@ -932,13 +932,14 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         }
         int blockSize = 32;
         uvec3 dispatchDim[] = {
+            uvec3((dimX + blockSize - 1) / blockSize,   (dimY + blockSize - 1) / blockSize, 1),
             uvec3((dimX + blockSize-1) / blockSize,   (dimY + blockSize-1) / blockSize, 1),
             uvec3((tileDim.x + mTileSize-1) / mTileSize,(tileDim.y + mTileSize-1) / mTileSize,1),
             uvec3((dimX + blockSize-1) / blockSize,   (dimY + blockSize-1) / blockSize, 1)
         };
         // build tile data
         int2 screenSize(mpRtOut->getWidth() / mCausticsMapResRatio, mpRtOut->getHeight() / mCausticsMapResRatio);
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < GATHER_PROCESSING_SHADER_COUNT; i++)
         {
             auto vars = mpAllocateTileVars[i];
             auto states = mpAllocateTileState[i];
