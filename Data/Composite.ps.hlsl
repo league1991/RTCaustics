@@ -204,7 +204,7 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
         sd.specular = specularVal.xyz;
         sd.diffuse = diffuseVal.rgb;
         sd.opacity = specularVal.a;
-
+        color = float4(0,0,0,1);
         for (uint l = 0; l < gNumLights; l++)
         {
             ShadingResult sr = evalMaterial(sd, gLightData[l], 1);

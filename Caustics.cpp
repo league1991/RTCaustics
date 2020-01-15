@@ -678,7 +678,7 @@ void Caustics::setPhotonTracingCommonVariable(Caustics::PhotonTraceShader& shade
     pCB["photonIDScale"] = mPhotonIDScale;
     pCB["traceColorThreshold"] = mTraceColorThreshold * (512 * 512) / (mDispatchSize * mDispatchSize);
     pCB["cullColorThreshold"] = mCullColorThreshold / 255;
-    pCB["gAreaType"] = mAreaType;
+    pCB["gAreaType"] = (uint32_t)mAreaType;
     pCB["gIntensity"] = mIntensity / 1000;
     pCB["gSplatSize"] = mSplatSize;
     pCB["updatePhoton"] = (uint32_t)mUpdatePhoton;
@@ -746,7 +746,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         setPhotonTracingCommonVariable(photonTraceShader);
         GraphicsVars* pVars = photonTraceShader.mpPhotonTraceVars->getGlobalVars().get();
         ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
-        uvec3 resolution = mTraceType == TRACE_FIXED ? uvec3(mDispatchSize, mDispatchSize, 1) : uvec3(2048, 2048, 1);
+        uvec3 resolution = mTraceType == TRACE_FIXED ? uvec3(mDispatchSize, mDispatchSize, 1) : uvec3(2048, 4096, 1);
         mpRtRenderer->renderScene(pContext, photonTraceShader.mpPhotonTraceVars, photonTraceShader.mpPhotonTraceState, resolution, mpCamera.get());
     }
 

@@ -60,7 +60,13 @@ private:
     float mEmitSize = 30.0;
     float mIntensity = 0.4f;
     float mRoughThreshold = 0.1f;
-    uint32_t mAreaType = 0;
+    enum AreaType
+    {
+        AREA_AVG_SQUARE = 0,
+        AREA_AVG_LENGTH = 1,
+        AREA_MAX_SQUARE = 2,
+        AREA_EXACT = 3
+    } mAreaType = AREA_EXACT;
     float mIOROveride = 1.5f;
     int mColorPhoton = 0;
     int mPhotonIDScale = 50;
