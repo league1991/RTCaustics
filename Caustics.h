@@ -66,7 +66,7 @@ private:
         AREA_AVG_LENGTH = 1,
         AREA_MAX_SQUARE = 2,
         AREA_EXACT = 3
-    } mAreaType = AREA_EXACT;
+    } mAreaType = AREA_AVG_SQUARE;
     float mIOROveride = 1.5f;
     int mColorPhoton = 0;
     int mPhotonIDScale = 50;
@@ -111,7 +111,7 @@ private:
         DENSITY_ESTIMATION_SCATTER = 0,
         DENSITY_ESTIMATION_GATHER = 1,
         DENSITY_ESTIMATION_NONE = 2
-    } mScatterOrGather = DENSITY_ESTIMATION_SCATTER;
+    } mScatterOrGather = DENSITY_ESTIMATION_GATHER;
     float mSplatSize = 2.8f;
     float mKernelPower = 1.f;
     int mPhotonDisplayMode = 0;
@@ -128,6 +128,7 @@ private:
     int mTileSize = 16;
     bool mShowTileCount = false;
     float mDepthRadius = 0.1f;
+    float mMinGatherColor = 0.001f;
 
     // Temporal Filter
     bool mTemporalFilter = false;

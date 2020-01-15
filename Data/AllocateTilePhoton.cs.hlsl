@@ -37,6 +37,7 @@ shared cbuffer PerFrameCB
     int2 tileDim;
     int2 blockCount;
     float gSplatSize;
+    float minColor;
 };
 
 #define PHOTON_COUNT_BLOCK_SIZE 32
@@ -107,7 +108,7 @@ void GetPhotonScreenRange(Photon photon, out int2 minTileID, out int2 maxTileID)
 
 bool checkPhoton(Photon p)
 {
-    return dot(p.color, float3(1, 1, 1)) > 0.01;
+    return dot(p.color, float3(1, 1, 1)) > minColor;
 }
 
 int threadIDToPhotonID(uint3 threadIdx)

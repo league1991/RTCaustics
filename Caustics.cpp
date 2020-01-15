@@ -203,7 +203,7 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addFloatVar("Splat size", mSplatSize, 0, 100, 0.01f);
         pGui->addFloatVar("Kernel Power", mKernelPower, 0.01f, 10.f, 0.01f);
 
-        if(pGui->beginGroup("Scatter Parameters", true))
+        if(pGui->beginGroup("Scatter Parameters", false))
         {
             pGui->addFloatVar("Z Tolerance", mZTolerance, 0.001f, 1, 0.001f);
             pGui->addFloatVar("Scatter Normal Threshold", mScatterNormalThreshold, 0.01f, 1.0, 0.01f);
@@ -238,6 +238,7 @@ void Caustics::onGuiRender(Gui* pGui)
         if(pGui->beginGroup("Gather Parameters", false))
         {
             pGui->addFloatVar("Gather Depth Radius", mDepthRadius, 0, 10, 0.01f);
+            pGui->addFloatVar("Gather Min Color", mMinGatherColor, 0, 2, 0.001f);
             pGui->addCheckBox("Gather Show Tile Count", mShowTileCount);
             pGui->addIntVar("Gather Tile Count Scale", mTileCountScale, 0, 1000);
             pGui->endGroup();
@@ -796,36 +797,35 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             int2 groupSize(32, 16);
             pContext->dispatch(mpAnalyseState.get(), mpAnalyseVars.get(), uvec3(mDispatchSize / groupSize.x, mDispatchSize / groupSize.y, 1));
         }
-    }
-
-    //if(mTraceType == TRACE_ADAPTIVE_RAY_MIP_MAP && mUpdatePhoton)
-    {
-        int startMipLevel = int(log(mDispatchSize) / log(2)) - 1;
+        else if (mTraceType == TRACE_ADAPTIVE_RAY_MIP_MAP)
         {
-            ConstantBuffer::SharedPtr pPerFrameCB = mpGenerateRayCountVars["PerFrameCB"];
-            pPerFrameCB["taskDim"] = int2(mDispatchSize, mDispatchSize);
-            pPerFrameCB["screenDim"] = int2(mpRtOut->getWidth(), mpRtOut->getHeight());
-            pPerFrameCB["mipLevel"] = startMipLevel;
-            mpGenerateRayCountVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
-            mpGenerateRayCountVars->setTexture("gRayDensityTex", mpRayDensityTex);
-            mpGenerateRayCountVars->setStructuredBuffer("gRayCountQuadTree", mpRayCountQuadTree);
-            int2 groupSize(8, 8);
-            uvec3 blockCount(mDispatchSize / groupSize.x / 2, mDispatchSize / groupSize.y / 2, 1);
-            pContext->dispatch(mpGenerateRayCountState.get(), mpGenerateRayCountVars.get(), blockCount);
-        }
+            int startMipLevel = int(log(mDispatchSize) / log(2)) - 1;
+            {
+                ConstantBuffer::SharedPtr pPerFrameCB = mpGenerateRayCountVars["PerFrameCB"];
+                pPerFrameCB["taskDim"] = int2(mDispatchSize, mDispatchSize);
+                pPerFrameCB["screenDim"] = int2(mpRtOut->getWidth(), mpRtOut->getHeight());
+                pPerFrameCB["mipLevel"] = startMipLevel;
+                mpGenerateRayCountVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
+                mpGenerateRayCountVars->setTexture("gRayDensityTex", mpRayDensityTex);
+                mpGenerateRayCountVars->setStructuredBuffer("gRayCountQuadTree", mpRayCountQuadTree);
+                int2 groupSize(8, 8);
+                uvec3 blockCount(mDispatchSize / groupSize.x / 2, mDispatchSize / groupSize.y / 2, 1);
+                pContext->dispatch(mpGenerateRayCountState.get(), mpGenerateRayCountVars.get(), blockCount);
+            }
 
-        for (int mipLevel = startMipLevel-1, dispatchSize = mDispatchSize/4; mipLevel >= 0; mipLevel--, dispatchSize >>= 1)
-        {
-            ConstantBuffer::SharedPtr pPerFrameCB = mpGenerateRayCountMipVars["PerFrameCB"];
-            pPerFrameCB["taskDim"] = int2(mDispatchSize, mDispatchSize);
-            pPerFrameCB["screenDim"] = int2(mpRtOut->getWidth(), mpRtOut->getHeight());
-            pPerFrameCB["mipLevel"] = mipLevel;
-            mpGenerateRayCountMipVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
-            mpGenerateRayCountMipVars->setTexture("gRayDensityTex", mpRayDensityTex);
-            mpGenerateRayCountMipVars->setStructuredBuffer("gRayCountQuadTree", mpRayCountQuadTree);
-            int2 groupSize(8, 8);
-            uvec3 blockCount((dispatchSize + groupSize.x - 1) / groupSize.x, (dispatchSize + groupSize.y - 1) / groupSize.y, 1);
-            pContext->dispatch(mpGenerateRayCountMipState.get(), mpGenerateRayCountMipVars.get(), blockCount);
+            for (int mipLevel = startMipLevel - 1, dispatchSize = mDispatchSize / 4; mipLevel >= 0; mipLevel--, dispatchSize >>= 1)
+            {
+                ConstantBuffer::SharedPtr pPerFrameCB = mpGenerateRayCountMipVars["PerFrameCB"];
+                pPerFrameCB["taskDim"] = int2(mDispatchSize, mDispatchSize);
+                pPerFrameCB["screenDim"] = int2(mpRtOut->getWidth(), mpRtOut->getHeight());
+                pPerFrameCB["mipLevel"] = mipLevel;
+                mpGenerateRayCountMipVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
+                mpGenerateRayCountMipVars->setTexture("gRayDensityTex", mpRayDensityTex);
+                mpGenerateRayCountMipVars->setStructuredBuffer("gRayCountQuadTree", mpRayCountQuadTree);
+                int2 groupSize(8, 8);
+                uvec3 blockCount((dispatchSize + groupSize.x - 1) / groupSize.x, (dispatchSize + groupSize.y - 1) / groupSize.y, 1);
+                pContext->dispatch(mpGenerateRayCountMipState.get(), mpGenerateRayCountMipVars.get(), blockCount);
+            }
         }
     }
 
@@ -927,7 +927,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         else
         {
             int photonCount = MAX_PHOTON_COUNT;
-            int sqrtCount = int(sqrt(mMaxTaskCountPerPixel));
+            int sqrtCount = int(sqrt(photonCount));
             dimX = dimY = sqrtCount;
         }
         int blockSize = 32;
@@ -948,6 +948,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             pPerFrameCB["screenDim"] = screenSize;
             pPerFrameCB["tileDim"] = tileDim;
             pPerFrameCB["gSplatSize"] = mSplatSize;
+            pPerFrameCB["minColor"] = mMinGatherColor;
             pPerFrameCB["blockCount"] = int2(dispatchDim[i].x, dispatchDim[i].y);
             vars->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
             vars->setStructuredBuffer("gPhotonBuffer", photonBuffer);
@@ -1148,7 +1149,7 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
     int2 tileDim(
         (mpRtOut->getWidth() + mTileSize - 1) / mTileSize,
         (mpRtOut->getHeight() + mTileSize - 1) / mTileSize);
-    int avgTileIDCount = 8192;
+    int avgTileIDCount = 63356;
     mpTileIDInfoBuffer = StructuredBuffer::create(mpAllocateTileProgram[0].get(), std::string("gTileInfo"), tileDim.x * tileDim.y, ResourceBindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
     mpIDBuffer = Buffer::create(tileDim.x * tileDim.y * avgTileIDCount * sizeof(uint32_t), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, Buffer::CpuAccess::None);
     mpIDCounterBuffer = Buffer::create(sizeof(uint32_t), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, Buffer::CpuAccess::None);
