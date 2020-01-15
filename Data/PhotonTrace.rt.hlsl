@@ -37,7 +37,8 @@ RWStructuredBuffer<RayArgument> gRayArgument;
 RWStructuredBuffer<RayTask> gRayTask;
 RWStructuredBuffer<PixelInfo> gPixelInfo;
 
-StructuredBuffer<uint4> gRayCountQuadTree;
+//StructuredBuffer<uint4> gRayCountQuadTree;
+Texture2D<uint4> gRayCountQuadTree;
 Texture2D<float4> gRayDensityTex;
 
 Texture2D gUniformNoise;
@@ -517,7 +518,7 @@ bool getSamplePos(uint threadId, out uint2 pixelPos, out uint sampleIdx)
 {
     pixelPos = 0;
     sampleIdx = threadId;
-    uint4 value = gRayCountQuadTree[0];
+    uint4 value = gRayCountQuadTree.Load(int3(0,0,11-0));
     if (threadId >= value.w)
         return false;
     for (int mip = 1; mip <= gMipmap; mip++)
@@ -539,8 +540,9 @@ bool getSamplePos(uint threadId, out uint2 pixelPos, out uint sampleIdx)
             sampleIdx -= value.r;
         }
 
-        int nodeOffset = getTextureOffset(pixelPos, mip);
-        value = gRayCountQuadTree[nodeOffset];
+        //int nodeOffset = getTextureOffset(pixelPos, mip);
+        //value = gRayCountQuadTree[nodeOffset];
+        value = gRayCountQuadTree.Load(int3(pixelPos, 11-mip));
     }
     return true;
 }

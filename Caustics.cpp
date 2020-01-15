@@ -691,7 +691,8 @@ void Caustics::setPhotonTracingCommonVariable(Caustics::PhotonTraceShader& shade
     rayGenVars->setStructuredBuffer("gPixelInfo", mpPixelInfoBuffer);
     rayGenVars->setTexture("gUniformNoise", mpUniformNoise);
     rayGenVars->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
-    rayGenVars->setStructuredBuffer("gRayCountQuadTree", mpRayCountQuadTree);
+    //rayGenVars->setStructuredBuffer("gRayCountQuadTree", mpRayCountQuadTree);
+    rayGenVars->setTexture("gRayCountQuadTree", mpRayCountQuadTree);
     rayGenVars->setTexture("gRayDensityTex", mpRayDensityTex);
     auto hitVars = shader.mpPhotonTraceVars->getHitVars(0);
     for (auto& hitVar : hitVars)
@@ -808,7 +809,8 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             pPerFrameCB["mipLevel"] = startMipLevel;
             mpGenerateRayCountVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
             mpGenerateRayCountVars->setTexture("gRayDensityTex", mpRayDensityTex);
-            mpGenerateRayCountVars->setStructuredBuffer("gRayCountQuadTree", mpRayCountQuadTree);
+            //mpGenerateRayCountVars->setStructuredBuffer("gRayCountQuadTree", mpRayCountQuadTree);
+            mpGenerateRayCountVars->setUav(0,1,0,mpRayCountQuadTree->getUAV(11-startMipLevel));
             int2 groupSize(8, 8);
             uvec3 blockCount(mDispatchSize / groupSize.x / 2, mDispatchSize / groupSize.y / 2, 1);
             pContext->dispatch(mpGenerateRayCountState.get(), mpGenerateRayCountVars.get(), blockCount);
@@ -822,7 +824,9 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             pPerFrameCB["mipLevel"] = mipLevel;
             mpGenerateRayCountMipVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
             mpGenerateRayCountMipVars->setTexture("gRayDensityTex", mpRayDensityTex);
-            mpGenerateRayCountMipVars->setStructuredBuffer("gRayCountQuadTree", mpRayCountQuadTree);
+            //mpGenerateRayCountMipVars->setStructuredBuffer("gRayCountQuadTree", mpRayCountQuadTree);
+            mpGenerateRayCountMipVars->setSrv(0, 1, 0, mpRayCountQuadTree->getSRV(11-(mipLevel + 1), 1));
+            mpGenerateRayCountMipVars->setUav(0, 1, 0, mpRayCountQuadTree->getUAV(11-(mipLevel)));
             int2 groupSize(8, 8);
             uvec3 blockCount((dispatchSize + groupSize.x - 1) / groupSize.x, (dispatchSize + groupSize.y - 1) / groupSize.y, 1);
             pContext->dispatch(mpGenerateRayCountMipState.get(), mpGenerateRayCountMipVars.get(), blockCount);
@@ -1142,7 +1146,8 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
     mpPhotonBuffer2 = StructuredBuffer::create(photonTraceProgram->getHitProgram(0).get(), std::string("gPhotonBuffer"), MAX_PHOTON_COUNT, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpDrawArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gDrawArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg | Resource::BindFlags::ShaderResource);
     mpRayArgumentBuffer = StructuredBuffer::create(mpDrawArgumentProgram.get(), std::string("gRayArgument"), 1, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::IndirectArg);
-    mpRayCountQuadTree = StructuredBuffer::create(mpGenerateRayCountProgram.get(), std::string("gRayCountQuadTree"), MAX_CAUSTICS_MAP_SIZE * MAX_CAUSTICS_MAP_SIZE * 2, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
+    //mpRayCountQuadTree = StructuredBuffer::create(mpGenerateRayCountProgram.get(), std::string("gRayCountQuadTree"), MAX_CAUSTICS_MAP_SIZE * MAX_CAUSTICS_MAP_SIZE * 2, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
+    mpRayCountQuadTree = Texture::create2D(MAX_CAUSTICS_MAP_SIZE, MAX_CAUSTICS_MAP_SIZE, ResourceFormat::RGBA32Uint, 1, Resource::kMaxPossible, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
     mpRtOut = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
 
     int2 tileDim(

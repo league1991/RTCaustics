@@ -36,12 +36,14 @@ shared cbuffer PerFrameCB
 
 //RWStructuredBuffer<Photon> gPhotonBuffer;
 //RWStructuredBuffer<DrawArguments> gDrawArgument;
-RWStructuredBuffer<RayArgument> gRayArgument;
+RWStructuredBuffer<RayArgument> gRayArgument:register(u0);
 //RWStructuredBuffer<RayTask> gRayTask;
 //StructuredBuffer<PixelInfo> gPixelInfo;
 //Texture2D gDepthTex;
-Texture2D<float4> gRayDensityTex;
-RWStructuredBuffer<uint4> gRayCountQuadTree;
+Texture2D<float4> gRayDensityTex:register(t0);
+//RWStructuredBuffer<uint4> gRayCountQuadTree;
+Texture2D<uint4> gRayCountQuadTreeSrc:register(t1);
+RWTexture2D<uint4> gRayCountQuadTreeDst:register(u1);
 
 int getRayTaskID(uint2 pos)
 {
@@ -87,8 +89,9 @@ void generateMip0(uint3 groupID : SV_GroupID, uint groupIndex : SV_GroupIndex, u
     //int taskIdx = 0;
     //InterlockedAdd(gRayArgument[0].rayTaskCount, sampleCount, taskIdx);
 
-    int offset = getTextureOffset(threadIdx.xy, mipLevel);
-    gRayCountQuadTree[offset] = uint4(count00, count10, count01, count11);
+    //int offset = getTextureOffset(threadIdx.xy, mipLevel);
+    //gRayCountQuadTree[offset] = uint4(count00, count10, count01, count11);
+    gRayCountQuadTreeDst[threadIdx.xy] = uint4(count00, count10, count01, count11);
 }
 
 [numthreads(8, 8, 1)]
@@ -102,15 +105,16 @@ void generateMipLevel(uint3 threadIdx : SV_DispatchThreadID)
 
     int2 pixel00 = threadIdx.xy * 2;
     int nextMipLevel = mipLevel + 1;
-    uint4 count00 = gRayCountQuadTree[getTextureOffset(pixel00 + int2(0, 0), nextMipLevel)];
-    uint4 count10 = gRayCountQuadTree[getTextureOffset(pixel00 + int2(1, 0), nextMipLevel)];
-    uint4 count01 = gRayCountQuadTree[getTextureOffset(pixel00 + int2(0, 1), nextMipLevel)];
-    uint4 count11 = gRayCountQuadTree[getTextureOffset(pixel00 + int2(1, 1), nextMipLevel)];
+    uint4 count00 = gRayCountQuadTreeSrc[pixel00 + int2(0, 0)];
+    uint4 count10 = gRayCountQuadTreeSrc[pixel00 + int2(1, 0)];
+    uint4 count01 = gRayCountQuadTreeSrc[pixel00 + int2(0, 1)];
+    uint4 count11 = gRayCountQuadTreeSrc[pixel00 + int2(1, 1)];
 
     uint4 value;
     value.x = count00.w;
     value.y = value.x + count10.w;
     value.z = value.y + count01.w;
     value.w = value.z + count11.w;
-    gRayCountQuadTree[getTextureOffset(threadIdx.xy, mipLevel)] = value;// value;
+    //gRayCountQuadTree[getTextureOffset(threadIdx.xy, mipLevel)] = value;// value;
+    gRayCountQuadTreeDst[threadIdx.xy] = value;
 }

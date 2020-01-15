@@ -226,7 +226,8 @@ private:
     ComputeProgram::SharedPtr mpGenerateRayCountProgram;
     ComputeVars::SharedPtr mpGenerateRayCountVars;
     ComputeState::SharedPtr mpGenerateRayCountState;
-    StructuredBuffer::SharedPtr mpRayCountQuadTree;
+    //StructuredBuffer::SharedPtr mpRayCountQuadTree;
+    Texture::SharedPtr mpRayCountQuadTree;
 
     // generate ray count mipmap
     ComputeProgram::SharedPtr mpGenerateRayCountMipProgram;
