@@ -59,10 +59,10 @@ void GetPhotonScreenRange(Photon photon, out int2 minTileID, out int2 maxTileID)
     // get screen position
     float3 corner0 = photon.dPdx + photon.dPdy;
     float3 corner1 = photon.dPdx - photon.dPdy;
-    float4 px0 = mul(float4(photon.posW + corner0 * gSplatSize, 1), gViewProjMat);
-    float4 px1 = mul(float4(photon.posW - corner0 * gSplatSize, 1), gViewProjMat);
-    float4 py0 = mul(float4(photon.posW + corner1 * gSplatSize, 1), gViewProjMat);
-    float4 py1 = mul(float4(photon.posW - corner1 * gSplatSize, 1), gViewProjMat);
+    float4 px0 = mul(float4(photon.posW + corner0, 1), gViewProjMat);
+    float4 px1 = mul(float4(photon.posW - corner0, 1), gViewProjMat);
+    float4 py0 = mul(float4(photon.posW + corner1, 1), gViewProjMat);
+    float4 py1 = mul(float4(photon.posW - corner1, 1), gViewProjMat);
     if ((px0.z < 0 || px0.z > px0.w) ||
         (px1.z < 0 || px1.z > px1.w) ||
         (py0.z < 0 || py0.z > py0.w) ||
@@ -157,6 +157,9 @@ void orthogonalizeFrame(float3 a, float3 b, out float3 orthoA, out float3 orthoB
     {
         orthoB *= -1;
     }
+
+    orthoA *= gSplatSize;
+    orthoB *= gSplatSize;
 }
 
 [numthreads(PHOTON_COUNT_BLOCK_SIZE, PHOTON_COUNT_BLOCK_SIZE, 1)]

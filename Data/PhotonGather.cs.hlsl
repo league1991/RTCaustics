@@ -65,29 +65,14 @@ int getTileOffset(int x, int y)
 
 float2 getLocalCoordinate(float3 a, float3 b, float3 P)
 {
-    //float xa = length(a);
-    //float xb = dot(a, b) / xa;
-    //float xc = dot(a, P) / xa;
-    //float3 y = b - a * (xb / xa);
-    //float yb = dot(y, b);
-    //float yc = dot(y, P);
-    //float cb = yc / yb;
-    //float ca = (xc - xb * cb) / xa;
-    //return float2(ca, cb);
-
     float ca = dot(a, P) / dot(a, a);
     float cb = dot(b, P) / dot(b, b);
     return float2(ca, cb);
 }
 
-float getLightFactor(float3 pos, float3 photonPos, float3 dPdx, float3 dPdy)//, float3 normal0)
+float getLightFactor(float3 pos, float3 photonPos, float3 dPdx, float3 dPdy, float3 normal)
 {
     float3 dPos = pos - photonPos;
-    //float dist = length(dPos) / (gSplatSize);
-    //return saturate(1 - dist);
-    dPdx *= gSplatSize;
-    dPdy *= gSplatSize;
-    float3 normal = normalize(cross(dPdx, dPdy));
     float z = dot(dPos, normal) / (gDepthRadius * gSplatSize);
     if (abs(z) > 1)
     {
@@ -100,9 +85,9 @@ float getLightFactor(float3 pos, float3 photonPos, float3 dPdx, float3 dPdy)//, 
     return pow(smoothKernel(sqrt(dist2)), gKernelPower);
 }
 
-#define PHOTON_CACHE_SIZE 64
+#define PHOTON_CACHE_SIZE 128
 groupshared Photon photonList[PHOTON_CACHE_SIZE];
-//groupshared float3 normalList[PHOTON_CACHE_SIZE];
+groupshared float3 normalList[PHOTON_CACHE_SIZE];
 groupshared int photonCount;
 groupshared int beginAddress;
 
@@ -132,22 +117,22 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID, ui
     }
     GroupMemoryBarrierWithGroupSync();
 
-    //if (gShowTileCount)
-    //{
-    //    float intensity = float(photonCount) / gTileCountScale;
-    //    float4 color;
-    //    if (intensity <= 1)
-    //    {
-    //        color = float4(intensity.xxx, 1);
-    //    }
-    //    else
-    //    {
-    //        color = float4(1, 0, 0, 1);
-    //    }
-    //    if (all(pixelLocation < screenDim))
-    //        gPhotonTex[pixelLocation] = color;
-    //    return;
-    //}
+    if (gShowTileCount)
+    {
+        float intensity = float(photonCount) / gTileCountScale;
+        float4 color;
+        if (intensity <= 1)
+        {
+            color = float4(intensity.xxx, 1);
+        }
+        else
+        {
+            color = float4(1, 0, 0, 1);
+        }
+        if (all(pixelLocation < screenDim))
+            gPhotonTex[pixelLocation] = color;
+        return;
+    }
 
     float3 totalLight = 0;
     int threadGroupOffset = pixelTileIndex.y * GATHER_TILE_SIZE + pixelTileIndex.x;
@@ -167,29 +152,17 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID, ui
             photonList[threadGroupOffset] = gPhotonBuffer[id];
             //photonList[threadGroupOffset].dPdx *= gSplatSize;
             //photonList[threadGroupOffset].dPdy *= gSplatSize;
-            //normalList[threadGroupOffset] = normalize(cross(photonList[threadGroupOffset].dPdx, photonList[threadGroupOffset].dPdy));
+            normalList[threadGroupOffset] = normalize(cross(photonList[threadGroupOffset].dPdx, photonList[threadGroupOffset].dPdy));
         }
         GroupMemoryBarrierWithGroupSync();
 
         for (int i = 0; i < min(PHOTON_CACHE_SIZE, photonCount - photonIdx); i++)
         {
             Photon p = photonList[i];
-            float lightFactor = getLightFactor(worldPnt.xyz, p.posW, p.dPdx, p.dPdy);// , normalList[i]);
+            float lightFactor = getLightFactor(worldPnt.xyz, p.posW, p.dPdx, p.dPdy , normalList[i]);
             totalLight += lightFactor * p.color;
         }
     }
-
-    //int tileOffset = getTileOffset(tileID.x, tileID.y);
-    //int beginAddress = gTileInfo[tileOffset].address;
-    //int count = gTileInfo[tileOffset].count;
-    //float3 totalLight = 0;
-    //for (int i = 0; i < count; i++)
-    //{
-    //    int id = gIDBuffer.Load((beginAddress + i) * 4);
-    //    Photon photon = gPhotonBuffer[id];
-    //    float lightFactor = getLightFactor(worldPnt.xyz, photon.posW, photon.dPdx, photon.dPdy);
-    //    totalLight += lightFactor * photon.color;
-    //}
 
     if (all(pixelLocation < screenDim))
         gPhotonTex[pixelLocation] = float4(totalLight, 1);
