@@ -59,10 +59,10 @@ void GetPhotonScreenRange(Photon photon, out int2 minTileID, out int2 maxTileID)
     // get screen position
     float3 corner0 = photon.dPdx + photon.dPdy;
     float3 corner1 = photon.dPdx - photon.dPdy;
-    float4 px0 = mul(float4(photon.posW + corner0, 1), gViewProjMat);
-    float4 px1 = mul(float4(photon.posW - corner0, 1), gViewProjMat);
-    float4 py0 = mul(float4(photon.posW + corner1, 1), gViewProjMat);
-    float4 py1 = mul(float4(photon.posW - corner1, 1), gViewProjMat);
+    float4 px0 = mul(float4(photon.posW + corner0 * gSplatSize, 1), gViewProjMat);
+    float4 px1 = mul(float4(photon.posW - corner0 * gSplatSize, 1), gViewProjMat);
+    float4 py0 = mul(float4(photon.posW + corner1 * gSplatSize, 1), gViewProjMat);
+    float4 py1 = mul(float4(photon.posW - corner1 * gSplatSize, 1), gViewProjMat);
     if ((px0.z < 0 || px0.z > px0.w) ||
         (px1.z < 0 || px1.z > px1.w) ||
         (py0.z < 0 || py0.z > py0.w) ||
@@ -124,18 +124,26 @@ void orthogonalizeFrame(float3 a, float3 b, out float3 orthoA, out float3 orthoB
     float a12 = dot(a, b);
     float a22 = dot(b, b);
 
-    float sum = a11 + a22;
-    float diff = a11 - a22;
-    float delta = sqrt(diff * diff + 4 * a12 * a12);
+    if (abs(a12) > 1e-4)
+    {
+        float sum = a11 + a22;
+        float diff = a11 - a22;
+        float delta = sqrt(diff * diff + 4 * a12 * a12);
 
-    float lambda1 = (sum + delta) * 0.5;
-    float lambda2 = (sum - delta) * 0.5;
+        float lambda1 = (sum + delta) * 0.5;
+        float lambda2 = (sum - delta) * 0.5;
 
-    float2 p1 = normalize(float2(a12, lambda1 - a11));
-    float2 p2 = normalize(float2(a12, lambda2 - a11));
+        float2 p1 = normalize(float2(a12, lambda1 - a11));
+        float2 p2 = normalize(float2(a12, lambda2 - a11));
 
-    orthoA = a * p1.x + b * p1.y;
-    orthoB = a * p2.x + b * p2.y;
+        orthoA = a * p1.x + b * p1.y;
+        orthoB = a * p2.x + b * p2.y;
+    }
+    else
+    {
+        orthoA = a;
+        orthoB = b;
+    }
 
     float3 normal = cross(a, b);
     if (length(orthoB) > length(orthoA))
@@ -149,8 +157,6 @@ void orthogonalizeFrame(float3 a, float3 b, out float3 orthoA, out float3 orthoB
     {
         orthoB *= -1;
     }
-    orthoA *= gSplatSize;
-    orthoB *= gSplatSize;
 }
 
 [numthreads(PHOTON_COUNT_BLOCK_SIZE, PHOTON_COUNT_BLOCK_SIZE, 1)]

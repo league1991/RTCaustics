@@ -933,9 +933,9 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         int blockSize = 32;
         uvec3 dispatchDim[] = {
             uvec3((dimX + blockSize - 1) / blockSize,   (dimY + blockSize - 1) / blockSize, 1),
-            uvec3((dimX + blockSize-1) / blockSize,   (dimY + blockSize-1) / blockSize, 1),
-            uvec3((tileDim.x + mTileSize-1) / mTileSize,(tileDim.y + mTileSize-1) / mTileSize,1),
-            uvec3((dimX + blockSize-1) / blockSize,   (dimY + blockSize-1) / blockSize, 1)
+            uvec3((dimX + blockSize - 1) / blockSize,   (dimY + blockSize - 1) / blockSize, 1),
+            uvec3((tileDim.x + mTileSize - 1) / mTileSize,(tileDim.y + mTileSize - 1) / mTileSize,1),
+            uvec3((dimX + blockSize - 1) / blockSize,   (dimY + blockSize - 1) / blockSize, 1)
         };
         // build tile data
         int2 screenSize(mpRtOut->getWidth() / mCausticsMapResRatio, mpRtOut->getHeight() / mCausticsMapResRatio);
