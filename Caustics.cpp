@@ -455,8 +455,8 @@ void Caustics::createGBuffer(int width, int height, GBuffer& gbuffer)
 int2 Caustics::getTileDim() const
 {
     int2 tileDim;
-    tileDim.x = (mpRtOut->getWidth() / mCausticsMapResRatio + mTileSize - 1) / mTileSize;
-    tileDim.y = (mpRtOut->getHeight() / mCausticsMapResRatio + mTileSize - 1) / mTileSize;
+    tileDim.x = (mpRtOut->getWidth() / mCausticsMapResRatio + mTileSize.x - 1) / mTileSize.x;
+    tileDim.y = (mpRtOut->getHeight() / mCausticsMapResRatio + mTileSize.y - 1) / mTileSize.y;
     return tileDim;
 }
 
@@ -934,7 +934,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         uvec3 dispatchDim[] = {
             uvec3((dimX + blockSize - 1) / blockSize,   (dimY + blockSize - 1) / blockSize, 1),
             uvec3((dimX + blockSize - 1) / blockSize,   (dimY + blockSize - 1) / blockSize, 1),
-            uvec3((tileDim.x + mTileSize - 1) / mTileSize,(tileDim.y + mTileSize - 1) / mTileSize,1),
+            uvec3((tileDim.x + mTileSize.x - 1) / mTileSize.x,(tileDim.y + mTileSize.y - 1) / mTileSize.y,1),
             uvec3((dimX + blockSize - 1) / blockSize,   (dimY + blockSize - 1) / blockSize, 1)
         };
         // build tile data
@@ -976,10 +976,9 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         mpPhotonGatherVars->setTexture("gDepthTex", gBuffer->mpGPassFbo->getDepthStencilTexture());
         mpPhotonGatherVars->setTexture("gNormalTex", gBuffer->mpGPassFbo->getColorTexture(0));
         mpPhotonGatherVars->setTexture("gPhotonTex", causticsFbo->getColorTexture(0));
-        int2 blockDim(mTileSize, mTileSize);
         uvec3 dispatchSize(
-            (screenSize.x + blockDim.x - 1) / blockDim.x,
-            (screenSize.y + blockDim.y - 1) / blockDim.y, 1);
+            (screenSize.x + mTileSize.x - 1) / mTileSize.x,
+            (screenSize.y + mTileSize.y - 1) / mTileSize.y, 1);
         pContext->dispatch(mpPhotonGatherState.get(), mpPhotonGatherVars.get(), dispatchSize);
     }
 
@@ -1149,8 +1148,8 @@ void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
     mpRtOut = Texture::create2D(width, height, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::UnorderedAccess | Resource::BindFlags::ShaderResource);
 
     int2 tileDim(
-        (mpRtOut->getWidth() + mTileSize - 1) / mTileSize,
-        (mpRtOut->getHeight() + mTileSize - 1) / mTileSize);
+        (mpRtOut->getWidth()  + mTileSize.x - 1) / mTileSize.x,
+        (mpRtOut->getHeight() + mTileSize.y - 1) / mTileSize.y);
     int avgTileIDCount = 63356;
     mpTileIDInfoBuffer = StructuredBuffer::create(mpAllocateTileProgram[0].get(), std::string("gTileInfo"), tileDim.x * tileDim.y, ResourceBindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
     mpIDBuffer = Buffer::create(tileDim.x * tileDim.y * avgTileIDCount * sizeof(uint32_t), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, Buffer::CpuAccess::None);

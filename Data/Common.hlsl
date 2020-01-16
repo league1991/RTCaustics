@@ -1,5 +1,6 @@
 
-#define GATHER_TILE_SIZE 16
+#define GATHER_TILE_SIZE_X 32
+#define GATHER_TILE_SIZE_Y 32
 
 struct Photon
 {

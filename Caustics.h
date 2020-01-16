@@ -125,7 +125,7 @@ private:
 
     // Photon Gather
     int mTileCountScale = 10;
-    int mTileSize = 16;
+    uint2 mTileSize = uint2(32,32);
     bool mShowTileCount = false;
     float mDepthRadius = 0.1f;
     float mMinGatherColor = 0.001f;

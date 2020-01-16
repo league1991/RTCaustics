@@ -58,6 +58,26 @@ Texture2D gDepthTex;
 Texture2D gNormalTex;
 RWTexture2D gPhotonTex;
 
+#define PHOTON_CACHE_SIZE 512
+#define vector3 half3
+struct PhotonData
+{
+    float3 posW;
+    //float3 normalW;
+    vector3 color;
+    vector3 dPdx;
+    vector3 dPdy;
+    //vector3 normal;
+};
+groupshared Photon photonList[PHOTON_CACHE_SIZE];
+groupshared float3 normalList[PHOTON_CACHE_SIZE];
+groupshared int photonCount;
+groupshared int beginAddress;
+
+#define NUM_GROUP_PER_TILE 2
+#define BLOCK_SIZE_X GATHER_TILE_SIZE_X
+#define BLOCK_SIZE_Y (GATHER_TILE_SIZE_Y/NUM_GROUP_PER_TILE)
+
 int getTileOffset(int x, int y)
 {
     return tileDim.x * y + x;
@@ -71,22 +91,12 @@ float getLightFactor(float3 pos, float3 photonPos, float3 dPdx, float3 dPdy, flo
     return pow(saturate(smoothKernel(r)), gKernelPower);
 }
 
-#define PHOTON_CACHE_SIZE 64
-groupshared Photon photonList[PHOTON_CACHE_SIZE];
-groupshared float3 normalList[PHOTON_CACHE_SIZE];
-groupshared int photonCount;
-groupshared int beginAddress;
-
-#define NUM_GROUP_PER_TILE 2
-#define BLOCK_SIZE_X GATHER_TILE_SIZE
-#define BLOCK_SIZE_Y (GATHER_TILE_SIZE/NUM_GROUP_PER_TILE)
-
 [numthreads(BLOCK_SIZE_X, BLOCK_SIZE_Y, 1)]
 void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID, uint3 threadIdx : SV_DispatchThreadID)
 {
     uint2 tileID = groupID.xy;
     uint2 pixelTileIndex = groupThreadID.xy;// threadIdx.xy - tileID * GATHER_TILE_SIZE;
-    uint2 pixelLocation0 = tileID * GATHER_TILE_SIZE + pixelTileIndex;
+    uint2 pixelLocation0 = tileID * uint2(GATHER_TILE_SIZE_X, GATHER_TILE_SIZE_Y) + pixelTileIndex;
 
     float3 worldPnt[NUM_GROUP_PER_TILE];
     [unroll]

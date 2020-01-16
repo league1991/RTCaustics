@@ -100,8 +100,8 @@ void GetPhotonScreenRange(Photon photon, out int2 minTileID, out int2 maxTileID)
         maxTileID = -1;
         return;
     }
-    minTileID = minCoord.xy * screenDim / GATHER_TILE_SIZE;
-    maxTileID = maxCoord.xy * screenDim / GATHER_TILE_SIZE;
+    minTileID = minCoord.xy * screenDim / uint2(GATHER_TILE_SIZE_X, GATHER_TILE_SIZE_Y);
+    maxTileID = maxCoord.xy * screenDim / uint2(GATHER_TILE_SIZE_X, GATHER_TILE_SIZE_Y);
 
     minTileID = clamp(minTileID, 0, tileDim - 1);
     maxTileID = clamp(maxTileID, 0, tileDim - 1);
@@ -211,7 +211,7 @@ void CountTilePhoton(uint3 threadIdx : SV_DispatchThreadID)
     }
 }
 
-[numthreads(GATHER_TILE_SIZE, GATHER_TILE_SIZE, 1)]
+[numthreads(GATHER_TILE_SIZE_X, GATHER_TILE_SIZE_Y, 1)]
 void AllocateMemory(uint3 threadIdx : SV_DispatchThreadID)
 {
     int2 tileID = threadIdx.xy;
