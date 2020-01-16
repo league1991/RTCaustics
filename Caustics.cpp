@@ -976,9 +976,10 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         mpPhotonGatherVars->setTexture("gDepthTex", gBuffer->mpGPassFbo->getDepthStencilTexture());
         mpPhotonGatherVars->setTexture("gNormalTex", gBuffer->mpGPassFbo->getColorTexture(0));
         mpPhotonGatherVars->setTexture("gPhotonTex", causticsFbo->getColorTexture(0));
+        int2 blockDim(mTileSize, mTileSize);
         uvec3 dispatchSize(
-            (screenSize.x + mTileSize - 1) / mTileSize,
-            (screenSize.y + mTileSize - 1) / mTileSize, 1);
+            (screenSize.x + blockDim.x - 1) / blockDim.x,
+            (screenSize.y + blockDim.y - 1) / blockDim.y, 1);
         pContext->dispatch(mpPhotonGatherState.get(), mpPhotonGatherVars.get(), dispatchSize);
     }
 

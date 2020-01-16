@@ -63,51 +63,43 @@ int getTileOffset(int x, int y)
     return tileDim.x * y + x;
 }
 
-float2 getLocalCoordinate(float3 a, float3 b, float3 P)
-{
-    float ca = dot(a, P) / dot(a, a);
-    float cb = dot(b, P) / dot(b, b);
-    return float2(ca, cb);
-}
-
 float getLightFactor(float3 pos, float3 photonPos, float3 dPdx, float3 dPdy, float3 normal)
 {
     float3 dPos = pos - photonPos;
-    float z = dot(dPos, normal) / (gDepthRadius * gSplatSize);
-    if (abs(z) > 1)
-    {
-        return 0;
-    }
-    dPos -= dot(dPos, normal) * normal;
-    float2 localCoord = getLocalCoordinate(dPdx, dPdy, dPos);
-    float r2 = dot(localCoord, localCoord);
-    float dist2 = r2 + z * z;
-    return pow(smoothKernel(sqrt(dist2)), gKernelPower);
+    float3 localCoord = float3(dot(dPdx, dPos), dot(dPdy, dPos), dot(normal, dPos));
+    float r = length(localCoord);
+    return pow(saturate(smoothKernel(r)), gKernelPower);
 }
 
-#define PHOTON_CACHE_SIZE 128
+#define PHOTON_CACHE_SIZE 64
 groupshared Photon photonList[PHOTON_CACHE_SIZE];
 groupshared float3 normalList[PHOTON_CACHE_SIZE];
 groupshared int photonCount;
 groupshared int beginAddress;
 
-[numthreads(GATHER_TILE_SIZE, GATHER_TILE_SIZE, 1)]
+#define NUM_GROUP_PER_TILE 2
+#define BLOCK_SIZE_X GATHER_TILE_SIZE
+#define BLOCK_SIZE_Y (GATHER_TILE_SIZE/NUM_GROUP_PER_TILE)
+
+[numthreads(BLOCK_SIZE_X, BLOCK_SIZE_Y, 1)]
 void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID, uint3 threadIdx : SV_DispatchThreadID)
 {
     uint2 tileID = groupID.xy;
-    uint2 pixelTileIndex = groupThreadID.xy;
-    uint2 pixelLocation = tileID * GATHER_TILE_SIZE + pixelTileIndex;
+    uint2 pixelTileIndex = groupThreadID.xy;// threadIdx.xy - tileID * GATHER_TILE_SIZE;
+    uint2 pixelLocation0 = tileID * GATHER_TILE_SIZE + pixelTileIndex;
 
-    if (any(pixelLocation >= screenDim))
+    float3 worldPnt[NUM_GROUP_PER_TILE];
+    [unroll]
+    for (int i = 0; i < NUM_GROUP_PER_TILE; i++)
     {
-        //return;
+        uint2 pixelLocation = pixelLocation0 + uint2(0, i * BLOCK_SIZE_Y);
+        float depth = gDepthTex.Load(int3(pixelLocation * causticsMapResRatio, 0)).r;
+        //float3 normal = gNormalTex.Load(int3(pixelLocation* causticsMapResRatio,0)).rgb;
+        float2 uv = pixelLocation / float2(screenDim);
+        float4 ndc = float4(uv * float2(2, -2) + float2(-1, 1), depth, 1);
+        float4 worldPnt0 = mul(ndc, gInvViewProjMat);
+        worldPnt[i] = worldPnt0.xyz / worldPnt0.w;
     }
-    float depth = gDepthTex.Load(int3(pixelLocation* causticsMapResRatio,0)).r;
-    //float3 normal = gNormalTex.Load(int3(pixelLocation* causticsMapResRatio,0)).rgb;
-    float2 uv = pixelLocation / float2(screenDim);
-    float4 ndc = float4(uv * float2(2, -2) + float2(-1, 1), depth, 1);
-    float4 worldPnt = mul(ndc,gInvViewProjMat);
-    worldPnt /= worldPnt.w;
 
     if (all(groupThreadID == uint3(0,0,0)))
     {
@@ -129,41 +121,54 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID, ui
         {
             color = float4(1, 0, 0, 1);
         }
-        if (all(pixelLocation < screenDim))
-            gPhotonTex[pixelLocation] = color;
+        [unroll]
+        for (int i = 0; i < NUM_GROUP_PER_TILE; i++)
+        {
+            uint2 pixelLocation = pixelLocation0 + uint2(0, i * BLOCK_SIZE_Y);
+            if (all(pixelLocation < screenDim))
+                gPhotonTex[pixelLocation] = color;
+        }
         return;
     }
 
-    float3 totalLight = 0;
-    int threadGroupOffset = pixelTileIndex.y * GATHER_TILE_SIZE + pixelTileIndex.x;
+    float3 totalLight[NUM_GROUP_PER_TILE];
+    [unroll]
+    for (int i = 0; i < NUM_GROUP_PER_TILE; i++)
+        totalLight[i] = 0;
+
+    int threadGroupOffset = pixelTileIndex.y * BLOCK_SIZE_X + pixelTileIndex.x;
     for (int photonIdx = 0; photonIdx < photonCount; photonIdx+= PHOTON_CACHE_SIZE)
     {
         int idOffset = photonIdx + threadGroupOffset;
         if (threadGroupOffset < PHOTON_CACHE_SIZE && idOffset < photonCount)
         {
             int id = gIDBuffer.Load((beginAddress + idOffset) * 4);
-            //Photon p = gPhotonBuffer[id];
-            //PhotonData pd;
-            //pd.posW = p.posW;
-            //pd.color = p.color;
-            //pd.dPdx = p.dPdx * gSplatSize;
-            //pd.dPdy = p.dPdy * gSplatSize;
-            //pd.normalW = normalize(cross(p.dPdx, p.dPdy));
-            photonList[threadGroupOffset] = gPhotonBuffer[id];
-            //photonList[threadGroupOffset].dPdx *= gSplatSize;
-            //photonList[threadGroupOffset].dPdy *= gSplatSize;
-            normalList[threadGroupOffset] = normalize(cross(photonList[threadGroupOffset].dPdx, photonList[threadGroupOffset].dPdy));
+            Photon p = gPhotonBuffer[id];
+            p.dPdx /= dot(p.dPdx, p.dPdx);
+            p.dPdy /= dot(p.dPdy, p.dPdy);
+            photonList[threadGroupOffset] = p;
+            normalList[threadGroupOffset] = normalize(cross(p.dPdx, p.dPdy)) / (gDepthRadius * gSplatSize);
         }
         GroupMemoryBarrierWithGroupSync();
 
         for (int i = 0; i < min(PHOTON_CACHE_SIZE, photonCount - photonIdx); i++)
         {
             Photon p = photonList[i];
-            float lightFactor = getLightFactor(worldPnt.xyz, p.posW, p.dPdx, p.dPdy , normalList[i]);
-            totalLight += lightFactor * p.color;
+            float3 normal = normalList[i];
+            for (int ithPixel = 0; ithPixel < NUM_GROUP_PER_TILE; ithPixel++)
+            {
+                float lightFactor = getLightFactor(worldPnt[ithPixel], p.posW, p.dPdx, p.dPdy, normal);
+                totalLight[ithPixel] += lightFactor * p.color;
+            }
         }
+        GroupMemoryBarrierWithGroupSync();
     }
 
-    if (all(pixelLocation < screenDim))
-        gPhotonTex[pixelLocation] = float4(totalLight, 1);
+    [unroll]
+    for (int i = 0; i < NUM_GROUP_PER_TILE; i++)
+    {
+        uint2 pixelLocation = pixelLocation0 + uint2(0, i * BLOCK_SIZE_Y);
+        if (all(pixelLocation < screenDim))
+            gPhotonTex[pixelLocation] = float4(totalLight[i], 1);
+    }
 }
