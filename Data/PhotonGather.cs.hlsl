@@ -58,17 +58,8 @@ Texture2D gDepthTex;
 Texture2D gNormalTex;
 RWTexture2D gPhotonTex;
 
-#define PHOTON_CACHE_SIZE 512
-#define vector3 half3
-struct PhotonData
-{
-    float3 posW;
-    //float3 normalW;
-    vector3 color;
-    vector3 dPdx;
-    vector3 dPdy;
-    //vector3 normal;
-};
+#define PHOTON_CACHE_SIZE 64
+
 groupshared Photon photonList[PHOTON_CACHE_SIZE];
 groupshared float3 normalList[PHOTON_CACHE_SIZE];
 groupshared int photonCount;
