@@ -435,7 +435,7 @@ float getArea(float3 dPdx, float3 dPdy)
 }
 
 
-void initFromLight(float2 lightUV, float pixelSize0, float intensity, out RayDesc ray, out PrimaryRayData hitData)
+void initFromLight(float2 lightUV, float pixelSize0, out RayDesc ray, out PrimaryRayData hitData)
 {
     lightUV = lightUV * 2 - 1;
     float2 pixelSize = pixelSize0 * emitSize / float2(coarseDim.xy);
@@ -456,7 +456,7 @@ void initFromLight(float2 lightUV, float pixelSize0, float intensity, out RayDes
         uint3 launchIndex = DispatchRaysIndex();
         color0.xyz = frac(launchIndex.xyz / float(photonIDScale)) * 0.8 + 0.2;
     }
-    hitData.color = color0 * pixelSize.x * pixelSize.y * 512 * 512 * 0.5 * gIntensity *intensity;
+    hitData.color = color0 * pixelSize.x * pixelSize.y * 512 * 512 * 0.5 * gIntensity;
     hitData.nextDir = ray.Direction;
     hitData.isContinue = 1;
 #ifdef RAY_DIFFERENTIAL
@@ -545,7 +545,7 @@ bool getSamplePos(uint threadId, out uint2 pixelPos, out uint sampleIdx)
     return true;
 }
 
-void getRaySample(uint2 pixel00, uint sampleIdx, inout float2 screenCoord, inout float pixelSize, inout float intensity)
+void getRaySample(uint2 pixel00, uint sampleIdx, inout float2 screenCoord, inout float pixelSize)
 {
     float v00 = gRayDensityTex.Load(int3(pixel00 + int2(0, 0), 0)).r;
     float v10 = gRayDensityTex.Load(int3(pixel00 + int2(1, 0), 0)).r;
@@ -556,7 +556,7 @@ void getRaySample(uint2 pixel00, uint sampleIdx, inout float2 screenCoord, inout
     int sampleDim = (int)ceil(sqrt(sampleCountF));
     int sampleCount = sampleDim * sampleDim;
     float sampleWeight = 1.0 / sqrt(float(sampleCount)) * sqrt(sampleCountF / sampleCount);
-    pixelSize = 1.0 / sqrt(float(sampleCount));
+    pixelSize = sqrt(sampleCountF / sampleCount);
     if (sampleCount == 1)
     {
         v00 = v10 = v01 = v11 = 1;
@@ -569,8 +569,7 @@ void getRaySample(uint2 pixel00, uint sampleIdx, inout float2 screenCoord, inout
     float2 uv = bilinearSample(v00, v10, v01, v11, float2(x, y));
 
     screenCoord = pixel00  +uv + 0.5;
-    pixelSize = pixelSize* sqrt(sampleCount / (bilinearIntepolation(v00, v10, v01, v11, uv)));
-    intensity = sampleCountF / sampleCount;
+    pixelSize = pixelSize* sqrt(1 / (bilinearIntepolation(v00, v10, v01, v11, uv)));
 }
 
 uint part1By1(uint x)
@@ -590,7 +589,7 @@ uint encodeMorton2(uint2 idx)
 
 #endif
 
-bool getTask(out float2 lightUV, out uint2 pixelCoord, out float pixelSize, out float intensity)
+bool getTask(out float2 lightUV, out uint2 pixelCoord, out float pixelSize)
 {
     uint3 launchIndex = DispatchRaysIndex();
     uint3 launchDimension = DispatchRaysDimensions();
@@ -605,7 +604,6 @@ bool getTask(out float2 lightUV, out uint2 pixelCoord, out float pixelSize, out 
         pixelCoord = task.screenCoord;
         lightUV = (task.screenCoord + randomOffset * task.pixelSize) / float2(coarseDim);
         pixelSize = task.pixelSize;
-        intensity = task.intensity;
     }
 #elif defined(TRACE_FIXED)
     {
@@ -613,7 +611,6 @@ bool getTask(out float2 lightUV, out uint2 pixelCoord, out float pixelSize, out 
         pixelCoord = launchIndex.xy;
         lightUV = float2(launchIndex.xy) / float2(coarseDim.xy);
         lightUV += randomOffset / float2(coarseDim.xy);
-        intensity = 1;
         if (any(launchIndex.xy >= coarseDim))
         {
             return false;
@@ -629,12 +626,11 @@ bool getTask(out float2 lightUV, out uint2 pixelCoord, out float pixelSize, out 
         uint sampleIdx;
         float2 screenCoord = 0;
         pixelSize = 1;
-        intensity = 1;
         pixelCoord = 0;
         //taskIdx = encodeMorton2(launchIndex.xy);
         if (!getSamplePos(taskIdx, pixelPosI, sampleIdx))
             return false;
-        getRaySample(pixelPosI, sampleIdx, screenCoord, pixelSize, intensity);
+        getRaySample(pixelPosI, sampleIdx, screenCoord, pixelSize);
         pixelCoord = screenCoord;
         lightUV = (screenCoord + randomOffset * pixelSize) / float2(coarseDim);
         //lightUV = pixelPosI / float2(coarseDim); //
@@ -661,14 +657,13 @@ void rayGen()
     float2 lightUV;
     uint2 pixelCoord;
     float pixelSize;
-    float intensity;
-    if (!getTask(lightUV, pixelCoord, pixelSize, intensity))
+    if (!getTask(lightUV, pixelCoord, pixelSize))
         return;
 
     // Init ray and hit data
     RayDesc ray;
     PrimaryRayData hitData;
-    initFromLight(lightUV, pixelSize, intensity, ray, hitData);
+    initFromLight(lightUV, pixelSize, ray, hitData);
 
     // Photon trace
     int depth;

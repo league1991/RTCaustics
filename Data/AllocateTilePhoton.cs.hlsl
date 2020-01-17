@@ -118,13 +118,13 @@ int threadIDToPhotonID(uint3 threadIdx)
 }
 
 
-void orthogonalizeFrame(float3 a, float3 b, out float3 orthoA, out float3 orthoB)
+bool orthogonalizeFrame(float3 a, float3 b, out float3 orthoA, out float3 orthoB)
 {
     float a11 = dot(a, a);
     float a12 = dot(a, b);
     float a22 = dot(b, b);
 
-    if (abs(a12) > 1e-4)
+    if (abs(a12) > 1e-5)
     {
         float sum = a11 + a22;
         float diff = a11 - a22;
@@ -146,7 +146,15 @@ void orthogonalizeFrame(float3 a, float3 b, out float3 orthoA, out float3 orthoB
     }
 
     float3 normal = cross(a, b);
-    if (length(orthoB) > length(orthoA))
+    float lengthA = length(orthoA);
+    float lengthB = length(orthoB);
+    float lengthRatio = lengthA / lengthB;
+    const float ratioThreshold = 1e3;
+    if (min(lengthA, lengthB) < 0.005 || lengthRatio < 1/ratioThreshold || lengthRatio > ratioThreshold)
+    {
+        return false;
+    }
+    if (lengthB > lengthA)
     {
         float3 v = orthoB;
         orthoB = orthoA;
@@ -160,6 +168,7 @@ void orthogonalizeFrame(float3 a, float3 b, out float3 orthoA, out float3 orthoB
 
     orthoA *= gSplatSize;
     orthoB *= gSplatSize;
+    return true;
 }
 
 [numthreads(PHOTON_COUNT_BLOCK_SIZE, PHOTON_COUNT_BLOCK_SIZE, 1)]
@@ -173,7 +182,10 @@ void OrthogonalizePhoton(uint3 threadIdx : SV_DispatchThreadID)
 
     Photon p = gPhotonBuffer[photonID];
     float3 dPdx, dPdy;
-    orthogonalizeFrame(p.dPdx, p.dPdy, dPdx, dPdy);
+    if (!orthogonalizeFrame(p.dPdx, p.dPdy, dPdx, dPdy))
+    {
+        p.color = 0;
+    }
     p.dPdx = dPdx;
     p.dPdy = dPdy;
     gPhotonBuffer[photonID] = p;
