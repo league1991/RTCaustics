@@ -83,7 +83,7 @@ void addPhotonTaskFromTexture(uint3 groupID : SV_GroupID, uint groupIndex : SV_G
     if (samplePlacement == 0)
     {
         int sampleCount = int(sampleCountF);
-        sampleCount = clamp(sampleCount, 1, 1024 * 8);
+        sampleCount = max(1, sampleCount);// clamp(sampleCount, 1, 1024 * 8);
 
         float pixelSize = 1.0;
 

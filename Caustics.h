@@ -79,7 +79,7 @@ private:
     float mNormalThreshold = 0.2f;
     float mDistanceThreshold = 10.0f;
     float mPlanarThreshold = 2.0f;
-    float mMinPhotonPixelSize = 8.0f;
+    float mMinPhotonPixelSize = 15.0f;
     float mSmoothWeight = 0.15f;
     float mMaxTaskCountPerPixel = 8192;
     float mUpdateSpeed = 0.2f;
@@ -133,7 +133,7 @@ private:
     // Temporal Filter
     bool mTemporalFilter = false;
     float mFilterWeight = 0.6f;
-    float mJitter = 0.3f;
+    float mJitter = 0.6f;
     float mTemporalNormalKernel = 0.7f;
     float mTemporalDepthKernel = 3.0f;
 
