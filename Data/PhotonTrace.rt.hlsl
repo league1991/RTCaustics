@@ -76,6 +76,21 @@ shared cbuffer PerFrameCB
     float gSmallPhotonColorScale;
 };
 
+struct Payload
+{
+    float3 color;
+    float hitT;
+    float3 nextDir;
+    uint isContinue;
+#ifdef RAY_DIFFERENTIAL
+    float3 dPdx, dPdy, dDdx, dDdy;  // ray differentials
+#elif defined(RAY_CONE)
+    float radius;
+    float dRadius;
+#elif defined(RAY_NONE)
+#endif
+};
+
 struct PrimaryRayData
 {
     float3 color;
@@ -91,13 +106,55 @@ struct PrimaryRayData
 #endif
 };
 
+uint float2ToUint(float a, float b)
+{
+    half ah = a;
+    half bh = b;
+}
+
+void unpackPayload(Payload p, out PrimaryRayData d)
+{
+    d.color = p.color;
+    d.hitT = p.hitT;
+    d.nextDir = p.nextDir;
+    d.isContinue = p.isContinue;
+#ifdef RAY_DIFFERENTIAL
+    d.dPdx = p.dPdx;
+    d.dPdy = p.dPdy;
+    d.dDdx = p.dDdx;
+    d.dDdy = p.dDdy;
+#elif defined(RAY_CONE)
+    d.radius = p.radius;
+    d.dRadius = p.dRadius;
+#elif defined(RAY_NONE)
+#endif
+}
+
+void packPayload(PrimaryRayData d, out Payload p)
+{
+    p.color = d.color;
+    p.hitT = d.hitT;
+    p.nextDir = d.nextDir;
+    p.isContinue = d.isContinue;
+#ifdef RAY_DIFFERENTIAL
+    p.dPdx = d.dPdx;
+    p.dPdy = d.dPdy;
+    p.dDdx = d.dDdx;
+    p.dDdy = d.dDdy;
+#elif defined(RAY_CONE)
+    p.radius = d.radius;
+    p.dRadius = d.dRadius;
+#elif defined(RAY_NONE)
+#endif
+}
+
 struct ShadowRayData
 {
     bool hit;
 };
 
 [shader("miss")]
-void primaryMiss(inout PrimaryRayData hitData)
+void primaryMiss(inout Payload hitData)
 {
     hitData.color = float3(0, 0, 0);
     hitData.isContinue = 0;
@@ -298,8 +355,10 @@ void updateRefractRayDifferential(
 }
 
 [shader("closesthit")]
-void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersectionAttributes attribs)
+void primaryClosestHit(inout Payload payload, in BuiltInTriangleIntersectionAttributes attribs)
 {
+    PrimaryRayData hitData;
+    unpackPayload(payload, hitData);
     // Get the hit-point data
     float3 rayOrigW = WorldRayOrigin();
     float3 rayDirW = WorldRayDirection(); 
@@ -413,6 +472,8 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         hitData.color.rgb = dot(-rayDirW, sd.N)* sd.diffuse* hitData.color.rgb;
         hitData.nextDir = sd.N;
     }
+
+    packPayload(hitData, payload);
 }
 
 float getArea(float3 dPdx, float3 dPdy)
@@ -694,7 +755,12 @@ void rayGen()
     for (depth = 0; depth < maxDepth && hitData.isContinue; depth++)
     {
         ray.Direction = hitData.nextDir;
-        TraceRay(gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, hitData);
+
+        Payload payload;
+        packPayload(hitData, payload);
+        TraceRay(gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, payload);
+        unpackPayload(payload, hitData);
+
         ray.Origin = ray.Origin + ray.Direction * hitData.hitT;
     }
 
