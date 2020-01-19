@@ -54,6 +54,9 @@
     <FxCompile Include="Data\GenerateRayCountMipmap.cs.hlsl">
       <Filter>Data</Filter>
     </FxCompile>
+    <FxCompile Include="Data\SpacialFilter.cs.hlsl">
+      <Filter>Data</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Caustics.h" />

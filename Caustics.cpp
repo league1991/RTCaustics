@@ -249,11 +249,21 @@ void Caustics::onGuiRender(Gui* pGui)
 
     if (pGui->beginGroup("Temporal Filter", true))
     {
-        pGui->addCheckBox("Enable Filter", mTemporalFilter);
+        pGui->addCheckBox("Enable Temporal Filter", mTemporalFilter);
         pGui->addFloatVar("Filter Weight", mFilterWeight, 0.0f, 1.0f, 0.001f);
         pGui->addFloatVar("Jitter", mJitter, 0, 2, 0.01f);
-        pGui->addFloatVar("Normal Filter Strength", mTemporalNormalKernel, 0.0001f, 10, 0.01f);
-        pGui->addFloatVar("Depth Filter Strength", mTemporalDepthKernel, 0.0001f, 10, 0.01f);
+        pGui->addFloatVar("Temporal Normal Strength", mTemporalNormalKernel, 0.0001f, 10, 0.01f);
+        pGui->addFloatVar("Temporal Depth Strength", mTemporalDepthKernel, 0.0001f, 10, 0.01f);
+        pGui->endGroup();
+    }
+
+    if (pGui->beginGroup("Spacial Filter", true))
+    {
+        pGui->addCheckBox("Enable Spatial Filter", mSpacialFilter);
+        pGui->addIntVar("A trous Pass", mSpacialPasses, 0, 10);
+        pGui->addFloatVar("Spacial Normal Strength", mSpacialNormalKernel, 0.0001f, 100, 0.01f);
+        pGui->addFloatVar("Spacial Depth Strength", mSpacialDepthKernel, 0.0001f, 100, 0.01f);
+        pGui->addFloatVar("Spacial Color Strength", mSpacialColorKernel, 0.0001f, 100, 0.01f);
         pGui->endGroup();
     }
 
@@ -583,11 +593,17 @@ void Caustics::loadShader()
         mpPhotonScatterVars = GraphicsVars::create(mpPhotonScatterProgram->getReflector());
     }
 
-    // smooth photon
+    // temporal filter
     mpFilterProgram = ComputeProgram::createFromFile("TemporalFilter.cs.hlsl", "main");
     mpFilterState = ComputeState::create();
     mpFilterState->setProgram(mpFilterProgram);
     mpFilterVars = ComputeVars::create(mpFilterProgram.get());
+
+    // spacial filter
+    mpSpacialFilterProgram = ComputeProgram::createFromFile("SpacialFilter.cs.hlsl", "main");
+    mpSpacialFilterState = ComputeState::create();
+    mpSpacialFilterState->setProgram(mpSpacialFilterProgram);
+    mpSpacialFilterVars = ComputeVars::create(mpSpacialFilterProgram.get());
 
     mpRtRenderer = RtSceneRenderer::create(mpScene);
 
@@ -1012,6 +1028,27 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         lastProj = thisProj;
     }
 
+    // Spacial filter
+    if (mSpacialFilter)
+    {
+        for (int i = 0; i < mSpacialPasses; i++)
+        {
+            int2 causticsDim(causticsFbo->getWidth(), causticsFbo->getHeight());
+            ConstantBuffer::SharedPtr pPerFrameCB = mpSpacialFilterVars["PerFrameCB"];
+            pPerFrameCB["causticsDim"] = causticsDim;
+            pPerFrameCB["gBufferDim"] = int2(mpRtOut->getWidth(), mpRtOut->getHeight());
+            pPerFrameCB["normalKernel"] = mSpacialNormalKernel;
+            pPerFrameCB["depthKernel"] = mSpacialDepthKernel;
+            pPerFrameCB["colorKernel"] = mSpacialColorKernel;
+            pPerFrameCB["passID"] = i;
+            mpSpacialFilterVars->setTexture("causticsTexThis", causticsFbo->getColorTexture(0));
+            mpSpacialFilterVars->setTexture("depthTexThis", gBuffer->mpDepthTex);
+            mpSpacialFilterVars->setTexture("normalTexThis", gBuffer->mpNormalTex);
+            static int groupSize = 16;
+            uvec3 dim((causticsDim.x + groupSize - 1) / groupSize, (causticsDim.y + groupSize - 1) / groupSize, 1);
+            pContext->dispatch(mpSpacialFilterState.get(), mpSpacialFilterVars.get(), dim);
+        }
+    }
 
     // Render output
     if(mDebugMode == ShowRayTracing ||

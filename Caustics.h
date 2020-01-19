@@ -143,10 +143,17 @@ private:
 
     // Temporal Filter
     bool mTemporalFilter = false;
-    float mFilterWeight = 0.6f;
+    float mFilterWeight = 0.8f;
     float mJitter = 0.6f;
     float mTemporalNormalKernel = 0.7f;
     float mTemporalDepthKernel = 3.0f;
+
+    // Spacial Filter
+    bool mSpacialFilter = true;
+    int mSpacialPasses = 1;
+    float mSpacialNormalKernel = 0.7f;
+    float mSpacialDepthKernel = 3.0f;
+    float mSpacialColorKernel = 0.1f;
 
     // Composite
     bool mRayTrace = true;
@@ -282,6 +289,11 @@ private:
     ComputeProgram::SharedPtr mpFilterProgram;
     ComputeVars::SharedPtr mpFilterVars;
     ComputeState::SharedPtr mpFilterState;
+
+    // spacial filter
+    ComputeProgram::SharedPtr mpSpacialFilterProgram;
+    ComputeVars::SharedPtr mpSpacialFilterVars;
+    ComputeState::SharedPtr mpSpacialFilterState;
 
     // raytrace
     RtProgram::SharedPtr mpRaytraceProgram;

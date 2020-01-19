@@ -394,7 +394,7 @@ void primaryClosestHit(inout PrimaryRayData hitData, in BuiltInTriangleIntersect
         float3 baseColor = lerp(1, sd.diffuse, sd.opacity);
         hitData.color = baseColor * hitData.color;// *float4(sd.specular, 1);
 
-        if (dot(hitData.color/ area, float3(0.299, 0.587, 0.114)) > traceColorThreshold)
+        if (getLuminance(hitData.color/ area) > traceColorThreshold)
         {
             hitData.isContinue = 1;
         }

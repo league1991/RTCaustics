@@ -122,3 +122,8 @@ int getMipSize(int mip)
 {
     return (1 << mip);
 }
+
+float getLuminance(float3 color)
+{
+    return dot(color, float3(0.299, 0.587, 0.114));
+}
