@@ -34,6 +34,7 @@ shared cbuffer PerFrameCB
     float normalKernel;
     float depthKernel;
     float colorKernel;
+    float screenKernel;
     int passID;
 };
 
@@ -78,7 +79,7 @@ void main(uint3 threadIdx : SV_DispatchThreadID)
         for (int j = 0; j < 5; j++)
         {
             float hj = hArray[j];
-            float h = 1;// sqrt(hi * hj);
+            float h = pow(hi * hj, screenKernel);
 
             uint2 offset = uint2(i - 2, j - 2);
             uint2 samplePos = gBufferPixelPos + offset * step;

@@ -456,7 +456,7 @@ void initFromLight(float2 lightUV, float pixelSize0, out RayDesc ray, out Primar
         uint3 launchIndex = DispatchRaysIndex();
         color0.xyz = frac(launchIndex.xyz / float(photonIDScale)) * 0.8 + 0.2;
     }
-    hitData.color = color0 * pixelSize.x * pixelSize.y * 512 * 512 * 0.5 * gIntensity;
+    hitData.color = color0 * pixelSize.x * pixelSize.y * 512 * 512 * 0.5 * gIntensity / (gSplatSize * gSplatSize);
     hitData.nextDir = ray.Direction;
     hitData.isContinue = 1;
 #ifdef RAY_DIFFERENTIAL

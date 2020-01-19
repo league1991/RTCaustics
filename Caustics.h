@@ -58,7 +58,7 @@ private:
     int mDispatchSize = 64;
     int mMaxTraceDepth = 10;
     float mEmitSize = 30.0;
-    float mIntensity = 0.4f;
+    float mIntensity = 2.0f;
     float mRoughThreshold = 0.1f;
     enum AreaType
     {
@@ -126,7 +126,8 @@ private:
         PHOTON_MODE_ISOTROPIC = 1,
         PHOTON_MODE_PHOTON_MESH = 2,
         PHOTON_MODE_SCREEN_DOT = 3,
-    } mPhotonMode = PHOTON_MODE_SCREEN_DOT;
+        PHOTON_MODE_SCREEN_DOT_WITH_COLOR = 4,
+    } mPhotonMode = PHOTON_MODE_SCREEN_DOT_WITH_COLOR;
     float mScatterNormalThreshold = 0.2f;
     float mScatterDistanceThreshold = 10.0f;
     float mScatterPlanarThreshold = 2.0f;
@@ -142,7 +143,7 @@ private:
     float mMinGatherColor = 0.001f;
 
     // Temporal Filter
-    bool mTemporalFilter = false;
+    bool mTemporalFilter = true;
     float mFilterWeight = 0.8f;
     float mJitter = 0.6f;
     float mTemporalNormalKernel = 0.7f;
@@ -153,7 +154,8 @@ private:
     int mSpacialPasses = 1;
     float mSpacialNormalKernel = 0.7f;
     float mSpacialDepthKernel = 3.0f;
-    float mSpacialColorKernel = 0.1f;
+    float mSpacialColorKernel = 0.5f;
+    float mSpacialScreenKernel = 1.0f;
 
     // Composite
     bool mRayTrace = true;

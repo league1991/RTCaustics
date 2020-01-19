@@ -78,6 +78,7 @@ cbuffer PerFrameCB : register(b0)
 #define IsotropicPhoton 1
 #define PhotonMesh 2
 #define ScreenDot 3
+#define ScreenDotWithColor 4
 
 #define SHOW_PHOTON_KERNEL 0
 #define SHOW_PHOTON_SOLID  1
@@ -291,17 +292,28 @@ PhotonVSOut photonScatterVS(PhotonVSIn vIn)
 
     float3 areaVector = cross(tangent, bitangent);
 
-    color = p.color;
     if (gPhotonMode == ScreenDot)
     {
         vOut.posH = mul(float4(p.posW, 1), gWvpMat);
         vOut.posH.xy += vIn.pos.xz * vOut.posH.w / screenDim.xy * gSplatSize;
         color = 1;
     }
+    else if (gPhotonMode == ScreenDotWithColor)
+    {
+        vOut.posH = mul(float4(p.posW, 1), gWvpMat);
+        vOut.posH.xy += vIn.pos.xz * vOut.posH.w / screenDim.xy * gSplatSize;
+        float3 viewDir = p.posW - gCameraPos;
+        float viewLength = length(viewDir);
+        viewDir /= viewLength;
+        float projArea = abs(dot(areaVector, viewDir)) / (viewLength * viewLength) * length(screenDim.xy);// *0.2;
+        color = p.color*8;// *projArea;// / (gSplatSize * gSplatSize);
+        //color = p.color * projArea;
+    }
     else
     {
         float3 localPoint = tangent * vIn.pos.x + bitangent * vIn.pos.z + normal * vIn.pos.y * gSplatSize*0.05;
         vOut.posH = mul(float4(localPoint + p.posW, 1), gWvpMat);
+        color = p.color;
     }
 
     if (gShowPhoton == SHOW_PHOTON_SHADED)
@@ -334,7 +346,7 @@ float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
     }
 
     float alpha;
-    if (gShowPhoton == SHOW_PHOTON_SOLID || gPhotonMode == PhotonMesh || gPhotonMode == ScreenDot)
+    if (gShowPhoton == SHOW_PHOTON_SOLID || gPhotonMode == PhotonMesh || gPhotonMode == ScreenDot || gPhotonMode == ScreenDotWithColor)
     {
         alpha = 1;
     }

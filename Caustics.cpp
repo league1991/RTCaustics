@@ -230,6 +230,7 @@ void Caustics::onGuiRender(Gui* pGui)
                 debugModeList.push_back({ 1, "Isotropic" });
                 debugModeList.push_back({ 2, "Photon Mesh" });
                 debugModeList.push_back({ 3, "Screen Dot" });
+                debugModeList.push_back({ 4, "Screen Dot With Color" });
                 pGui->addDropdown("Photon mode", debugModeList, (uint32_t&)mPhotonMode);
             }
             pGui->endGroup();
@@ -264,6 +265,7 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addFloatVar("Spacial Normal Strength", mSpacialNormalKernel, 0.0001f, 100, 0.01f);
         pGui->addFloatVar("Spacial Depth Strength", mSpacialDepthKernel, 0.0001f, 100, 0.01f);
         pGui->addFloatVar("Spacial Color Strength", mSpacialColorKernel, 0.0001f, 100, 0.01f);
+        pGui->addFloatVar("Spacial Screen Kernel", mSpacialScreenKernel, 0.0001f, 100, 0.01f);
         pGui->endGroup();
     }
 
@@ -1040,6 +1042,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             pPerFrameCB["normalKernel"] = mSpacialNormalKernel;
             pPerFrameCB["depthKernel"] = mSpacialDepthKernel;
             pPerFrameCB["colorKernel"] = mSpacialColorKernel;
+            pPerFrameCB["screenKernel"] = mSpacialScreenKernel;
             pPerFrameCB["passID"] = i;
             mpSpacialFilterVars->setTexture("causticsTexThis", causticsFbo->getColorTexture(0));
             mpSpacialFilterVars->setTexture("depthTexThis", gBuffer->mpDepthTex);
