@@ -111,11 +111,22 @@ private:
         DENSITY_ESTIMATION_SCATTER = 0,
         DENSITY_ESTIMATION_GATHER = 1,
         DENSITY_ESTIMATION_NONE = 2
-    } mScatterOrGather = DENSITY_ESTIMATION_GATHER;
+    } mScatterOrGather = DENSITY_ESTIMATION_SCATTER;
     float mSplatSize = 2.8f;
     float mKernelPower = 1.f;
-    int mPhotonDisplayMode = 0;
-    uint32_t mPhotonMode = 0;
+    enum PhotonDisplayMode
+    {
+        PHOTON_DISPLAY_MODE_KERNEL = 0,
+        PHOTON_DISPLAY_MODE_SOLID = 1,
+        PHOTON_DISPLAY_MODE_SHADED = 2,
+    } mPhotonDisplayMode = PHOTON_DISPLAY_MODE_KERNEL;
+    enum PhotonMode
+    {
+        PHOTON_MODE_ANISOTROPIC = 0,
+        PHOTON_MODE_ISOTROPIC = 1,
+        PHOTON_MODE_PHOTON_MESH = 2,
+        PHOTON_MODE_SCREEN_DOT = 3,
+    } mPhotonMode = PHOTON_MODE_SCREEN_DOT;
     float mScatterNormalThreshold = 0.2f;
     float mScatterDistanceThreshold = 10.0f;
     float mScatterPlanarThreshold = 2.0f;

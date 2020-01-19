@@ -49,6 +49,8 @@ Texture2D normalTexLast;
 Texture2D   causticsTexLast;
 RWTexture2D causticsTexThis;
 
+SamplerState gSampler;
+
 [numthreads(16, 16, 1)]
 void main(uint3 threadIdx : SV_DispatchThreadID)
 {
@@ -81,5 +83,7 @@ void main(uint3 threadIdx : SV_DispatchThreadID)
     float weight = blendWeight * exp(-1 * (normalDiff * normalDiff + depthDiff * depthDiff));
 
     //causticsTexThis[causticsPixelPos] = float4(normalLast, 1);
-    causticsTexThis[causticsPixelPos] = causticsTexThis[causticsPixelPos] * (1 - weight) + causticsTexLast[pixelPosLast] * weight;
+    causticsTexThis[causticsPixelPos] = causticsTexThis[causticsPixelPos] * (1 - weight) +
+        //causticsTexLast[pixelPosLast] * weight;
+        causticsTexLast.SampleLevel(gSampler, uvLast, 0) * weight;
 }

@@ -860,7 +860,6 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     // photon scattering
     if(mScatterOrGather == DENSITY_ESTIMATION_SCATTER)
     {
-        //pContext->clearFbo(mpCausticsFbo.get(), vec4(0, 0, 0, 0), 1.0, 0);
         pContext->clearRtv(causticsFbo->getColorTexture(0)->getRTV().get(), vec4(0, 0, 0, 0));
         glm::mat4 wvp = mpCamera->getProjMatrix() * mpCamera->getViewMatrix();
         glm::mat4 invP = glm::inverse(mpCamera->getProjMatrix());
@@ -870,7 +869,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pPerFrameCB["gInvProjMat"] = invP;
         pPerFrameCB["gEyePosW"] = mpCamera->getPosition();
         pPerFrameCB["gSplatSize"] = mSplatSize;
-        pPerFrameCB["gPhotonMode"] = mPhotonMode;
+        pPerFrameCB["gPhotonMode"] = (uint)mPhotonMode;
         pPerFrameCB["gKernelPower"] = mKernelPower;
         pPerFrameCB["gShowPhoton"] = uint32_t(mPhotonDisplayMode);
         pPerFrameCB["gLightDir"] = mLightDirection;
@@ -906,7 +905,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         else
             scatterState->setVao(mpSphere->getMesh(0)->getVao());
         scatterState->setFbo(causticsFbo);
-        if (mPhotonMode == 2)
+        if (mPhotonMode == PHOTON_MODE_PHOTON_MESH)
         {
             pContext->drawIndexedInstanced(scatterState.get(), mpPhotonScatterVars.get(), 6, mDispatchSize* mDispatchSize, 0, 0, 0);
         }
