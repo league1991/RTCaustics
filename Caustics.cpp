@@ -94,6 +94,7 @@ void Caustics::onGuiRender(Gui* pGui)
             debugModeList.push_back({ 12, "Photon Count" });
             debugModeList.push_back({ 13, "Photon Total Count" });
             debugModeList.push_back({ 14, "Ray count Mipmap" });
+            debugModeList.push_back({ 15, "Photon Density" });
             pGui->addDropdown("Composite mode", debugModeList, (uint32_t&)mDebugMode);
         }
         pGui->addFloatVar("Max Pixel Value", mMaxPixelArea, 0, 1000000000, 5.f);

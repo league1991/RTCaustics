@@ -59,6 +59,7 @@ StructuredBuffer<PixelInfo> gPixelInfo;
 #define ShowCount 12
 #define ShowTotalPhoton 13
 #define ShowRayCountMipTex 14
+#define ShowPhotonDensity 15
 
 cbuffer PerImageCB
 {
@@ -215,6 +216,13 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
         if (gDebugMode == ShowPhoton)
         {
             color.rgb = photonClr.rgb;// lerp(color.rgb, photonClr.rgb, photonClr.a);
+        }
+        else if (gDebugMode == ShowPhotonDensity)
+        {
+            if(photonClr.a <= gMaxPixelArea)
+                color.rgb = photonClr.aaa / gMaxPixelArea;
+            else
+                color = float4(1, 0, 1, 1);
         }
         else
         {

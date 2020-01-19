@@ -85,7 +85,7 @@ void main(uint3 threadIdx : SV_DispatchThreadID)
             uint2 samplePos = gBufferPixelPos + offset * step;
             float depth = depthTexThis[samplePos].r;
             float3 normal = normalTexThis[samplePos].rgb;
-            float4 color = causticsTexThis[causticsPixelPos + offset].rgba;
+            float4 color = causticsTexThis[causticsPixelPos + offset];
             float luminance = getLuminance(color.rgb);
             if (depth == 1)
             {
@@ -109,5 +109,5 @@ void main(uint3 threadIdx : SV_DispatchThreadID)
     {
         totalColor /= totalWeight;
     }
-    causticsTexThis[causticsPixelPos] = float4(totalColor.rgb,1);
+    causticsTexThis[causticsPixelPos] = totalColor;// float4(totalColor.rgb, 1);
 }

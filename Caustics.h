@@ -143,14 +143,14 @@ private:
     float mMinGatherColor = 0.001f;
 
     // Temporal Filter
-    bool mTemporalFilter = true;
+    bool mTemporalFilter = false;
     float mFilterWeight = 0.8f;
     float mJitter = 0.6f;
     float mTemporalNormalKernel = 0.7f;
     float mTemporalDepthKernel = 3.0f;
 
     // Spacial Filter
-    bool mSpacialFilter = true;
+    bool mSpacialFilter = false;
     int mSpacialPasses = 1;
     float mSpacialNormalKernel = 0.7f;
     float mSpacialDepthKernel = 3.0f;
@@ -176,6 +176,7 @@ private:
         ShowCount = 12,
         ShowTotalPhoton = 13,
         ShowRayCountMipmap = 14,
+        ShowPhotonDensity = 15,
     };
     Display mDebugMode = ShowRayTracing;
     float mMaxPixelArea = 100;
@@ -185,7 +186,7 @@ private:
     float mUVKernel = 0.7f;
     float mZKernel = 4.5f;
     float mNormalKernel = 4.0f;
-    bool mFilterCausticsMap = true;
+    bool mFilterCausticsMap = false;
 
     // Others
     int mFrameCounter = 0;

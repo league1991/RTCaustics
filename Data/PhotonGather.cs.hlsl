@@ -170,6 +170,6 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID, ui
     {
         uint2 pixelLocation = pixelLocation0 + uint2(0, i * BLOCK_SIZE_Y);
         if (all(pixelLocation < screenDim))
-            gPhotonTex[pixelLocation] = float4(totalLight[i], 1);
+            gPhotonTex[pixelLocation] = float4(totalLight[i], photonCount);
     }
 }
