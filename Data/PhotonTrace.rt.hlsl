@@ -78,13 +78,22 @@ shared cbuffer PerFrameCB
 
 struct Payload
 {
+#ifdef SMALL_PAYLOAD
+    uint colorData;
+#else
     float3 color;
+    uint isContinue;
+#endif
+
     float hitT;
     float3 nextDir;
-    uint isContinue;
+
 #ifdef RAY_DIFFERENTIAL
-    //float3 dPdx, dPdy, dDdx, dDdy;  // ray differentials
-    uint3 dP, dD;
+    #ifdef SMALL_PAYLOAD
+        uint3 dP, dD;
+    #else
+        float3 dPdx, dPdy, dDdx, dDdy;  // ray differentials
+    #endif
 #elif defined(RAY_CONE)
     float radius;
     float dRadius;
@@ -107,6 +116,22 @@ struct PrimaryRayData
 #endif
 };
 
+#ifdef SMALL_PAYLOAD
+
+#define COLOR_COEF 255.0f * 50
+uint colorToUint(float3 c, int isContinue)
+{
+    uint3 ci = c * COLOR_COEF;
+    return (isContinue << 30) | (ci.r << 20) | (ci.g << 10) | (ci.b);
+}
+
+void uintToColor(uint i, out float3 c, out uint isContinue)
+{
+    c = float3((i >> 20) & 0x3ff, (i >> 10) & 0x3ff, i & 0x3ff);
+    c /= COLOR_COEF;
+    isContinue = (i >> 30);
+}
+
 uint3 float3ToUint3(float3 a, float3 b)
 {
     uint3 res;
@@ -125,20 +150,30 @@ void uint3ToFloat3(uint3 i, out float3 a, out float3 b)
     b.y = f16tof32(i.z >> 16);
     b.z = f16tof32(i.z & 0xffff);
 }
+#endif
 
 void unpackPayload(Payload p, out PrimaryRayData d)
 {
+#ifdef SMALL_PAYLOAD
+    uintToColor(p.colorData, d.color, d.isContinue);
+#else
     d.color = p.color;
-    d.hitT = p.hitT;
-    d.nextDir = p.nextDir;
     d.isContinue = p.isContinue;
+#endif
+
+    d.nextDir = p.nextDir;
+    d.hitT = p.hitT;
+
 #ifdef RAY_DIFFERENTIAL
-    //d.dPdx = p.dPdx;
-    //d.dPdy = p.dPdy;
-    //d.dDdx = p.dDdx;
-    //d.dDdy = p.dDdy;
-    uint3ToFloat3(p.dP, d.dPdx, d.dPdy);
-    uint3ToFloat3(p.dD, d.dDdx, d.dDdy);
+    #ifdef SMALL_PAYLOAD
+        uint3ToFloat3(p.dP, d.dPdx, d.dPdy);
+        uint3ToFloat3(p.dD, d.dDdx, d.dDdy);
+    #else
+        d.dPdx = p.dPdx;
+        d.dPdy = p.dPdy;
+        d.dDdx = p.dDdx;
+        d.dDdy = p.dDdy;
+    #endif
 #elif defined(RAY_CONE)
     d.radius = p.radius;
     d.dRadius = p.dRadius;
@@ -148,17 +183,26 @@ void unpackPayload(Payload p, out PrimaryRayData d)
 
 void packPayload(PrimaryRayData d, out Payload p)
 {
+#ifdef SMALL_PAYLOAD
+    p.colorData = colorToUint(d.color, d.isContinue);
+#else
     p.color = d.color;
+    p.isContinue = d.isContinue;
+#endif
+
     p.hitT = d.hitT;
     p.nextDir = d.nextDir;
-    p.isContinue = d.isContinue;
+
 #ifdef RAY_DIFFERENTIAL
-    //p.dPdx = d.dPdx;
-    //p.dPdy = d.dPdy;
-    //p.dDdx = d.dDdx;
-    //p.dDdy = d.dDdy;
-    p.dP = float3ToUint3(d.dPdx, d.dPdy);
-    p.dD = float3ToUint3(d.dDdx, d.dDdy);
+    #ifdef SMALL_PAYLOAD
+        p.dP = float3ToUint3(d.dPdx, d.dPdy);
+        p.dD = float3ToUint3(d.dDdx, d.dDdy);
+    #else
+        p.dPdx = d.dPdx;
+        p.dPdy = d.dPdy;
+        p.dDdx = d.dDdx;
+        p.dDdy = d.dDdy;
+    #endif
 #elif defined(RAY_CONE)
     p.radius = d.radius;
     p.dRadius = d.dRadius;
@@ -174,8 +218,12 @@ struct ShadowRayData
 [shader("miss")]
 void primaryMiss(inout Payload hitData)
 {
+#ifdef SMALL_PAYLOAD
+    hitData.colorData = colorToUint(float3(0, 0, 0), 0);
+#else
     hitData.color = float3(0, 0, 0);
     hitData.isContinue = 0;
+#endif
     hitData.hitT = 0;
 }
 

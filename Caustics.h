@@ -78,6 +78,7 @@ private:
     float mFastPhotonPixelRadius = 19.0f;
     float mFastPhotonDrawCount = 0.f;
     bool mFastPhotonPath = false;
+    bool mShrinkPayload = true;
 
     // Adaptive photon refine
     float mNormalThreshold = 0.2f;
@@ -146,7 +147,7 @@ private:
     float mMinGatherColor = 0.001f;
 
     // Temporal Filter
-    bool mTemporalFilter = true;
+    bool mTemporalFilter = false;
     float mFilterWeight = 0.8f;
     float mJitter = 0.6f;
     float mTemporalNormalKernel = 0.7f;
@@ -348,6 +349,10 @@ private:
         flags |= ((1 << mTraceType) << 3); // 4 bits
         if (mFastPhotonPath)
             flags |= (1 << 7); // 1 bits
+        if (mShrinkPayload)
+        {
+            flags |= (1 << 8); // 1 bits
+        }
         return flags;
     }
 };

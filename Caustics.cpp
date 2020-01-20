@@ -163,6 +163,7 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addFloatVar("Fast Pixel Radius", mFastPhotonPixelRadius, 0, 5000, 1.f);
         pGui->addFloatVar("Fast Draw Count", mFastPhotonDrawCount, 0, 50000, 0.1f);
         pGui->addFloatVar("Color Compress Scale", mSmallPhotonCompressScale, 0, 5000, 1.f);
+        pGui->addCheckBox("Shrink Payload", mShrinkPayload);
         pGui->addCheckBox("Update Photon", mUpdatePhoton);
         pGui->endGroup();
     }
@@ -404,7 +405,11 @@ Caustics::PhotonTraceShader Caustics::getPhotonTraceShader()
         {
             desc.addDefine("FAST_PHOTON_PATH", "1");
         }
-        auto pPhotonTraceProgram = RtProgram::create(desc, 80U);
+        if (mShrinkPayload)
+        {
+            desc.addDefine("SMALL_PAYLOAD", "1");
+        }
+        auto pPhotonTraceProgram = RtProgram::create(desc, mShrinkPayload ? 44U : 80U);
         auto pPhotonTraceState = RtState::create();
         pPhotonTraceState->setProgram(pPhotonTraceProgram);
         auto pPhotonTraceVars = RtProgramVars::create(pPhotonTraceProgram, mpScene);
