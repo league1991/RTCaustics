@@ -54,10 +54,10 @@ private:
         TRACE_NONE = 2,
         TRACE_ADAPTIVE_RAY_MIP_MAP = 3,
     };
-    TraceType mTraceType = TRACE_ADAPTIVE_RAY_MIP_MAP;
-    int mDispatchSize = 64;
+    TraceType mTraceType = TRACE_FIXED;
+    int mDispatchSize = 512;
     int mMaxTraceDepth = 10;
-    float mEmitSize = 65.0;
+    float mEmitSize = 30.0;
     float mIntensity = 2.0f;
     float mRoughThreshold = 0.1f;
     enum AreaType
@@ -73,7 +73,7 @@ private:
     float mTraceColorThreshold = 0.0005f;
     float mCullColorThreshold = 1.0f;
     bool mUpdatePhoton = true;
-    float mMaxPhotonPixelRadius = 90.0f;
+    float mMaxPhotonPixelRadius = 900.0f;
     float mSmallPhotonCompressScale = 1.0f;
     float mFastPhotonPixelRadius = 19.0f;
     float mFastPhotonDrawCount = 0.f;
@@ -116,8 +116,8 @@ private:
         DENSITY_ESTIMATION_GATHER = 1,
         DENSITY_ESTIMATION_NONE = 2
     } mScatterOrGather = DENSITY_ESTIMATION_SCATTER;
-    float mSplatSize = 1.1f;
-    float mKernelPower = 1.f;
+    float mSplatSize = 0.4f;
+    float mKernelPower = 0.01f;
     enum PhotonDisplayMode
     {
         PHOTON_DISPLAY_MODE_KERNEL = 0,

@@ -83,7 +83,8 @@ struct Payload
     float3 nextDir;
     uint isContinue;
 #ifdef RAY_DIFFERENTIAL
-    float3 dPdx, dPdy, dDdx, dDdy;  // ray differentials
+    //float3 dPdx, dPdy, dDdx, dDdy;  // ray differentials
+    uint3 dP, dD;
 #elif defined(RAY_CONE)
     float radius;
     float dRadius;
@@ -106,10 +107,23 @@ struct PrimaryRayData
 #endif
 };
 
-uint float2ToUint(float a, float b)
+uint3 float3ToUint3(float3 a, float3 b)
 {
-    half ah = a;
-    half bh = b;
+    uint3 res;
+    res.x = ((f32tof16(a.x) << 16) | f32tof16(a.y));
+    res.y = ((f32tof16(a.z) << 16) | f32tof16(b.x));
+    res.z = ((f32tof16(b.y) << 16) | f32tof16(b.z));
+    return res;
+}
+
+void uint3ToFloat3(uint3 i, out float3 a, out float3 b)
+{
+    a.x = f16tof32(i.x >> 16);
+    a.y = f16tof32(i.x & 0xffff);
+    a.z = f16tof32(i.y >> 16);
+    b.x = f16tof32(i.y & 0xffff);
+    b.y = f16tof32(i.z >> 16);
+    b.z = f16tof32(i.z & 0xffff);
 }
 
 void unpackPayload(Payload p, out PrimaryRayData d)
@@ -119,10 +133,12 @@ void unpackPayload(Payload p, out PrimaryRayData d)
     d.nextDir = p.nextDir;
     d.isContinue = p.isContinue;
 #ifdef RAY_DIFFERENTIAL
-    d.dPdx = p.dPdx;
-    d.dPdy = p.dPdy;
-    d.dDdx = p.dDdx;
-    d.dDdy = p.dDdy;
+    //d.dPdx = p.dPdx;
+    //d.dPdy = p.dPdy;
+    //d.dDdx = p.dDdx;
+    //d.dDdy = p.dDdy;
+    uint3ToFloat3(p.dP, d.dPdx, d.dPdy);
+    uint3ToFloat3(p.dD, d.dDdx, d.dDdy);
 #elif defined(RAY_CONE)
     d.radius = p.radius;
     d.dRadius = p.dRadius;
@@ -137,10 +153,12 @@ void packPayload(PrimaryRayData d, out Payload p)
     p.nextDir = d.nextDir;
     p.isContinue = d.isContinue;
 #ifdef RAY_DIFFERENTIAL
-    p.dPdx = d.dPdx;
-    p.dPdy = d.dPdy;
-    p.dDdx = d.dDdx;
-    p.dDdy = d.dDdy;
+    //p.dPdx = d.dPdx;
+    //p.dPdy = d.dPdy;
+    //p.dDdx = d.dDdx;
+    //p.dDdy = d.dDdy;
+    p.dP = float3ToUint3(d.dPdx, d.dPdy);
+    p.dD = float3ToUint3(d.dDdx, d.dDdy);
 #elif defined(RAY_CONE)
     p.radius = d.radius;
     p.dRadius = d.dRadius;
