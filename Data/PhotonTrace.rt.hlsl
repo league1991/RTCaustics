@@ -79,14 +79,13 @@ shared cbuffer PerFrameCB
 struct Payload
 {
 #ifdef SMALL_PAYLOAD
-    uint colorData;
+    uint4 colorRayData;
 #else
     float3 color;
     uint isContinue;
-#endif
-
     float hitT;
     float3 nextDir;
+#endif
 
 #ifdef RAY_DIFFERENTIAL
     #ifdef SMALL_PAYLOAD
@@ -118,18 +117,28 @@ struct PrimaryRayData
 
 #ifdef SMALL_PAYLOAD
 
-#define COLOR_COEF 255.0f * 50
-uint colorToUint(float3 c, int isContinue)
+uint4 colorRayToUint(float3 color, float3 dir, float t, uint isContinue)
 {
-    uint3 ci = c * COLOR_COEF;
-    return (isContinue << 30) | (ci.r << 20) | (ci.g << 10) | (ci.b);
+    uint4 res;
+    res.x = ((f32tof16(color.x) << 16) | f32tof16(color.y));
+    res.y = ((f32tof16(color.z) << 16) | f32tof16(dir.x));
+    res.z = ((f32tof16(dir.y) << 16) | f32tof16(dir.z));
+    res.w = asuint(t);
+    res.w = (res.w & 0x7fffffff) | (isContinue << 31);
+    return res;
 }
 
-void uintToColor(uint i, out float3 c, out uint isContinue)
+void uintToColorRay(uint4 i,
+    out float3 color, out float3 dir, out float t, out uint isContinue)
 {
-    c = float3((i >> 20) & 0x3ff, (i >> 10) & 0x3ff, i & 0x3ff);
-    c /= COLOR_COEF;
-    isContinue = (i >> 30);
+    isContinue = i.w >> 31;
+    t = asfloat(i.w & 0x7fffffff);
+    color.x = f16tof32(i.x >> 16);
+    color.y = f16tof32(i.x & 0xffff);
+    color.z = f16tof32(i.y >> 16);
+    dir.x = f16tof32(i.y & 0xffff);
+    dir.y = f16tof32(i.z >> 16);
+    dir.z = f16tof32(i.z & 0xffff);
 }
 
 uint3 float3ToUint3(float3 a, float3 b)
@@ -155,14 +164,13 @@ void uint3ToFloat3(uint3 i, out float3 a, out float3 b)
 void unpackPayload(Payload p, out PrimaryRayData d)
 {
 #ifdef SMALL_PAYLOAD
-    uintToColor(p.colorData, d.color, d.isContinue);
+    uintToColorRay(p.colorRayData, d.color, d.nextDir, d.hitT, d.isContinue);
 #else
     d.color = p.color;
     d.isContinue = p.isContinue;
-#endif
-
     d.nextDir = p.nextDir;
     d.hitT = p.hitT;
+#endif
 
 #ifdef RAY_DIFFERENTIAL
     #ifdef SMALL_PAYLOAD
@@ -184,14 +192,13 @@ void unpackPayload(Payload p, out PrimaryRayData d)
 void packPayload(PrimaryRayData d, out Payload p)
 {
 #ifdef SMALL_PAYLOAD
-    p.colorData = colorToUint(d.color, d.isContinue);
+    p.colorRayData = colorRayToUint(d.color, d.nextDir, d.hitT, d.isContinue);
 #else
     p.color = d.color;
     p.isContinue = d.isContinue;
-#endif
-
     p.hitT = d.hitT;
     p.nextDir = d.nextDir;
+#endif
 
 #ifdef RAY_DIFFERENTIAL
     #ifdef SMALL_PAYLOAD
@@ -219,12 +226,12 @@ struct ShadowRayData
 void primaryMiss(inout Payload hitData)
 {
 #ifdef SMALL_PAYLOAD
-    hitData.colorData = colorToUint(float3(0, 0, 0), 0);
+    hitData.colorRayData = colorRayToUint(float3(0, 0, 0), float3(0, 0, 0), 0, 0);
 #else
     hitData.color = float3(0, 0, 0);
     hitData.isContinue = 0;
-#endif
     hitData.hitT = 0;
+#endif
 }
 
 VertexOut getVertexAttributes(
