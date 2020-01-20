@@ -440,7 +440,7 @@ float getArea(float3 dPdx, float3 dPdy)
 }
 
 
-void initFromLight(float2 lightUV, float pixelSize0, out RayDesc ray, out PrimaryRayData hitData)
+void initFromLight(float2 lightUV, float2 pixelSize0, out RayDesc ray, out PrimaryRayData hitData)
 {
     lightUV = lightUV * 2 - 1;
     float2 pixelSize = pixelSize0 * emitSize / float2(coarseDim.xy);
@@ -566,7 +566,7 @@ bool getSamplePos(uint threadId, out uint2 pixelPos, out uint sampleIdx)
     return true;
 }
 
-void getRaySample(uint2 pixel00, uint sampleIdx, inout float2 screenCoord, inout float pixelSize)
+void getRaySample(uint2 pixel00, uint sampleIdx, inout float2 screenCoord, inout float2 pixelSize)
 {
     float v00 = gRayDensityTex.Load(int3(pixel00 + int2(0, 0), 0)).r;
     float v10 = gRayDensityTex.Load(int3(pixel00 + int2(1, 0), 0)).r;
@@ -587,10 +587,13 @@ void getRaySample(uint2 pixel00, uint sampleIdx, inout float2 screenCoord, inout
     uint xi = sampleIdx - yi * sampleDim;
     float x = (xi + 0.5) / sampleDim;
     float y = (yi + 0.5) / sampleDim;
-    float2 uv = bilinearSample(v00, v10, v01, v11, float2(x, y));
+    float2 rnd = float2(x, y);
+    float2 uv = bilinearSample(v00, v10, v01, v11, rnd);
+    float2 duv = bilinearSample(v00, v10, v01, v11, rnd + 1e-3) - uv;
+    float aniso = sqrt(duv.y / duv.x);
 
-    screenCoord = pixel00  +uv + 0.5;
-    pixelSize = pixelSize* sqrt(1 / (bilinearIntepolation(v00, v10, v01, v11, uv)));
+    screenCoord = pixel00 + uv + 0.5;
+    pixelSize = pixelSize * sqrt(1 / (bilinearIntepolation(v00, v10, v01, v11, uv)));// *float2(1 / aniso, aniso);
 }
 
 uint part1By1(uint x)
@@ -610,7 +613,7 @@ uint encodeMorton2(uint2 idx)
 
 #endif
 
-bool getTask(out float2 lightUV, out uint2 pixelCoord, out float pixelSize)
+bool getTask(out float2 lightUV, out uint2 pixelCoord, out float2 pixelSize)
 {
     uint3 launchIndex = DispatchRaysIndex();
     uint3 launchDimension = DispatchRaysDimensions();
@@ -677,7 +680,7 @@ void rayGen()
     // fetch task
     float2 lightUV;
     uint2 pixelCoord;
-    float pixelSize;
+    float2 pixelSize;
     if (!getTask(lightUV, pixelCoord, pixelSize))
         return;
 

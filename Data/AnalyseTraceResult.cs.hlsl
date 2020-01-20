@@ -101,7 +101,6 @@ void addPhotonTaskFromTexture(uint3 groupID : SV_GroupID, uint groupIndex : SV_G
             RayTask newTask;
             newTask.screenCoord = pixel00 + uv +0.5;
             newTask.pixelSize = pixelSize *sqrt(1 / (bilinearIntepolation(v00, v10, v01, v11, uv)));
-            newTask.intensity = 1;
             gRayTask[taskIdx + i] = newTask;
         }
     }
@@ -124,12 +123,15 @@ void addPhotonTaskFromTexture(uint3 groupID : SV_GroupID, uint groupIndex : SV_G
             uint xi = i - yi * sampleDim;
             float x = (xi + 0.5) / sampleDim;
             float y = (yi + 0.5) / sampleDim;
+            float2 rnd = float2(x, y);
 
-            float2 uv = bilinearSample(v00, v10, v01, v11, float2(x, y));
+            float2 uv = bilinearSample(v00, v10, v01, v11, rnd);
+            //float2 duv = bilinearSample(v00, v10, v01, v11, rnd + 1e-2) - uv;
+            float aniso = 1;// sqrt(duv.y / duv.x);// clamp(duv.y / duv.x, 0.1, 10);
+
             RayTask newTask;
             newTask.screenCoord = pixel00 + uv + 0.5;
-            newTask.pixelSize = pixelSize *sqrt(1 / (bilinearIntepolation(v00, v10, v01, v11, uv)));
-            newTask.intensity = 1;
+            newTask.pixelSize = pixelSize * sqrt(1 / (bilinearIntepolation(v00, v10, v01, v11, uv))) *float2(1 / aniso, aniso);
             gRayTask[taskIdx + i] = newTask;
         }
     }

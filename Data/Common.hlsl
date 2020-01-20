@@ -14,8 +14,7 @@ struct Photon
 struct RayTask
 {
     float2 screenCoord;
-    float pixelSize;
-    float intensity;
+    float2 pixelSize;
 };
 
 struct PixelInfo
