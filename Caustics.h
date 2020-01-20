@@ -57,7 +57,7 @@ private:
     TraceType mTraceType = TRACE_ADAPTIVE_RAY_MIP_MAP;
     int mDispatchSize = 64;
     int mMaxTraceDepth = 10;
-    float mEmitSize = 30.0;
+    float mEmitSize = 65.0;
     float mIntensity = 2.0f;
     float mRoughThreshold = 0.1f;
     enum AreaType
@@ -83,7 +83,7 @@ private:
     float mNormalThreshold = 0.2f;
     float mDistanceThreshold = 10.0f;
     float mPlanarThreshold = 2.0f;
-    float mMinPhotonPixelSize = 15.0f;
+    float mMinPhotonPixelSize = 8.0f;
     float mSmoothWeight = 0.15f;
     float mMaxTaskCountPerPixel = 8192;
     float mUpdateSpeed = 0.2f;
