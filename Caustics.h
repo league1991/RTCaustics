@@ -79,6 +79,7 @@ private:
     float mFastPhotonDrawCount = 0.f;
     bool mFastPhotonPath = false;
     bool mShrinkPayload = true;
+    bool mShrinkVariable = false;
 
     // Adaptive photon refine
     float mNormalThreshold = 0.2f;
@@ -342,17 +343,5 @@ private:
     void createGBuffer(int width, int height, GBuffer& gbuffer);
     int2 getTileDim() const;
     float resolutionFactor();
-    uint photonMacroToFlags()
-    {
-        uint flags = 0;
-        flags |= (1 << mPhotonTraceMacro); // 3 bits
-        flags |= ((1 << mTraceType) << 3); // 4 bits
-        if (mFastPhotonPath)
-            flags |= (1 << 7); // 1 bits
-        if (mShrinkPayload)
-        {
-            flags |= (1 << 8); // 1 bits
-        }
-        return flags;
-    }
+    uint photonMacroToFlags();
 };

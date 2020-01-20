@@ -76,6 +76,14 @@ shared cbuffer PerFrameCB
     float gSmallPhotonColorScale;
 };
 
+#ifdef SMALL_VARIABLE
+    #define small  half
+    #define small3 half3
+#else
+    #define small  float
+    #define small3 float3
+#endif
+
 struct Payload
 {
 #ifdef SMALL_PAYLOAD
@@ -107,7 +115,7 @@ struct PrimaryRayData
     float3 nextDir;
     uint isContinue;
 #ifdef RAY_DIFFERENTIAL
-    float3 dPdx, dPdy, dDdx, dDdy;  // ray differentials
+    small3 dPdx, dPdy, dDdx, dDdy;  // ray differentials
 #elif defined(RAY_CONE)
     float radius;
     float dRadius;
@@ -141,7 +149,7 @@ void uintToColorRay(uint4 i,
     dir.z = f16tof32(i.z & 0xffff);
 }
 
-uint3 float3ToUint3(float3 a, float3 b)
+uint3 float3ToUint3(small3 a, small3 b)
 {
     uint3 res;
     res.x = ((f32tof16(a.x) << 16) | f32tof16(a.y));
@@ -150,14 +158,14 @@ uint3 float3ToUint3(float3 a, float3 b)
     return res;
 }
 
-void uint3ToFloat3(uint3 i, out float3 a, out float3 b)
+void uint3ToFloat3(uint3 i, out small3 a, out small3 b)
 {
-    a.x = f16tof32(i.x >> 16);
-    a.y = f16tof32(i.x & 0xffff);
-    a.z = f16tof32(i.y >> 16);
-    b.x = f16tof32(i.y & 0xffff);
-    b.y = f16tof32(i.z >> 16);
-    b.z = f16tof32(i.z & 0xffff);
+    a.x = (small)f16tof32(i.x >> 16);
+    a.y = (small)f16tof32(i.x & 0xffff);
+    a.z = (small)f16tof32(i.y >> 16);
+    b.x = (small)f16tof32(i.y & 0xffff);
+    b.y = (small)f16tof32(i.z >> 16);
+    b.z = (small)f16tof32(i.z & 0xffff);
 }
 #endif
 
@@ -322,8 +330,8 @@ void getVerticesAndNormals(
 
 void updateTransferRayDifferential(
     float3 N,
-    inout float3 dPdx,
-    float3 dDdx)
+    inout small3 dPdx,
+    small3 dDdx)
 {
     float3 D = WorldRayDirection();
     float t = RayTCurrent();
@@ -334,8 +342,8 @@ void updateTransferRayDifferential(
 void calculateDNdx(
     float3 dP1, float3 dP2,
     float3 dN1, float3 dN2,
-    float3 N,
-    float3 dPdx, out float3 dNdx)
+    small3 N,
+    small3 dPdx, out small3 dNdx)
 {
     float P11 = dot(dP1, dP1);
     float P12 = dot(dP1, dP2);
@@ -345,28 +353,28 @@ void calculateDNdx(
     float Q2 = dot(dP2, dPdx);
 
     float delta = P11 * P22 - P12 * P12;
-    float dudx = (Q1 * P22 - Q2 * P12) / delta;
-    float dvdx = (Q2 * P11 - Q1 * P12) / delta;
+    small dudx = (Q1 * P22 - Q2 * P12) / delta;
+    small dvdx = (Q2 * P11 - Q1 * P12) / delta;
 
-    float n2 = dot(N, N);
-    float n1 = sqrt(n2);
+    small n2 = dot(N, N);
+    small n1 = sqrt(n2);
     dNdx = dudx * dN1 + dvdx * dN2;
     dNdx = (n2 * dNdx - dot(N, dNdx) * N) / (n2 * n1);
 }
 
 void updateReflectRayDifferential(
-    float3 N,
-    float3 dPdx,
-    float3 dNdx,
-    inout float3 dDdx)
+    small3 N,
+    small3 dPdx,
+    small3 dNdx,
+    inout small3 dDdx)
 {
     N = normalize(N);
-    float3 D = WorldRayDirection();
-    float dDNdx = dot(dDdx, N) + dot(D, dNdx);
-    dDdx = dDdx - 2 * (dot(D, N) * dNdx + dDNdx * N);
+    small3 D = WorldRayDirection();
+    small3 dDNdx = dot(dDdx, N) + dot(D, dNdx);
+    dDdx = dDdx - small(2) * (dot(D, N) * dNdx + dDNdx * N);
 }
 
-void getPhotonDifferential(PrimaryRayData hitData, RayDesc ray, out float3 dPdx, out float3 dPdy)
+void getPhotonDifferential(PrimaryRayData hitData, RayDesc ray, out small3 dPdx, out small3 dPdy)
 {
 #ifdef RAY_DIFFERENTIAL
     dPdx = hitData.dPdx;
@@ -388,7 +396,7 @@ void getPhotonDifferential(PrimaryRayData hitData, RayDesc ray, out float3 dPdx,
 #endif
 }
 
-float getPhotonScreenArea(float3 posW, float3 dPdx, float3 dPdy, out float3 screenCoord, out bool inFrustum)
+float getPhotonScreenArea(float3 posW, small3 dPdx, small3 dPdy, out float3 screenCoord, out bool inFrustum)
 {
     dPdx = dPdx * gSplatSize;
     dPdy = dPdy * gSplatSize;
@@ -413,17 +421,17 @@ float getPhotonScreenArea(float3 posW, float3 dPdx, float3 dPdy, out float3 scre
 
 
 void updateRefractRayDifferential(
-    float3 D, float3 R, float3 N, float eta,
-    float3 dPdx,
-    float3 dNdx,
-    inout float3 dDdx)
+    small3 D, small3 R, small3 N, small eta,
+    small3 dPdx,
+    small3 dNdx,
+    inout small3 dDdx)
 {
     N = normalize(N);
-    float DN = dot(D, N);
-    float RN = dot(R, N);
-    float mu = eta * DN - RN;
-    float dDNdx = dot(dDdx, N) + dot(D, dNdx);
-    float dmudx = (eta - eta * eta * DN / RN) * dDNdx;
+    small DN = dot(D, N);
+    small RN = dot(R, N);
+    small mu = eta * DN - RN;
+    small dDNdx = dot(dDdx, N) + dot(D, dNdx);
+    small dmudx = (eta - eta * eta * DN / RN) * dDNdx;
     dDdx = eta * dDdx - (mu * dNdx + dmudx * N);
 }
 
@@ -441,7 +449,7 @@ void primaryClosestHit(inout Payload payload, in BuiltInTriangleIntersectionAttr
     // prepare the shading data
     float3 dP1, dP2, dN1, dN2;
     VertexOut v = getVertexAttributes(triangleIndex, attribs, dP1, dP2, dN1, dN2);
-    float3 N = v.normalW;
+    small3 N = v.normalW;
     v.normalW = normalize(v.normalW);
 #ifdef RAY_DIFFERENTIAL
     updateTransferRayDifferential(v.normalW, hitData.dPdx, hitData.dDdx);
@@ -456,7 +464,7 @@ void primaryClosestHit(inout Payload payload, in BuiltInTriangleIntersectionAttr
     bool isSpecular = (sd.linearRoughness > roughThreshold || sd.opacity < 1);
     if (isSpecular)
     {
-        float3 N_ = v.normalW;
+        small3 N_ = v.normalW;
         bool isReflect = (sd.opacity == 1);
         float3 R;
         float eta = iorOverride > 0 ? 1.0 / iorOverride : 1.0 / sd.IoR;
@@ -465,19 +473,19 @@ void primaryClosestHit(inout Payload payload, in BuiltInTriangleIntersectionAttr
             if (dot(N_, rayDirW) > 0)
             {
                 eta = 1.0 / eta;
-                N *= -1;
-                N_ *= -1;
+                N *= small(-1);
+                N_ *= small(-1);
 #ifdef RAY_DIFFERENTIAL
-                dN1 *= -1;
-                dN2 *= -1;
+                dN1 *= small(-1);
+                dN2 *= small(-1);
 #endif
             }
             isReflect = isTotalInternalReflection(rayDirW, N_, eta);
         }
 
 #ifdef RAY_DIFFERENTIAL
-        float3 dNdx = 0;
-        float3 dNdy = 0;
+        small3 dNdx = 0;
+        small3 dNdy = 0;
         calculateDNdx(dP1, dP2, dN1, dN2, N, hitData.dPdx, dNdx);
         calculateDNdx(dP1, dP2, dN1, dN2, N, hitData.dPdy, dNdy);
         if (isReflect)
@@ -549,12 +557,12 @@ void primaryClosestHit(inout Payload payload, in BuiltInTriangleIntersectionAttr
     packPayload(hitData, payload);
 }
 
-float getArea(float3 dPdx, float3 dPdy)
+small getArea(small3 dPdx, small3 dPdy)
 {
-    float area;
+    small area;
     if (gAreaType == 0)
     {
-        area = (dot(dPdx, dPdx) + dot(dPdy, dPdy)) * 0.5;
+        area = (dot(dPdx, dPdx) + dot(dPdy, dPdy)) * small(0.5);
     }
     else if (gAreaType == 1)
     {
@@ -567,7 +575,7 @@ float getArea(float3 dPdx, float3 dPdy)
     }
     else
     {
-        float3 areaVector = cross(dPdx, dPdy);
+        small3 areaVector = cross(dPdx, dPdy);
         area = length(areaVector);
     }
     return area;
@@ -612,10 +620,10 @@ void initFromLight(float2 lightUV, float2 pixelSize0, out RayDesc ray, out Prima
 void StorePhoton(RayDesc ray, PrimaryRayData hitData, uint2 pixelCoord)
 {
     bool isInFrustum;
-    float3 dPdx, dPdy;
+    small3 dPdx, dPdy;
     float3 posW = ray.Origin;
     getPhotonDifferential(hitData, ray, dPdx, dPdy);
-    float area = getArea(dPdx, dPdy);
+    small area = getArea(dPdx, dPdy);
     float3 color = hitData.color.rgb / area;
     float3 screenCoord;
     float pixelArea = getPhotonScreenArea(posW, dPdx, dPdy, screenCoord, isInFrustum);
@@ -649,7 +657,7 @@ void StorePhoton(RayDesc ray, PrimaryRayData hitData, uint2 pixelCoord)
             //photon.normalW = hitData.nextDir;
             if (dot(cross(dPdx,dPdy), hitData.nextDir) < 0)
             {
-                dPdy *= -1;
+                dPdy *= small(-1);
             }
             photon.color = color;
             photon.dPdx = dPdx;
