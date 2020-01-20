@@ -409,7 +409,7 @@ Caustics::PhotonTraceShader Caustics::getPhotonTraceShader()
         {
             desc.addDefine("SMALL_PAYLOAD", "1");
         }
-        auto pPhotonTraceProgram = RtProgram::create(desc, mShrinkPayload ? 40U : 80U);
+        auto pPhotonTraceProgram = RtProgram::create(desc, mShrinkPayload ? 40U : 80U, mShrinkPayload ? 8U : 32U);
         auto pPhotonTraceState = RtState::create();
         pPhotonTraceState->setProgram(pPhotonTraceProgram);
         auto pPhotonTraceVars = RtProgramVars::create(pPhotonTraceProgram, mpScene);
