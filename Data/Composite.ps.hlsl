@@ -41,6 +41,7 @@ Texture2D gPhotonTex;
 Texture2D gRaytracingTex;
 Texture2D<float4> gRayTex;
 Texture1D<uint> gStatisticsTex;
+Texture2D<uint> gSmallPhotonTex;
 StructuredBuffer<uint4>gRayCountQuadTree;
 StructuredBuffer<PixelInfo> gPixelInfo;
 
@@ -60,6 +61,8 @@ StructuredBuffer<PixelInfo> gPixelInfo;
 #define ShowTotalPhoton 13
 #define ShowRayCountMipTex 14
 #define ShowPhotonDensity 15
+#define ShowSmallPhotonTex 16
+#define ShowSmallPhotonCount 17
 
 cbuffer PerImageCB
 {
@@ -81,6 +84,7 @@ cbuffer PerImageCB
 
     float gMaxPhotonCount;
     int gRayCountMip;
+    float gSmallPhotonColorScale;
 };
 
 float4 main(float2 texC  : TEXCOORD) : SV_TARGET
@@ -192,6 +196,26 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
             graphColor = float4(0, 0, 0, 0);
         color.rgb = lerp(rtColor.rgb, graphColor.rgb, graphColor.a);
         color.a = 1;
+    }
+    else if (gDebugMode == ShowSmallPhotonTex)
+    {
+        texC.y = 1 - texC.y;
+        int2 screenPixel = texC * screenDim;
+        uint v = gSmallPhotonTex.Load(int3(screenPixel.xy, 0));
+        float4 photonClr = decompressColor(v, gSmallPhotonColorScale);
+        color = float4(photonClr.rgb, 1);
+    }
+    else if (gDebugMode == ShowSmallPhotonCount)
+    {
+        texC.y = 1 - texC.y;
+        int2 screenPixel = texC * screenDim;
+        uint v = gSmallPhotonTex.Load(int3(screenPixel.xy, 0));
+        float4 photonClr = decompressColor(v, gSmallPhotonColorScale);
+        if (photonClr.a <= gMaxPixelArea)
+            color = float4(photonClr.aaa / gMaxPixelArea, 1);
+        else
+            color = float4(1, 0, 1, 1);
+        color.rgb += rtColor.rgb;// *0.5;
     }
     else
     {

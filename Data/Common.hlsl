@@ -127,3 +127,20 @@ float getLuminance(float3 color)
 {
     return dot(color, float3(0.299, 0.587, 0.114));
 }
+
+uint compressColor(float3 color, float scale)
+{
+    uint3 c = color * 255 * scale;
+    return (1 << 28) | (c.r << 19) | (c.g << 9) | (c.b);
+}
+
+float4 decompressColor(uint c, float scale)
+{
+    float4 color;
+    color.b = (c & 0x1ff);
+    color.g = ((c >> 9) & 0x3ff);
+    color.r = ((c >> 19) & 0x1ff);
+    color.a = ((c >> 28) & 0xf);
+    color.rgb /= (255 * scale);
+    return color;
+}

@@ -71,9 +71,13 @@ private:
     int mColorPhoton = 0;
     int mPhotonIDScale = 50;
     float mTraceColorThreshold = 0.0005f;
-    float mCullColorThreshold = 0.2f;
-    bool mUpdatePixelInfo = true;
+    float mCullColorThreshold = 1.0f;
     bool mUpdatePhoton = true;
+    float mMaxPhotonPixelRadius = 90.0f;
+    float mSmallPhotonCompressScale = 1.0f;
+    float mFastPhotonPixelRadius = 19.0f;
+    float mFastPhotonDrawCount = 0.f;
+    bool mFastPhotonPath = false;
 
     // Adaptive photon refine
     float mNormalThreshold = 0.2f;
@@ -112,7 +116,7 @@ private:
         DENSITY_ESTIMATION_GATHER = 1,
         DENSITY_ESTIMATION_NONE = 2
     } mScatterOrGather = DENSITY_ESTIMATION_SCATTER;
-    float mSplatSize = 2.8f;
+    float mSplatSize = 1.1f;
     float mKernelPower = 1.f;
     enum PhotonDisplayMode
     {
@@ -127,12 +131,11 @@ private:
         PHOTON_MODE_PHOTON_MESH = 2,
         PHOTON_MODE_SCREEN_DOT = 3,
         PHOTON_MODE_SCREEN_DOT_WITH_COLOR = 4,
-    } mPhotonMode = PHOTON_MODE_SCREEN_DOT_WITH_COLOR;
+    } mPhotonMode = PHOTON_MODE_ANISOTROPIC;
     float mScatterNormalThreshold = 0.2f;
     float mScatterDistanceThreshold = 10.0f;
     float mScatterPlanarThreshold = 2.0f;
     float mMaxAnisotropy = 20.0f;
-    float mMaxPhotonPixelRadius = 90.0f;
     float mZTolerance = 0.2f;
 
     // Photon Gather
@@ -143,7 +146,7 @@ private:
     float mMinGatherColor = 0.001f;
 
     // Temporal Filter
-    bool mTemporalFilter = false;
+    bool mTemporalFilter = true;
     float mFilterWeight = 0.8f;
     float mJitter = 0.6f;
     float mTemporalNormalKernel = 0.7f;
@@ -177,6 +180,8 @@ private:
         ShowTotalPhoton = 13,
         ShowRayCountMipmap = 14,
         ShowPhotonDensity = 15,
+        ShowSmallPhoton = 16,
+        ShowSmallPhotonCount = 17,
     };
     Display mDebugMode = ShowRayTracing;
     float mMaxPixelArea = 100;
@@ -222,6 +227,7 @@ private:
         Fbo::SharedPtr mpGPassFbo;
     };
     GBuffer mGBuffer[2];
+    Texture::SharedPtr mpSmallPhotonTex;
 
     // photon trace
     struct PhotonTraceShader
@@ -340,6 +346,8 @@ private:
         uint flags = 0;
         flags |= (1 << mPhotonTraceMacro); // 3 bits
         flags |= ((1 << mTraceType) << 3); // 4 bits
+        if (mFastPhotonPath)
+            flags |= (1 << 7); // 1 bits
         return flags;
     }
 };

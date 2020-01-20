@@ -39,8 +39,10 @@ RWStructuredBuffer<PixelInfo> gPixelInfo;
 
 StructuredBuffer<uint4> gRayCountQuadTree;
 Texture2D<float4> gRayDensityTex;
-
 Texture2D gUniformNoise;
+
+Texture2D gPhotonTexture;
+RWTexture2D<uint> gSmallPhotonBuffer;
 
 shared cbuffer PerFrameCB
 {
@@ -69,6 +71,9 @@ shared cbuffer PerFrameCB
     uint updatePhoton;
 
     float gMaxScreenRadius;
+    float gMinScreenRadius;
+    float gMinDrawCount;
+    float gSmallPhotonColorScale;
 };
 
 struct PrimaryRayData
@@ -253,7 +258,7 @@ void getPhotonDifferential(PrimaryRayData hitData, RayDesc ray, out float3 dPdx,
 #endif
 }
 
-float getPhotonScreenArea(float3 posW, float3 dPdx, float3 dPdy, out bool inFrustum)
+float getPhotonScreenArea(float3 posW, float3 dPdx, float3 dPdy, out float3 screenCoord, out bool inFrustum)
 {
     dPdx = dPdx * gSplatSize;
     dPdy = dPdy * gSplatSize;
@@ -269,7 +274,7 @@ float getPhotonScreenArea(float3 posW, float3 dPdx, float3 dPdy, out bool inFrus
     float2 dx = (s00.xy - s0.xy) * viewportDims;
     float2 dy = (s01.xy - s0.xy) * viewportDims;
     float area = abs(dx.x * dy.y - dy.x * dx.y) / (gSplatSize * gSplatSize);
-
+    screenCoord = s0.xyz;
     //float zRadius = max(1,length(dPdx) + length(dPdy)) * 0.5 / length(posW - gCamera.posW) * gCamera.nearZ * 0.5 * (viewportDims.x + viewportDims.y);
     //float area = zRadius * zRadius;
     //float area = 0.5 * (dot(dx, dx) + dot(dy, dy)) / (gSplatSize * gSplatSize);
@@ -456,7 +461,7 @@ void initFromLight(float2 lightUV, float pixelSize0, out RayDesc ray, out Primar
         uint3 launchIndex = DispatchRaysIndex();
         color0.xyz = frac(launchIndex.xyz / float(photonIDScale)) * 0.8 + 0.2;
     }
-    hitData.color = color0 * pixelSize.x * pixelSize.y * 512 * 512 * 0.5 * gIntensity / (gSplatSize * gSplatSize);
+    hitData.color = color0 * pixelSize.x * pixelSize.y * 512 * 512 * 0.5 * gIntensity;// / (gSplatSize * gSplatSize);
     hitData.nextDir = ray.Direction;
     hitData.isContinue = 1;
 #ifdef RAY_DIFFERENTIAL
@@ -478,12 +483,29 @@ void StorePhoton(RayDesc ray, PrimaryRayData hitData, uint2 pixelCoord)
     getPhotonDifferential(hitData, ray, dPdx, dPdy);
     float area = getArea(dPdx, dPdy);
     float3 color = hitData.color.rgb / area;
-    float pixelArea = getPhotonScreenArea(posW, dPdx, dPdy, isInFrustum);
-    if (dot(color, float3(0.299, 0.587, 0.114)) > cullColorThreshold&& isInFrustum && updatePhoton)
+    float3 screenCoord;
+    float pixelArea = getPhotonScreenArea(posW, dPdx, dPdy, screenCoord, isInFrustum);
+    if (dot(color, float3(0.299, 0.587, 0.114)) > cullColorThreshold && isInFrustum && updatePhoton)
     {
         uint pixelLoc = pixelCoord.y * coarseDim.x + pixelCoord.x;
 
-        if (pixelArea < gMaxScreenRadius* gMaxScreenRadius)
+        bool storePhoton = (pixelArea < gMaxScreenRadius * gMaxScreenRadius);
+        uint oldV;
+#ifdef FAST_PHOTON_PATH
+        if (pixelArea < gMinScreenRadius * gMinScreenRadius)
+        {
+            float2 uv = (screenCoord.xy + 1) * 0.5;
+            int2 dstPixel = uv * viewportDims;
+            float4 lastClr = gPhotonTexture.Load(int3(dstPixel,0));
+            if (lastClr.a >= gMinDrawCount)
+            {
+                uint clr = compressColor(color, gSmallPhotonColorScale);
+                InterlockedAdd(gSmallPhotonBuffer[dstPixel], clr, oldV);
+                storePhoton = false;
+            }
+        }
+#endif
+        if (storePhoton)
         {
             uint instanceIdx = 0;
             InterlockedAdd(gDrawArgument[0].instanceCount, 1, instanceIdx);
@@ -504,7 +526,6 @@ void StorePhoton(RayDesc ray, PrimaryRayData hitData, uint2 pixelCoord)
 #endif
         }
 
-        uint oldV;
         pixelArea = clamp(pixelArea, 1, 100 * 100);
         InterlockedAdd(gPixelInfo[pixelLoc].screenArea, uint(pixelArea.x), oldV);
         InterlockedAdd(gPixelInfo[pixelLoc].screenAreaSq, uint(pixelArea.x * pixelArea.x), oldV);

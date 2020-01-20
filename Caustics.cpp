@@ -95,6 +95,8 @@ void Caustics::onGuiRender(Gui* pGui)
             debugModeList.push_back({ 13, "Photon Total Count" });
             debugModeList.push_back({ 14, "Ray count Mipmap" });
             debugModeList.push_back({ 15, "Photon Density" });
+            debugModeList.push_back({ 16, "Small Photon Color" });
+            debugModeList.push_back({ 17, "Small Photon Count" });
             pGui->addDropdown("Composite mode", debugModeList, (uint32_t&)mDebugMode);
         }
         pGui->addFloatVar("Max Pixel Value", mMaxPixelArea, 0, 1000000000, 5.f);
@@ -118,8 +120,8 @@ void Caustics::onGuiRender(Gui* pGui)
             Gui::DropdownList debugModeList;
             debugModeList.push_back({ 0, "Fixed Resolution" });
             debugModeList.push_back({ 1, "Adaptive Resolution" });
+            debugModeList.push_back({ 3, "Fast Adaptive Resolution" });
             debugModeList.push_back({ 2, "None" });
-            debugModeList.push_back({ 3, "Adaptive Resolution With Ray Mipmap" });
             pGui->addDropdown("Trace Type", debugModeList, (uint32_t&)mTraceType);
         }
         {
@@ -155,8 +157,12 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addCheckBox("ID As Color", mColorPhoton);
         pGui->addIntVar("Photon ID Scale", mPhotonIDScale);
         pGui->addFloatVar("Min Trace Luminance", mTraceColorThreshold, 0, 10,0.005f);
-        pGui->addFloatVar("Min Cull Luminance", mCullColorThreshold, 0, 10000, 0.001f);
+        pGui->addFloatVar("Min Cull Luminance", mCullColorThreshold, 0, 10000, 0.01f);
+        pGui->addCheckBox("Fast Photon Path", mFastPhotonPath);
         pGui->addFloatVar("Max Pixel Radius", mMaxPhotonPixelRadius, 0, 5000, 1.f);
+        pGui->addFloatVar("Fast Pixel Radius", mFastPhotonPixelRadius, 0, 5000, 1.f);
+        pGui->addFloatVar("Fast Draw Count", mFastPhotonDrawCount, 0, 50000, 0.1f);
+        pGui->addFloatVar("Color Compress Scale", mSmallPhotonCompressScale, 0, 5000, 1.f);
         pGui->addCheckBox("Update Photon", mUpdatePhoton);
         pGui->endGroup();
     }
@@ -394,13 +400,14 @@ Caustics::PhotonTraceShader Caustics::getPhotonTraceShader()
         default:
             break;
         }
-        //photonTraceProgDesc.addHitGroup(1, "", "shadowAnyHit");
-        //photonTraceProgDesc.addMiss(1, "shadowMiss");
+        if (mFastPhotonPath)
+        {
+            desc.addDefine("FAST_PHOTON_PATH", "1");
+        }
         auto pPhotonTraceProgram = RtProgram::create(desc, 80U);
         auto pPhotonTraceState = RtState::create();
         pPhotonTraceState->setProgram(pPhotonTraceProgram);
         auto pPhotonTraceVars = RtProgramVars::create(pPhotonTraceProgram, mpScene);
-        //mpPhotonTraceRenderer = RtSceneRenderer::create(mpScene);
         mPhotonTraceShaderList[flag] = { pPhotonTraceProgram , pPhotonTraceVars ,pPhotonTraceState };
     }
     return mPhotonTraceShaderList[flag];
@@ -447,6 +454,8 @@ void Caustics::createCausticsMap()
     uint32_t width = mpRtOut->getWidth();
     uint32_t height = mpRtOut->getHeight();
     uint2 dim(width / mCausticsMapResRatio, height / mCausticsMapResRatio);
+
+    mpSmallPhotonTex = Texture::create2D(dim.x, dim.y, ResourceFormat::R32Uint, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
 
     auto pPhotonMapTex = Texture::create2D(dim.x, dim.y, ResourceFormat::RGBA16Float, 1, 1, nullptr, Resource::BindFlags::RenderTarget | Resource::BindFlags::ShaderResource | Resource::BindFlags::UnorderedAccess);
     auto depthTex = Texture::create2D(dim.x, dim.y, ResourceFormat::D24UnormS8, 1, 1, nullptr, Resource::BindFlags::DepthStencil);
@@ -682,46 +691,7 @@ float2 getRandomPoint(int i)
 
 void Caustics::setPhotonTracingCommonVariable(Caustics::PhotonTraceShader& shader)
 {
-    GraphicsVars* pVars = shader.mpPhotonTraceVars->getGlobalVars().get();
-    ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
-    float2 randomOffset = (getRandomPoint(mFrameCounter) * 2.0f - 1.0f) * mJitter;
-    pCB["invView"] = glm::inverse(mpCamera->getViewMatrix());
-    pCB["viewportDims"] = vec2(mpRtOut->getWidth(), mpRtOut->getHeight());
-    pCB["emitSize"] = mEmitSize;
-    pCB["roughThreshold"] = mRoughThreshold;
-    pCB["randomOffset"] = mTemporalFilter ? randomOffset : float2(0,0);
-    pCB["rayTaskOffset"] = mDispatchSize * mDispatchSize;
-    pCB["coarseDim"] = uint2(mDispatchSize, mDispatchSize);
-    pCB["maxDepth"] = mMaxTraceDepth;
-    pCB["iorOverride"] = mIOROveride;
-    pCB["colorPhotonID"] = (uint32_t)mColorPhoton;
-    pCB["photonIDScale"] = mPhotonIDScale;
-    pCB["traceColorThreshold"] = mTraceColorThreshold * (512 * 512) / (mDispatchSize * mDispatchSize);
-    pCB["cullColorThreshold"] = mCullColorThreshold / 255;
-    pCB["gAreaType"] = (uint32_t)mAreaType;
-    pCB["gIntensity"] = mIntensity / 1000;
-    pCB["gSplatSize"] = mSplatSize;
-    pCB["updatePhoton"] = (uint32_t)mUpdatePhoton;
-    pCB["gMaxScreenRadius"] = mMaxPhotonPixelRadius * resolutionFactor();
-    pCB["gMipmap"] = int(log(mDispatchSize) / log(2));
-    auto rayGenVars = shader.mpPhotonTraceVars->getRayGenVars();
-    rayGenVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
-    rayGenVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
-    rayGenVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
-    rayGenVars->setStructuredBuffer("gPixelInfo", mpPixelInfoBuffer);
-    rayGenVars->setTexture("gUniformNoise", mpUniformNoise);
-    rayGenVars->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
-    rayGenVars->setStructuredBuffer("gRayCountQuadTree", mpRayCountQuadTree);
-    rayGenVars->setTexture("gRayDensityTex", mpRayDensityTex);
-    auto hitVars = shader.mpPhotonTraceVars->getHitVars(0);
-    for (auto& hitVar : hitVars)
-    {
-        hitVar->setStructuredBuffer("gPixelInfo", mpPixelInfoBuffer);
-        hitVar->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
-        hitVar->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
-        hitVar->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
-    }
-    shader.mpPhotonTraceState->setMaxTraceRecursionDepth(1);
+
 }
 
 void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
@@ -762,10 +732,54 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
     // photon tracing
     if (mTraceType != TRACE_NONE)
     {
+        pContext->clearUAV(mpSmallPhotonTex->getUAV().get(), uvec4(0, 0, 0, 0));
         auto photonTraceShader = getPhotonTraceShader();
-        setPhotonTracingCommonVariable(photonTraceShader);
+        //setPhotonTracingCommonVariable(photonTraceShader);
         GraphicsVars* pVars = photonTraceShader.mpPhotonTraceVars->getGlobalVars().get();
         ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
+        float2 randomOffset = (getRandomPoint(mFrameCounter) * 2.0f - 1.0f) * mJitter;
+        pCB["invView"] = glm::inverse(mpCamera->getViewMatrix());
+        pCB["viewportDims"] = vec2(mpRtOut->getWidth(), mpRtOut->getHeight());
+        pCB["emitSize"] = mEmitSize;
+        pCB["roughThreshold"] = mRoughThreshold;
+        pCB["randomOffset"] = mTemporalFilter ? randomOffset : float2(0, 0);
+        pCB["rayTaskOffset"] = mDispatchSize * mDispatchSize;
+        pCB["coarseDim"] = uint2(mDispatchSize, mDispatchSize);
+        pCB["maxDepth"] = mMaxTraceDepth;
+        pCB["iorOverride"] = mIOROveride;
+        pCB["colorPhotonID"] = (uint32_t)mColorPhoton;
+        pCB["photonIDScale"] = mPhotonIDScale;
+        pCB["traceColorThreshold"] = mTraceColorThreshold * (512 * 512) / (mDispatchSize * mDispatchSize);
+        pCB["cullColorThreshold"] = mCullColorThreshold / 255;
+        pCB["gAreaType"] = (uint32_t)mAreaType;
+        pCB["gIntensity"] = mIntensity / 1000;
+        pCB["gSplatSize"] = mSplatSize;
+        pCB["updatePhoton"] = (uint32_t)mUpdatePhoton;
+        pCB["gMinDrawCount"] = mFastPhotonDrawCount;
+        pCB["gMinScreenRadius"] = mFastPhotonPixelRadius * resolutionFactor();
+        pCB["gMaxScreenRadius"] = mMaxPhotonPixelRadius * resolutionFactor();
+        pCB["gMipmap"] = int(log(mDispatchSize) / log(2));
+        pCB["gSmallPhotonColorScale"] = mSmallPhotonCompressScale;
+        auto rayGenVars = photonTraceShader.mpPhotonTraceVars->getRayGenVars();
+        rayGenVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
+        rayGenVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
+        rayGenVars->setStructuredBuffer("gRayArgument", mpRayArgumentBuffer);
+        rayGenVars->setStructuredBuffer("gPixelInfo", mpPixelInfoBuffer);
+        rayGenVars->setTexture("gUniformNoise", mpUniformNoise);
+        rayGenVars->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
+        rayGenVars->setStructuredBuffer("gRayCountQuadTree", mpRayCountQuadTree);
+        rayGenVars->setTexture("gRayDensityTex", mpRayDensityTex);
+        rayGenVars->setTexture("gSmallPhotonBuffer", mpSmallPhotonTex);
+        rayGenVars->setTexture("gPhotonTexture", causticsFboLast->getColorTexture(0));
+        auto hitVars = photonTraceShader.mpPhotonTraceVars->getHitVars(0);
+        for (auto& hitVar : hitVars)
+        {
+            hitVar->setStructuredBuffer("gPixelInfo", mpPixelInfoBuffer);
+            hitVar->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
+            hitVar->setStructuredBuffer("gDrawArgument", mpDrawArgumentBuffer);
+            hitVar->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
+        }
+        photonTraceShader.mpPhotonTraceState->setMaxTraceRecursionDepth(1);
         uvec3 resolution = mTraceType == TRACE_FIXED ? uvec3(mDispatchSize, mDispatchSize, 1) : uvec3(2048, 4096, 1);
         mpRtRenderer->renderScene(pContext, photonTraceShader.mpPhotonTraceVars, photonTraceShader.mpPhotonTraceState, resolution, mpCamera.get());
     }
@@ -1045,9 +1059,11 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             pPerFrameCB["colorKernel"] = mSpacialColorKernel;
             pPerFrameCB["screenKernel"] = mSpacialScreenKernel;
             pPerFrameCB["passID"] = i;
+            pPerFrameCB["gSmallPhotonColorScale"] = mSmallPhotonCompressScale;
             mpSpacialFilterVars->setTexture("causticsTexThis", causticsFbo->getColorTexture(0));
             mpSpacialFilterVars->setTexture("depthTexThis", gBuffer->mpDepthTex);
             mpSpacialFilterVars->setTexture("normalTexThis", gBuffer->mpNormalTex);
+            mpSpacialFilterVars->setTexture("smallPhotonTex", mpSmallPhotonTex);
             static int groupSize = 16;
             uvec3 dim((causticsDim.x + groupSize - 1) / groupSize, (causticsDim.y + groupSize - 1) / groupSize, 1);
             pContext->dispatch(mpSpacialFilterState.get(), mpSpacialFilterVars.get(), dim);
@@ -1061,7 +1077,10 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         mDebugMode == ShowCount ||
         mDebugMode == ShowTotalPhoton ||
         mDebugMode == ShowRayTex ||
-        mDebugMode == ShowRayCountMipmap)
+        mDebugMode == ShowRayCountMipmap ||
+        mDebugMode == ShowPhotonDensity ||
+        mDebugMode == ShowSmallPhoton ||
+        mDebugMode == ShowSmallPhotonCount)
     {
         pContext->clearUAV(mpRtOut->getUAV().get(), kClearColor);
         GraphicsVars* pVars = mpCompositeRTVars->getGlobalVars().get();
@@ -1105,6 +1124,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         mpCompositePass["gRaytracingTex"] = mpRtOut;
         mpCompositePass["gRayTex"] = mpRayDensityTex;
         mpCompositePass["gStatisticsTex"] = mpPhotonCountTex;
+        mpCompositePass["gSmallPhotonTex"] = mpSmallPhotonTex;
         mpCompositePass["gPointSampler"] = mpPointSampler;
         ConstantBuffer::SharedPtr pCompCB = mpCompositePass["PerImageCB"];
         pCompCB["gNumLights"] = mpScene->getLightCount();
@@ -1119,6 +1139,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pCompCB["gRayTexScale"] = mRayTexScaleFactor;
         pCompCB["gStatisticsOffset"] = statisticsOffset;
         pCompCB["gRayCountMip"] = mRayCountMipIdx;
+        pCompCB["gSmallPhotonColorScale"] = mSmallPhotonCompressScale;
         mpCompositePass->getVars()->setStructuredBuffer("gPixelInfo", mpPixelInfoBuffer);
         for (uint32_t i = 0; i < mpScene->getLightCount(); i++)
         {

@@ -36,13 +36,13 @@ shared cbuffer PerFrameCB
     float colorKernel;
     float screenKernel;
     int passID;
+    float gSmallPhotonColorScale;
 };
 
 Texture2D depthTexThis;
-Texture2D depthTexLast;
-
 Texture2D normalTexThis;
-Texture2D normalTexLast;
+
+Texture2D<uint> smallPhotonTex;
 
 //Texture2D   causticsTexLast;
 RWTexture2D causticsTexThis;
@@ -86,6 +86,9 @@ void main(uint3 threadIdx : SV_DispatchThreadID)
             float depth = depthTexThis[samplePos].r;
             float3 normal = normalTexThis[samplePos].rgb;
             float4 color = causticsTexThis[causticsPixelPos + offset];
+            uint smallPhotonData = smallPhotonTex[causticsPixelPos + offset];
+            float4 smallPhotonClr = decompressColor(smallPhotonData, gSmallPhotonColorScale);
+            color += smallPhotonClr;
             float luminance = getLuminance(color.rgb);
             if (depth == 1)
             {
