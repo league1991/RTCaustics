@@ -163,7 +163,8 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addFloatVar("Fast Pixel Radius", mFastPhotonPixelRadius, 0, 5000, 1.f);
         pGui->addFloatVar("Fast Draw Count", mFastPhotonDrawCount, 0, 50000, 0.1f);
         pGui->addFloatVar("Color Compress Scale", mSmallPhotonCompressScale, 0, 5000, 1.f);
-        pGui->addCheckBox("Shrink Payload", mShrinkPayload);
+        pGui->addCheckBox("Shrink Color Payload", mShrinkColorPayload);
+        pGui->addCheckBox("Shrink Ray Diff Payload", mShrinkRayDiffPayload);
         pGui->addCheckBox("Update Photon", mUpdatePhoton);
         pGui->endGroup();
     }
@@ -406,15 +407,26 @@ Caustics::PhotonTraceShader Caustics::getPhotonTraceShader()
         {
             desc.addDefine("FAST_PHOTON_PATH", "1");
         }
-        if (mShrinkPayload)
+        if (mShrinkColorPayload)
         {
-            desc.addDefine("SMALL_PAYLOAD", "1");
+            desc.addDefine("SMALL_COLOR", "1");
+        }
+        if (mShrinkRayDiffPayload)
+        {
+            desc.addDefine("SMALL_RAY_DIFFERENTIAL", "1");
         }
         if (mUpdatePhoton)
         {
             desc.addDefine("UPDATE_PHOTON", "1");
         }
-        auto pPhotonTraceProgram = RtProgram::create(desc, mShrinkPayload ? 40U : 80U, mShrinkPayload ? 8U : 32U);
+
+        uint payLoadSize = 80U;
+        if (mShrinkColorPayload)
+            payLoadSize -= 16U;
+        if (mShrinkRayDiffPayload)
+            payLoadSize -= 24U;
+
+        auto pPhotonTraceProgram = RtProgram::create(desc, payLoadSize, 8U);
         auto pPhotonTraceState = RtState::create();
         pPhotonTraceState->setProgram(pPhotonTraceProgram);
         auto pPhotonTraceVars = RtProgramVars::create(pPhotonTraceProgram, mpScene);
@@ -506,10 +518,12 @@ uint Caustics::photonMacroToFlags()
     flags |= ((1 << mTraceType) << 3); // 4 bits
     if (mFastPhotonPath)
         flags |= (1 << 7); // 1 bits
-    if (mShrinkPayload)
+    if (mShrinkColorPayload)
         flags |= (1 << 8); // 1 bits
-    if (mUpdatePhoton)
+    if (mShrinkRayDiffPayload)
         flags |= (1 << 9); // 1 bits
+    if (mUpdatePhoton)
+        flags |= (1 << 10); // 1 bits
     return flags;
 }
 

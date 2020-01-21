@@ -78,7 +78,7 @@ shared cbuffer PerFrameCB
 
 struct Payload
 {
-#ifdef SMALL_PAYLOAD
+#ifdef SMALL_COLOR
     uint4 colorRayData;
 #else
     float3 color;
@@ -88,7 +88,7 @@ struct Payload
 #endif
 
 #ifdef RAY_DIFFERENTIAL
-    #ifdef SMALL_PAYLOAD
+    #ifdef SMALL_RAY_DIFFERENTIAL
         uint3 dP, dD;
     #else
         float3 dPdx, dPdy, dDdx, dDdy;  // ray differentials
@@ -115,7 +115,7 @@ struct PrimaryRayData
 #endif
 };
 
-#ifdef SMALL_PAYLOAD
+#ifdef SMALL_COLOR
 
 uint4 colorRayToUint(float3 color, float3 dir, float t, uint isContinue)
 {
@@ -140,7 +140,9 @@ void uintToColorRay(uint4 i,
     dir.y = f16tof32(i.z >> 16);
     dir.z = f16tof32(i.z & 0xffff);
 }
+#endif
 
+#ifdef SMALL_RAY_DIFFERENTIAL
 uint3 float3ToUint3(float3 a, float3 b)
 {
     uint3 res;
@@ -163,7 +165,7 @@ void uint3ToFloat3(uint3 i, out float3 a, out float3 b)
 
 void unpackPayload(Payload p, out PrimaryRayData d)
 {
-#ifdef SMALL_PAYLOAD
+#ifdef SMALL_COLOR
     uintToColorRay(p.colorRayData, d.color, d.nextDir, d.hitT, d.isContinue);
 #else
     d.color = p.color;
@@ -173,7 +175,7 @@ void unpackPayload(Payload p, out PrimaryRayData d)
 #endif
 
 #ifdef RAY_DIFFERENTIAL
-    #ifdef SMALL_PAYLOAD
+    #ifdef SMALL_RAY_DIFFERENTIAL
         uint3ToFloat3(p.dP, d.dPdx, d.dPdy);
         uint3ToFloat3(p.dD, d.dDdx, d.dDdy);
     #else
@@ -191,7 +193,7 @@ void unpackPayload(Payload p, out PrimaryRayData d)
 
 void packPayload(PrimaryRayData d, out Payload p)
 {
-#ifdef SMALL_PAYLOAD
+#ifdef SMALL_COLOR
     p.colorRayData = colorRayToUint(d.color, d.nextDir, d.hitT, d.isContinue);
 #else
     p.color = d.color;
@@ -201,7 +203,7 @@ void packPayload(PrimaryRayData d, out Payload p)
 #endif
 
 #ifdef RAY_DIFFERENTIAL
-    #ifdef SMALL_PAYLOAD
+    #ifdef SMALL_RAY_DIFFERENTIAL
         p.dP = float3ToUint3(d.dPdx, d.dPdy);
         p.dD = float3ToUint3(d.dDdx, d.dDdy);
     #else
@@ -225,7 +227,7 @@ struct ShadowRayData
 [shader("miss")]
 void primaryMiss(inout Payload hitData)
 {
-#ifdef SMALL_PAYLOAD
+#ifdef SMALL_COLOR
     hitData.colorRayData = colorRayToUint(float3(0, 0, 0), float3(0, 0, 0), 0, 0);
 #else
     hitData.color = float3(0, 0, 0);

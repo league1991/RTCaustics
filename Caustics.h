@@ -78,7 +78,8 @@ private:
     float mFastPhotonPixelRadius = 19.0f;
     float mFastPhotonDrawCount = 0.f;
     bool mFastPhotonPath = false;
-    bool mShrinkPayload = false;
+    bool mShrinkColorPayload = false;
+    bool mShrinkRayDiffPayload = true;
 
     // Adaptive photon refine
     float mNormalThreshold = 0.2f;
