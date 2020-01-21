@@ -619,7 +619,7 @@ void StorePhoton(RayDesc ray, PrimaryRayData hitData, uint2 pixelCoord)
     float3 color = hitData.color.rgb / area;
     float3 screenCoord;
     float pixelArea = getPhotonScreenArea(posW, dPdx, dPdy, screenCoord, isInFrustum);
-    if (dot(color, float3(0.299, 0.587, 0.114)) > cullColorThreshold && isInFrustum && updatePhoton)
+    if (dot(color, float3(0.299, 0.587, 0.114)) > cullColorThreshold && isInFrustum)
     {
         uint pixelLoc = pixelCoord.y * coarseDim.x + pixelCoord.x;
 
@@ -838,8 +838,10 @@ void rayGen()
     }
 
     // write result
+#ifdef UPDATE_PHOTON
     if (any(hitData.color > 0) && depth > 1)
     {
         StorePhoton(ray, hitData, pixelCoord);
     }
+#endif
 }

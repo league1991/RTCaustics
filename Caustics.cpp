@@ -409,6 +409,10 @@ Caustics::PhotonTraceShader Caustics::getPhotonTraceShader()
         {
             desc.addDefine("SMALL_PAYLOAD", "1");
         }
+        if (mUpdatePhoton)
+        {
+            desc.addDefine("UPDATE_PHOTON", "1");
+        }
         auto pPhotonTraceProgram = RtProgram::create(desc, mShrinkPayload ? 40U : 80U, mShrinkPayload ? 8U : 32U);
         auto pPhotonTraceState = RtState::create();
         pPhotonTraceState->setProgram(pPhotonTraceProgram);
@@ -492,6 +496,20 @@ float Caustics::resolutionFactor()
     float2 res(mpRtOut->getWidth(), mpRtOut->getHeight());
     float2 refRes(1920, 1080);
     return glm::length(res) / glm::length(refRes);
+}
+
+uint Caustics::photonMacroToFlags()
+{
+    uint flags = 0;
+    flags |= (1 << mPhotonTraceMacro); // 3 bits
+    flags |= ((1 << mTraceType) << 3); // 4 bits
+    if (mFastPhotonPath)
+        flags |= (1 << 7); // 1 bits
+    if (mShrinkPayload)
+        flags |= (1 << 8); // 1 bits
+    if (mUpdatePhoton)
+        flags |= (1 << 9); // 1 bits
+    return flags;
 }
 
 void Caustics::loadShader()
