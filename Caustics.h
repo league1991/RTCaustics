@@ -152,6 +152,7 @@ private:
     float mJitter = 0.6f;
     float mTemporalNormalKernel = 0.7f;
     float mTemporalDepthKernel = 3.0f;
+    float mTemporalColorKernel = 10.0f;
 
     // Spacial Filter
     bool mSpacialFilter = false;

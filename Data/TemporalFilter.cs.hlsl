@@ -35,9 +35,11 @@ shared cbuffer PerFrameCB
 
     int2 causticsDim;
     int2 gBufferDim;
+
     float blendWeight;
     float normalKernel;
     float depthKernel;
+    float colorKernel;
 };
 
 Texture2D depthTexThis;
@@ -64,6 +66,7 @@ void main(uint3 threadIdx : SV_DispatchThreadID)
 
     float depth = depthTexThis[gBufferPixelPos].r;
     float3 normal = normalTexThis[gBufferPixelPos].rgb;
+    float4 color = causticsTexThis[causticsPixelPos];
 
     float4 ndc = float4(uv * float2(2, -2) + float2(-1, 1), depth, 1);
     float4 ndcLast = mul(ndc, reprojMatrix);
@@ -74,6 +77,7 @@ void main(uint3 threadIdx : SV_DispatchThreadID)
 
     float depthLast = depthTexLast[gBufferPixelPosLast].r;
     float3 normalLast = normalTexLast[gBufferPixelPosLast].rgb;
+    float4 colorLast = causticsTexLast.SampleLevel(gSampler, uvLast, 0);
 
     float viewDepthThis = toViewSpace(invProjMatThis, depth);
     float viewDepthLast = toViewSpace(invProjMatLast, depthLast);
@@ -83,11 +87,12 @@ void main(uint3 threadIdx : SV_DispatchThreadID)
     {
         float normalDiff = (1 - saturate(dot(normal, normalLast))) / normalKernel * 100;
         float depthDiff = abs(viewDepthThis - viewDepthLast) / depthKernel;
-        weight = blendWeight * exp(-1 * (normalDiff * normalDiff + depthDiff * depthDiff));
+        float colorDiff = length(colorLast - color) / colorKernel;
+        weight = blendWeight * exp(-1 * (normalDiff * normalDiff + depthDiff * depthDiff + colorDiff * colorDiff));
     }
 
     //causticsTexThis[causticsPixelPos] = float4(normalLast, 1);
-    causticsTexThis[causticsPixelPos] = causticsTexThis[causticsPixelPos] * (1 - weight) +
+    causticsTexThis[causticsPixelPos] = color * (1 - weight) +
         //causticsTexLast[pixelPosLast] * weight;
-        causticsTexLast.SampleLevel(gSampler, uvLast, 0) * weight;
+        colorLast * weight;
 }

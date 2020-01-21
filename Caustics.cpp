@@ -261,8 +261,9 @@ void Caustics::onGuiRender(Gui* pGui)
         pGui->addCheckBox("Enable Temporal Filter", mTemporalFilter);
         pGui->addFloatVar("Filter Weight", mFilterWeight, 0.0f, 1.0f, 0.001f);
         pGui->addFloatVar("Jitter", mJitter, 0, 2, 0.01f);
-        pGui->addFloatVar("Temporal Normal Strength", mTemporalNormalKernel, 0.0001f, 10, 0.01f);
-        pGui->addFloatVar("Temporal Depth Strength", mTemporalDepthKernel, 0.0001f, 10, 0.01f);
+        pGui->addFloatVar("Temporal Normal Strength", mTemporalNormalKernel, 0.0001f, 1000, 0.01f);
+        pGui->addFloatVar("Temporal Depth Strength", mTemporalDepthKernel, 0.0001f, 1000, 0.01f);
+        pGui->addFloatVar("Temporal Color Strength", mTemporalColorKernel, 0.0001f, 1000, 0.01f);
         pGui->endGroup();
     }
 
@@ -1055,6 +1056,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pPerFrameCB["invProjMatLast"] = glm::inverse(lastProj);
         pPerFrameCB["normalKernel"] = mTemporalNormalKernel;
         pPerFrameCB["depthKernel"] = mTemporalDepthKernel;
+        pPerFrameCB["colorKernel"] = mTemporalColorKernel;
         mpFilterVars->setTexture("causticsTexThis", causticsFbo->getColorTexture(0));
         mpFilterVars->setTexture("causticsTexLast", causticsFboLast->getColorTexture(0));
         mpFilterVars->setTexture("depthTexThis", gBuffer->mpDepthTex);
