@@ -327,6 +327,10 @@ PhotonVSOut photonScatterVS(PhotonVSIn vIn)
     return vOut;
 }
 
+float sinc(float x, float c)
+{
+    return sin(x * c) / (x * c);
+}
 
 float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
 {
@@ -353,6 +357,9 @@ float4 photonScatterPS(PhotonVSOut vOut) : SV_TARGET
     else
     {
         alpha = smoothKernel(length(float3(vOut.texcoord.xy, zDiff)));//gGaussianTex.Sample(gLinearSampler, vOut.texcoord).r;
+        const float c = gKernelPower*10;
+        //alpha = sinc(length(vOut.texcoord.xy), c);
+        //alpha = sinc(vOut.texcoord.x, c)* sinc(vOut.texcoord.y, c);
         alpha = pow(alpha, gKernelPower);
     }
     return float4(vOut.color.rgb * alpha, 1);

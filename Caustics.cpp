@@ -261,7 +261,8 @@ void Caustics::onGuiRender(Gui* pGui)
     {
         pGui->addCheckBox("Enable Temporal Filter", mTemporalFilter);
         pGui->addFloatVar("Filter Weight", mFilterWeight, 0.0f, 1.0f, 0.001f);
-        pGui->addFloatVar("Jitter", mJitter, 0, 2, 0.01f);
+        pGui->addFloatVar("Jitter", mJitter, 0, 10, 0.01f); 
+        pGui->addFloatVar("Jitter Power", mJitterPower, 0, 200, 0.01f);
         pGui->addFloatVar("Temporal Normal Strength", mTemporalNormalKernel, 0.0001f, 1000, 0.01f);
         pGui->addFloatVar("Temporal Depth Strength", mTemporalDepthKernel, 0.0001f, 1000, 0.01f);
         pGui->addFloatVar("Temporal Color Strength", mTemporalColorKernel, 0.0001f, 1000, 0.01f);
@@ -775,7 +776,9 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         //setPhotonTracingCommonVariable(photonTraceShader);
         GraphicsVars* pVars = photonTraceShader.mpPhotonTraceVars->getGlobalVars().get();
         ConstantBuffer::SharedPtr pCB = pVars->getConstantBuffer("PerFrameCB");
-        float2 randomOffset = (getRandomPoint(mFrameCounter) * 2.0f - 1.0f) * mJitter;
+        float2 r = getRandomPoint(mFrameCounter) * 2.0f - 1.0f;
+        float2 sign(r.x > 0 ? 1 : -1, r.y > 0 ? 1 : -1);
+        float2 randomOffset = sign * float2(pow(abs(r.x), mJitterPower), pow(abs(r.y), mJitterPower)) * mJitter;
         pCB["invView"] = glm::inverse(mpCamera->getViewMatrix());
         pCB["viewportDims"] = vec2(mpRtOut->getWidth(), mpRtOut->getHeight());
         pCB["emitSize"] = mEmitSize;

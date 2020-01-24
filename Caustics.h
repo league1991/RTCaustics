@@ -151,6 +151,7 @@ private:
     bool mTemporalFilter = true;
     float mFilterWeight = 0.85f;
     float mJitter = 0.6f;
+    float mJitterPower = 1.0f;
     float mTemporalNormalKernel = 0.7f;
     float mTemporalDepthKernel = 3.0f;
     float mTemporalColorKernel = 10.0f;
