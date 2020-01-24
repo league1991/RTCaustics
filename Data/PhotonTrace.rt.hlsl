@@ -725,8 +725,10 @@ void getRaySample(uint2 pixel00, uint sampleIdx, inout float2 screenCoord, inout
     float y = (yi + 0.5) / sampleDim;
     float2 rnd = float2(x, y);
     float2 uv = bilinearSample(v00, v10, v01, v11, rnd);
-    float2 duv = bilinearSample(v00, v10, v01, v11, rnd + 1e-3) - uv;
-    float aniso = sqrt(duv.y / duv.x);
+    float density = bilinearIntepolation(v00, v10, v01, v11, uv);
+    uv += randomOffset / density * 4;
+    //float2 duv = bilinearSample(v00, v10, v01, v11, rnd + 1e-3) - uv;
+    //float aniso = sqrt(duv.y / duv.x);
 
     screenCoord = pixel00 + uv + 0.5;
     pixelSize = pixelSize * sqrt(1 / (bilinearIntepolation(v00, v10, v01, v11, uv)));// *float2(1 / aniso, aniso);
@@ -762,7 +764,8 @@ bool getTask(out float2 lightUV, out uint2 pixelCoord, out float2 pixelSize)
         }
         RayTask task = gRayTask[taskIdx];
         pixelCoord = task.screenCoord;
-        lightUV = (task.screenCoord + randomOffset * task.pixelSize) / float2(coarseDim);
+        float2 c = 1 / 4.0;// task.pixelSize;
+        lightUV = (task.screenCoord + randomOffset * c) / float2(coarseDim);
         pixelSize = task.pixelSize;
     }
 #elif defined(TRACE_FIXED)
