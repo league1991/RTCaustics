@@ -76,7 +76,7 @@ shared cbuffer PerFrameCB
     float gSmallPhotonColorScale;
 };
 
-struct Payload
+struct CausticsPackedPayload
 {
 #ifdef SMALL_COLOR
     uint4 colorRayData;
@@ -100,7 +100,7 @@ struct Payload
 #endif
 };
 
-struct PrimaryRayData
+struct CausticsUnpackedPayload
 {
     float3 color;
     float hitT;
@@ -163,7 +163,7 @@ void uint3ToFloat3(uint3 i, out float3 a, out float3 b)
 }
 #endif
 
-void unpackPayload(Payload p, out PrimaryRayData d)
+void unpackPayload(CausticsPackedPayload p, out CausticsUnpackedPayload d)
 {
 #ifdef SMALL_COLOR
     uintToColorRay(p.colorRayData, d.color, d.nextDir, d.hitT, d.isContinue);
@@ -191,7 +191,7 @@ void unpackPayload(Payload p, out PrimaryRayData d)
 #endif
 }
 
-void packPayload(PrimaryRayData d, out Payload p)
+void packPayload(CausticsUnpackedPayload d, out CausticsPackedPayload p)
 {
 #ifdef SMALL_COLOR
     p.colorRayData = colorRayToUint(d.color, d.nextDir, d.hitT, d.isContinue);
@@ -225,7 +225,7 @@ struct ShadowRayData
 };
 
 [shader("miss")]
-void primaryMiss(inout Payload hitData)
+void primaryMiss(inout CausticsPackedPayload hitData)
 {
 #ifdef SMALL_COLOR
     hitData.colorRayData = colorRayToUint(float3(0, 0, 0), float3(0, 0, 0), 0, 0);
@@ -368,7 +368,7 @@ void updateReflectRayDifferential(
     dDdx = dDdx - 2 * (dot(D, N) * dNdx + dDNdx * N);
 }
 
-void getPhotonDifferential(PrimaryRayData hitData, RayDesc ray, out float3 dPdx, out float3 dPdy)
+void getPhotonDifferential(CausticsUnpackedPayload hitData, RayDesc ray, out float3 dPdx, out float3 dPdy)
 {
 #ifdef RAY_DIFFERENTIAL
     dPdx = hitData.dPdx;
@@ -430,9 +430,9 @@ void updateRefractRayDifferential(
 }
 
 [shader("closesthit")]
-void primaryClosestHit(inout Payload payload, in BuiltInTriangleIntersectionAttributes attribs)
+void primaryClosestHit(inout CausticsPackedPayload payload, in BuiltInTriangleIntersectionAttributes attribs)
 {
-    PrimaryRayData hitData;
+    CausticsUnpackedPayload hitData;
     unpackPayload(payload, hitData);
     // Get the hit-point data
     float3 rayOrigW = WorldRayOrigin();
@@ -576,7 +576,7 @@ float getArea(float3 dPdx, float3 dPdy)
 }
 
 
-void initFromLight(float2 lightUV, float2 pixelSize0, out RayDesc ray, out PrimaryRayData hitData)
+void initFromLight(float2 lightUV, float2 pixelSize0, out RayDesc ray, out CausticsUnpackedPayload hitData)
 {
     lightUV = lightUV * 2 - 1;
     float2 pixelSize = pixelSize0 * emitSize / float2(coarseDim.xy);
@@ -611,7 +611,7 @@ void initFromLight(float2 lightUV, float2 pixelSize0, out RayDesc ray, out Prima
 #endif
 }
 
-void StorePhoton(RayDesc ray, PrimaryRayData hitData, uint2 pixelCoord)
+void StorePhoton(RayDesc ray, CausticsUnpackedPayload hitData, uint2 pixelCoord)
 {
     bool isInFrustum;
     float3 dPdx, dPdy;
@@ -822,7 +822,7 @@ void rayGen()
 
     // Init ray and hit data
     RayDesc ray;
-    PrimaryRayData hitData;
+    CausticsUnpackedPayload hitData;
     initFromLight(lightUV, pixelSize, ray, hitData);
 
     // Photon trace
@@ -831,7 +831,7 @@ void rayGen()
     {
         ray.Direction = hitData.nextDir;
 
-        Payload payload;
+        CausticsPackedPayload payload;
         packPayload(hitData, payload);
         TraceRay(gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, payload);
         unpackPayload(payload, hitData);
