@@ -163,7 +163,7 @@ void uint3ToFloat3(uint3 i, out float3 a, out float3 b)
 }
 #endif
 
-void unpackPayload(CausticsPackedPayload p, out CausticsUnpackedPayload d)
+void unpackCausticsPayload(CausticsPackedPayload p, out CausticsUnpackedPayload d)
 {
 #ifdef SMALL_COLOR
     uintToColorRay(p.colorRayData, d.color, d.nextDir, d.hitT, d.isContinue);
@@ -191,7 +191,7 @@ void unpackPayload(CausticsPackedPayload p, out CausticsUnpackedPayload d)
 #endif
 }
 
-void packPayload(CausticsUnpackedPayload d, out CausticsPackedPayload p)
+void packCausticsPayload(CausticsUnpackedPayload d, out CausticsPackedPayload p)
 {
 #ifdef SMALL_COLOR
     p.colorRayData = colorRayToUint(d.color, d.nextDir, d.hitT, d.isContinue);
@@ -433,7 +433,7 @@ void updateRefractRayDifferential(
 void primaryClosestHit(inout CausticsPackedPayload payload, in BuiltInTriangleIntersectionAttributes attribs)
 {
     CausticsUnpackedPayload hitData;
-    unpackPayload(payload, hitData);
+    unpackCausticsPayload(payload, hitData);
     // Get the hit-point data
     float3 rayOrigW = WorldRayOrigin();
     float3 rayDirW = WorldRayDirection(); 
@@ -548,7 +548,7 @@ void primaryClosestHit(inout CausticsPackedPayload payload, in BuiltInTriangleIn
         hitData.nextDir = sd.N;
     }
 
-    packPayload(hitData, payload);
+    packCausticsPayload(hitData, payload);
 }
 
 float getArea(float3 dPdx, float3 dPdy)
@@ -832,9 +832,9 @@ void rayGen()
         ray.Direction = hitData.nextDir;
 
         CausticsPackedPayload payload;
-        packPayload(hitData, payload);
+        packCausticsPayload(hitData, payload);
         TraceRay(gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, payload);
-        unpackPayload(payload, hitData);
+        unpackCausticsPayload(payload, hitData);
 
         ray.Origin = ray.Origin + ray.Direction * hitData.hitT;
     }
