@@ -74,6 +74,8 @@ shared cbuffer PerFrameCB
     float gMinScreenRadius;
     float gMinDrawCount;
     float gSmallPhotonColorScale;
+
+    float3 cameraPos;
 };
 
 struct CausticsPackedPayload
@@ -581,7 +583,7 @@ void initFromLight(float2 lightUV, float2 pixelSize0, out RayDesc ray, out Caust
     lightUV = lightUV * 2 - 1;
     float2 pixelSize = pixelSize0 * emitSize / float2(coarseDim.xy);
 
-    float3 lightOrigin = gLights[0].dirW * -100;// gLights[0].posW;
+    float3 lightOrigin = cameraPos + gLights[0].dirW * -100;// gLights[0].posW;
     float3 lightDirZ = gLights[0].dirW;
     float3 lightDirX = normalize(float3(-lightDirZ.z, 0, lightDirZ.x));
     float3 lightDirY = normalize(cross(lightDirZ, lightDirX));

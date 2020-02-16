@@ -801,6 +801,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         pCB["gMaxScreenRadius"] = mMaxPhotonPixelRadius * resolutionFactor();
         pCB["gMipmap"] = int(log(mDispatchSize) / log(2));
         pCB["gSmallPhotonColorScale"] = mSmallPhotonCompressScale;
+        pCB["cameraPos"] = mpCamera->getPosition();
         auto rayGenVars = photonTraceShader.mpPhotonTraceVars->getRayGenVars();
         rayGenVars->setStructuredBuffer("gPhotonBuffer", mpPhotonBuffer);
         rayGenVars->setStructuredBuffer("gRayTask", mpRayTaskBuffer);
