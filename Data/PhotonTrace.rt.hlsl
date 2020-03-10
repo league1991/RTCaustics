@@ -81,13 +81,13 @@ shared cbuffer PerFrameCB
 struct CausticsPackedPayload
 {
 #ifdef SMALL_COLOR
-    uint4 colorRayData;
+    uint colorAndFlag;
 #else
     float3 color;
     uint isContinue;
+#endif
     float hitT;
     float3 nextDir;
-#endif
 
 #ifdef RAY_DIFFERENTIAL
     #ifdef SMALL_RAY_DIFFERENTIAL
@@ -119,28 +119,19 @@ struct CausticsUnpackedPayload
 
 #ifdef SMALL_COLOR
 
-uint4 colorRayToUint(float3 color, float3 dir, float t, uint isContinue)
+uint colorRayToUint(float3 color, uint isContinue)
 {
-    uint4 res;
-    res.x = ((f32tof16(color.x) << 16) | f32tof16(color.y));
-    res.y = ((f32tof16(color.z) << 16) | f32tof16(dir.x));
-    res.z = ((f32tof16(dir.y) << 16) | f32tof16(dir.z));
-    res.w = asuint(t);
-    res.w = (res.w & 0x7fffffff) | (isContinue << 31);
-    return res;
+    uint3 colorI = color * 255;
+    return (colorI.r << 24) | (colorI.g << 16) | (colorI.b << 8) | (isContinue & 0x1);
 }
 
-void uintToColorRay(uint4 i,
-    out float3 color, out float3 dir, out float t, out uint isContinue)
+void uintToColorRay(uint i,
+    out float3 color, out uint isContinue)
 {
-    isContinue = i.w >> 31;
-    t = asfloat(i.w & 0x7fffffff);
-    color.x = f16tof32(i.x >> 16);
-    color.y = f16tof32(i.x & 0xffff);
-    color.z = f16tof32(i.y >> 16);
-    dir.x = f16tof32(i.y & 0xffff);
-    dir.y = f16tof32(i.z >> 16);
-    dir.z = f16tof32(i.z & 0xffff);
+    isContinue = i & 0x1;
+    uint3 colorI = uint3(i >> 24, i >> 16, i >> 8);
+    colorI = (colorI & 0xff);
+    color = colorI / 255.0;
 }
 #endif
 
@@ -168,13 +159,13 @@ void uint3ToFloat3(uint3 i, out float3 a, out float3 b)
 void unpackCausticsPayload(CausticsPackedPayload p, out CausticsUnpackedPayload d)
 {
 #ifdef SMALL_COLOR
-    uintToColorRay(p.colorRayData, d.color, d.nextDir, d.hitT, d.isContinue);
+    uintToColorRay(p.colorAndFlag, d.color, d.isContinue);
 #else
     d.color = p.color;
     d.isContinue = p.isContinue;
+#endif
     d.nextDir = p.nextDir;
     d.hitT = p.hitT;
-#endif
 
 #ifdef RAY_DIFFERENTIAL
     #ifdef SMALL_RAY_DIFFERENTIAL
@@ -196,13 +187,13 @@ void unpackCausticsPayload(CausticsPackedPayload p, out CausticsUnpackedPayload 
 void packCausticsPayload(CausticsUnpackedPayload d, out CausticsPackedPayload p)
 {
 #ifdef SMALL_COLOR
-    p.colorRayData = colorRayToUint(d.color, d.nextDir, d.hitT, d.isContinue);
+    p.colorAndFlag = colorRayToUint(d.color, d.isContinue);
 #else
     p.color = d.color;
     p.isContinue = d.isContinue;
+#endif
     p.hitT = d.hitT;
     p.nextDir = d.nextDir;
-#endif
 
 #ifdef RAY_DIFFERENTIAL
     #ifdef SMALL_RAY_DIFFERENTIAL
@@ -230,12 +221,12 @@ struct ShadowRayData
 void primaryMiss(inout CausticsPackedPayload hitData)
 {
 #ifdef SMALL_COLOR
-    hitData.colorRayData = colorRayToUint(float3(0, 0, 0), float3(0, 0, 0), 0, 0);
+    hitData.colorAndFlag = colorRayToUint(float3(0, 0, 0), 0);
 #else
     hitData.color = float3(0, 0, 0);
     hitData.isContinue = 0;
-    hitData.hitT = 0;
 #endif
+    hitData.hitT = 0;
 }
 
 VertexOut getVertexAttributes(
@@ -455,9 +446,9 @@ void primaryClosestHit(inout CausticsPackedPayload payload, in BuiltInTriangleIn
 #endif
     ShadingData sd = prepareShadingData(v, gMaterial, rayOrigW, 0);
 
-    hitData.isContinue = 0;
     hitData.hitT = hitT;
     bool isSpecular = (sd.linearRoughness > roughThreshold || sd.opacity < 1);
+    hitData.isContinue = isSpecular;
     if (isSpecular)
     {
         float3 N_ = v.normalW;
@@ -534,15 +525,6 @@ void primaryClosestHit(inout CausticsPackedPayload payload, in BuiltInTriangleIn
         hitData.nextDir = R;
         float3 baseColor = lerp(1, sd.diffuse, sd.opacity);
         hitData.color = baseColor * hitData.color;// *float4(sd.specular, 1);
-
-        if (getLuminance(hitData.color/ area) > traceColorThreshold)
-        {
-            hitData.isContinue = 1;
-        }
-        else
-        {
-            hitData.color = 0;
-        }
     }
     else
     {
@@ -826,6 +808,8 @@ void rayGen()
     RayDesc ray;
     CausticsUnpackedPayload hitData;
     initFromLight(lightUV, pixelSize, ray, hitData);
+    float colorIntensity = max(hitData.color.r, max(hitData.color.g, hitData.color.b));
+    hitData.color /= colorIntensity;
 
     // Photon trace
     int depth;
@@ -838,6 +822,13 @@ void rayGen()
         TraceRay(gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, payload);
         unpackCausticsPayload(payload, hitData);
 
+        float area = (dot(hitData.dPdx, hitData.dPdx) + dot(hitData.dPdy, hitData.dPdy)) * 0.5;
+        if (hitData.isContinue && dot(hitData.color, float3(0.299, 0.587, 0.114)) * colorIntensity < traceColorThreshold * area)
+        {
+            hitData.isContinue = 0;
+            hitData.color = 0;
+        }
+
         ray.Origin = ray.Origin + ray.Direction * hitData.hitT;
     }
 
@@ -845,6 +836,7 @@ void rayGen()
 #ifdef UPDATE_PHOTON
     if (any(hitData.color > 0) && depth > 1)
     {
+        hitData.color *= colorIntensity;
         StorePhoton(ray, hitData, pixelCoord);
     }
 #endif

@@ -423,7 +423,7 @@ Caustics::PhotonTraceShader Caustics::getPhotonTraceShader()
 
         uint payLoadSize = 80U;
         if (mShrinkColorPayload)
-            payLoadSize -= 16U;
+            payLoadSize -= 12U;
         if (mShrinkRayDiffPayload)
             payLoadSize -= 24U;
 
