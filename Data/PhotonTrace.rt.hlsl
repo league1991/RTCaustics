@@ -477,15 +477,15 @@ void primaryClosestHit(inout CausticsPackedPayload payload, in BuiltInTriangleIn
         calculateDNdx(dP1, dP2, dN1, dN2, N, hitData.dPdy, dNdy);
         if (isReflect)
         {
-            updateReflectRayDifferential(N, hitData.dPdx, dNdx, hitData.dDdx);
-            updateReflectRayDifferential(N, hitData.dPdy, dNdy, hitData.dDdy);
+            updateReflectRayDifferential(N_, hitData.dPdx, dNdx, hitData.dDdx);
+            updateReflectRayDifferential(N_, hitData.dPdy, dNdy, hitData.dDdy);
             R = reflect(rayDirW, N_);
         }
         else
         {
             getRefractVector(rayDirW, N_, R, eta);
-            updateRefractRayDifferential(rayDirW, R, N, eta, hitData.dPdx, dNdx, hitData.dDdx);
-            updateRefractRayDifferential(rayDirW, R, N, eta, hitData.dPdy, dNdy, hitData.dDdy);
+            updateRefractRayDifferential(rayDirW, R, N_, eta, hitData.dPdx, dNdx, hitData.dDdx);
+            updateRefractRayDifferential(rayDirW, R, N_, eta, hitData.dPdy, dNdy, hitData.dDdy);
         }
         float area = (dot(hitData.dPdx, hitData.dPdx) + dot(hitData.dPdy, hitData.dPdy)) * 0.5;
 #elif defined(RAY_CONE)
