@@ -1,0 +1,63 @@
+{
+    "version": 2,
+    "camera_speed": 1.0,
+    "lighting_scale": 1.0,
+    "active_camera": "Camera0",
+    "models": [
+        {
+            "file": "ring.fbx",
+            "name": "ring",
+            "instances": [
+                {
+                    "name": "Falcor-Sample0",
+                    "translation": [
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "scaling": [
+                        1.0,
+                        1.0,
+                        1.0
+                    ],
+                    "rotation": [
+                        0.0,
+                        0.0,
+                        0.0
+                    ]
+                }
+            ]
+        }
+    ],
+    "lights": [
+        {
+            "name": "DirLight0",
+            "type": "dir_light",
+            "intensity":    [5,5,5],
+            "direction":    [-0.2,-0.9,0]
+        }
+    ],
+    "cameras": [
+        {
+            "name": "Camera0",
+            "pos": [
+                7,
+                80,
+                40
+            ],
+            "target": [0,0,0
+            ],
+            "up": [
+                0,
+                1,
+                0
+            ],
+            "focal_length": 21.0,
+            "depth_range": [
+                0.10000000149011612,
+                10000.0
+            ],
+            "aspect_ratio": 1.7769999504089356
+        }
+    ]
+}
