@@ -110,6 +110,11 @@ int getMipOffset(int mip)
     return ((1 << (mip << 1)) - 1) / 3;
 }
 
+int getMipSize(int mip)
+{
+    return (1 << mip);
+}
+
 int getTextureOffset(int2 pos, int mip)
 {
     int mipSize = (1 << mip);
@@ -117,9 +122,21 @@ int getTextureOffset(int2 pos, int mip)
     return mipOffset + pos.y * mipSize + pos.x;
 }
 
-int getMipSize(int mip)
+int getMipOffset4(int mip)
 {
-    return (1 << mip);
+    return (((1 << (mip << 2)) - 1) << 2) / 15;
+}
+
+int getMipSize4(int mip)
+{
+    return ((1 << (mip << 1)) << 1);
+}
+
+int getTextureOffset4(int2 pos, int mip)
+{
+    int mipSize = getMipSize4(mip);
+    int mipOffset = getMipOffset4(mip);
+    return mipOffset + pos.y * mipSize + pos.x;
 }
 
 float getLuminance(float3 color)
