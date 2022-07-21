@@ -205,11 +205,11 @@ private:
     float3 mLightDirection;
     float2 mLightAngleSpeed{0,0};
 
-    Model::SharedPtr mpQuad;
-    Model::SharedPtr mpSphere;
-    RtScene::SharedPtr mpScene;
+    Scene::SharedPtr mpQuad;
+    Scene::SharedPtr mpSphere;
+    Scene::SharedPtr mpScene;
     Camera::SharedPtr mpCamera;
-    FirstPersonCameraController mCamController;
+    std::shared_ptr<FirstPersonCameraController> mCamController;
 
     // forward shading pass
     RasterScenePass::SharedPtr mpRasterPass;
@@ -312,7 +312,7 @@ private:
     RtProgram::SharedPtr mpRaytraceProgram;
     RtProgramVars::SharedPtr mpRtVars;
     RtState::SharedPtr mpRtState;
-    RtSceneRenderer::SharedPtr mpRtRenderer;
+    //RtSceneRenderer::SharedPtr mpRtRenderer;
     Texture::SharedPtr mpRtOut;
 
     // composite pass

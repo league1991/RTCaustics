@@ -26,7 +26,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
 #include "Caustics.h"
-#include "Scene/Model/Model.h"
+//#include "Scene/Model/Model.h"
 
 static const glm::vec4 kClearColor(0.f, 0.f, 0.f, 1);
 static const std::string kDefaultScene = "Caustics/ring.fscene";
@@ -42,9 +42,11 @@ const FileDialogFilterVec settingFilter = { {"ini", "Scene Setting File"} };
 
 void Caustics::onGuiRender(Gui* pGui)
 {
-    pGui->addCheckBox("Ray Trace", mRayTrace);
+    Gui::Window w(pGui, "Caustics", { 300, 400 }, { 10, 80 });
 
-    if (pGui->addButton("Load Scene"))
+    w.checkbox("Ray Trace", mRayTrace);
+
+    if (w.button("Load Scene"))
     {
         std::string filename;
         if (openFileDialog(Scene::kFileExtensionFilters, filename))
@@ -54,7 +56,7 @@ void Caustics::onGuiRender(Gui* pGui)
         }
     }
 
-    if (pGui->addButton("Load Scene Settings"))
+    if (w.button("Load Scene Settings"))
     {
         std::string filename;
         if (openFileDialog(settingFilter, filename))
@@ -62,7 +64,7 @@ void Caustics::onGuiRender(Gui* pGui)
             loadSceneSetting(filename);
         }
     }
-    if (pGui->addButton("Save Scene Settings"))
+    if (w.button("Save Scene Settings"))
     {
         std::string filename;
         if (saveFileDialog(settingFilter, filename))
@@ -70,13 +72,14 @@ void Caustics::onGuiRender(Gui* pGui)
             saveSceneSetting(filename);
         }
     }
-    if (pGui->addButton("Update Shader"))
+    if (w.button("Update Shader"))
     {
         loadShader();
     }
 
-    if (pGui->beginGroup("Display", true))
+    //if (w.group("Display", true))
     {
+        auto g = w.group("Display", true);
         {
             Gui::DropdownList debugModeList;
             debugModeList.push_back({ 0, "Rasterize" });
@@ -97,11 +100,14 @@ void Caustics::onGuiRender(Gui* pGui)
             debugModeList.push_back({ 15, "Photon Density" });
             debugModeList.push_back({ 16, "Small Photon Color" });
             debugModeList.push_back({ 17, "Small Photon Count" });
-            pGui->addDropdown("Composite mode", debugModeList, (uint32_t&)mDebugMode);
+            g.dropdown("Composite mode", debugModeList, (uint32_t&)mDebugMode);
         }
-        pGui->addFloatVar("Max Pixel Value", mMaxPixelArea, 0, 1000000000, 5.f);
-        pGui->addFloatVar("Max Photon Count", mMaxPhotonCount, 0, 1000000000, 5.f);
-        pGui->addIntVar("Ray Count Mipmap", mRayCountMipIdx, 0, 11);
+        g.var("Max Pixel Value", mMaxPixelArea, 0.0f, 1000000000.f, 5.f);
+        g.var("Max Photon Count", mMaxPhotonCount, 0.f, 1000000000.f, 5.f);
+        g.var("Ray Count Mipmap", mRayCountMipIdx, 0, 11);
+        //pGui->addFloatVar("Max Pixel Value", mMaxPixelArea, 0, 1000000000, 5.f);
+        //pGui->addFloatVar("Max Photon Count", mMaxPhotonCount, 0, 1000000000, 5.f);
+        //pGui->addIntVar("Ray Count Mipmap", mRayCountMipIdx, 0, 11);
         {
             Gui::DropdownList debugModeList;
             debugModeList.push_back({ 1, "x1" });
@@ -109,27 +115,28 @@ void Caustics::onGuiRender(Gui* pGui)
             debugModeList.push_back({ 4, "x4" });
             debugModeList.push_back({ 8, "x8" });
             debugModeList.push_back({ 16, "x16" });
-            pGui->addDropdown("Ray Tex Scale", debugModeList, (uint32_t&)mRayTexScaleFactor);
+            g.dropdown("Ray Tex Scale", debugModeList, (uint32_t&)mRayTexScaleFactor);
         }
-        pGui->endGroup();
+        //pGui->endGroup();
     }
 
-    if (pGui->beginGroup("Photon Trace", true))
+    //if (pGui->beginGroup("Photon Trace", true))
     {
+        auto g = w.group("Photon Trace", true);
         {
             Gui::DropdownList debugModeList;
             debugModeList.push_back({ 0, "Fixed Resolution" });
             debugModeList.push_back({ 1, "Adaptive Resolution" });
             debugModeList.push_back({ 3, "Fast Adaptive Resolution" });
             debugModeList.push_back({ 2, "None" });
-            pGui->addDropdown("Trace Type", debugModeList, (uint32_t&)mTraceType);
+            g.dropdown("Trace Type", debugModeList, (uint32_t&)mTraceType);
         }
         {
             Gui::DropdownList debugModeList;
             debugModeList.push_back({ 0, "Ray Differential" });
             debugModeList.push_back({ 1, "Ray Cone" });
             debugModeList.push_back({ 2, "None" });
-            pGui->addDropdown("Ray Type", debugModeList, (uint32_t&)mPhotonTraceMacro);
+            g.dropdown("Ray Type", debugModeList, (uint32_t&)mPhotonTraceMacro);
         }
         {
             Gui::DropdownList debugModeList;
@@ -139,7 +146,7 @@ void Caustics::onGuiRender(Gui* pGui)
             debugModeList.push_back({ 512, "512" });
             debugModeList.push_back({ 1024, "1024" });
             debugModeList.push_back({ 2048, "2048" });
-            pGui->addDropdown("Dispatch Size", debugModeList, (uint32_t&)mDispatchSize);
+            g.dropdown("Dispatch Size", debugModeList, (uint32_t&)mDispatchSize);
         }
         {
             Gui::DropdownList debugModeList;
@@ -147,90 +154,93 @@ void Caustics::onGuiRender(Gui* pGui)
             debugModeList.push_back({ 1, "Avg Length" });
             debugModeList.push_back({ 2, "Max Square" });
             debugModeList.push_back({ 3, "Exact Area" });
-            pGui->addDropdown("Area Type", debugModeList, (uint32_t&)mAreaType);
+            g.dropdown("Area Type", debugModeList, (uint32_t&)mAreaType);
         }
-        pGui->addFloatVar("Intensity", mIntensity, 0, 10, 0.1f);
-        pGui->addFloatVar("Emit size", mEmitSize, 0, 1000, 1);
-        pGui->addFloatVar("Rough Threshold", mRoughThreshold, 0, 1, 0.01f);
-        pGui->addIntVar("Max Trace Depth", mMaxTraceDepth, 0, 30);
-        pGui->addFloatVar("IOR Override", mIOROveride, 0, 3, 0.01f);
-        pGui->addCheckBox("ID As Color", mColorPhoton);
-        pGui->addIntVar("Photon ID Scale", mPhotonIDScale);
-        pGui->addFloatVar("Min Trace Luminance", mTraceColorThreshold, 0, 10,0.005f);
-        pGui->addFloatVar("Min Cull Luminance", mCullColorThreshold, 0, 10000, 0.01f);
-        pGui->addCheckBox("Fast Photon Path", mFastPhotonPath);
-        pGui->addFloatVar("Max Pixel Radius", mMaxPhotonPixelRadius, 0, 5000, 1.f);
-        pGui->addFloatVar("Fast Pixel Radius", mFastPhotonPixelRadius, 0, 5000, 1.f);
-        pGui->addFloatVar("Fast Draw Count", mFastPhotonDrawCount, 0, 50000, 0.1f);
-        pGui->addFloatVar("Color Compress Scale", mSmallPhotonCompressScale, 0, 5000, 1.f);
-        pGui->addCheckBox("Shrink Color Payload", mShrinkColorPayload);
-        pGui->addCheckBox("Shrink Ray Diff Payload", mShrinkRayDiffPayload);
-        pGui->addCheckBox("Update Photon", mUpdatePhoton);
-        pGui->endGroup();
+        g.var("Intensity", mIntensity, 0.f, 10.f, 0.1f);
+        g.var("Emit size", mEmitSize, 0.f, 1000.f, 1.f);
+        g.var("Rough Threshold", mRoughThreshold, 0.f, 1.f, 0.01f);
+        g.var("Max Trace Depth", mMaxTraceDepth, 0, 30);
+        g.var("IOR Override", mIOROveride, 0.f, 3.f, 0.01f);
+        g.checkbox("ID As Color", mColorPhoton);
+        g.var("Photon ID Scale", mPhotonIDScale);
+        g.var("Min Trace Luminance", mTraceColorThreshold, 0.f, 10.f,0.005f);
+        g.var("Min Cull Luminance", mCullColorThreshold, 0.f, 10000.f, 0.01f);
+        g.checkbox("Fast Photon Path", mFastPhotonPath);
+        g.var("Max Pixel Radius", mMaxPhotonPixelRadius, 0.f, 5000.f, 1.f);
+        g.var("Fast Pixel Radius", mFastPhotonPixelRadius, 0.f, 5000.f, 1.f);
+        g.var("Fast Draw Count", mFastPhotonDrawCount, 0.f, 50000.f, 0.1f);
+        g.var("Color Compress Scale", mSmallPhotonCompressScale, 0.f, 5000.f, 1.f);
+        g.checkbox("Shrink Color Payload", mShrinkColorPayload);
+        g.checkbox("Shrink Ray Diff Payload", mShrinkRayDiffPayload);
+        g.checkbox("Update Photon", mUpdatePhoton);
+        //pGui->endGroup();
     }
 
-    if (pGui->beginGroup("Adaptive Resolution", true))
+    //if (pGui->beginGroup("Adaptive Resolution", true))
     {
-        
+        auto g = w.group("Adaptive Resolution", true);
         {
             Gui::DropdownList debugModeList;
             debugModeList.push_back({ 0, "Random" });
             debugModeList.push_back({ 1, "Grid" });
-            pGui->addDropdown("Sample Placement", debugModeList, (uint32_t&)mSamplePlacement);
+            g.dropdown("Sample Placement", debugModeList, (uint32_t&)mSamplePlacement);
         }
-        pGui->addFloatVar("Luminance Threshold", mPixelLuminanceThreshold, 0.01f, 10.0, 0.01f);
-        pGui->addFloatVar("Photon Size Threshold", mMinPhotonPixelSize, 1.f, 1000.0f, 0.1f);
-        pGui->addFloatVar("Smooth Weight", mSmoothWeight, 0, 10.0f, 0.001f);
-        pGui->addFloatVar("Proportional Gain", mUpdateSpeed, 0, 1, 0.01f);
-        pGui->addFloatVar("Variance Gain", mVarianceGain, 0, 10, 0.0001f);
-        pGui->addFloatVar("Derivative Gain", mDerivativeGain, -10, 10, 0.1f);
-        pGui->addFloatVar("Max Task Per Pixel", mMaxTaskCountPerPixel, 1.0, 1000000, 5);
-        pGui->endGroup();
+        g.var("Luminance Threshold", mPixelLuminanceThreshold, 0.01f, 10.0f, 0.01f);
+        g.var("Photon Size Threshold", mMinPhotonPixelSize, 1.f, 1000.0f, 0.1f);
+        g.var("Smooth Weight", mSmoothWeight, 0.f, 10.0f, 0.001f);
+        g.var("Proportional Gain", mUpdateSpeed, 0.f, 1.f, 0.01f);
+        g.var("Variance Gain", mVarianceGain, 0.f, 10.f, 0.0001f);
+        g.var("Derivative Gain", mDerivativeGain, -10.f, 10.f, 0.1f);
+        g.var("Max Task Per Pixel", mMaxTaskCountPerPixel, 1.0f, 1000000.f, 5.f);
+        //pGui->endGroup();
     }
 
-    if (pGui->beginGroup("Smooth Photon", false))
+    //if (pGui->beginGroup("Smooth Photon", false))
     {
-        pGui->addCheckBox("Remove Isolated Photon", mRemoveIsolatedPhoton);
-        pGui->addCheckBox("Enable Median Filter", mMedianFilter);
-        pGui->addFloatVar("Normal Threshold", mNormalThreshold, 0.01f, 1.0, 0.01f);
-        pGui->addFloatVar("Distance Threshold", mDistanceThreshold, 0.1f, 100.0f, 0.1f);
-        pGui->addFloatVar("Planar Threshold", mPlanarThreshold, 0.01f, 10.0, 0.1f);
-        pGui->addFloatVar("Trim Direction Threshold", trimDirectionThreshold, 0, 1);
-        pGui->addIntVar("Min Neighbour Count", mMinNeighbourCount, 0, 8);
-        pGui->endGroup();
+        auto g = w.group("Smooth Photon", true);
+        g.checkbox("Remove Isolated Photon", mRemoveIsolatedPhoton);
+        g.checkbox("Enable Median Filter", mMedianFilter);
+        g.var("Normal Threshold", mNormalThreshold, 0.01f, 1.0f, 0.01f);
+        g.var("Distance Threshold", mDistanceThreshold, 0.1f, 100.0f, 0.1f);
+        g.var("Planar Threshold", mPlanarThreshold, 0.01f, 10.0f, 0.1f);
+        g.var("Trim Direction Threshold", trimDirectionThreshold, 0.f, 1.f);
+        g.var("Min Neighbour Count", mMinNeighbourCount, 0, 8);
+        //pGui->endGroup();
     }
 
-    if (pGui->beginGroup("Photon Splatting", true))
+    //if (pGui->beginGroup("Photon Splatting", true))
     {
+        auto g = w.group("Photon Splatting", true);
         {
             Gui::DropdownList debugModeList;
             debugModeList.push_back({ 0, "Scatter" });
             debugModeList.push_back({ 1, "Gather" });
             debugModeList.push_back({ 2, "None" });
-            pGui->addDropdown("Density Estimation", debugModeList, (uint32_t&)mScatterOrGather);
+            g.dropdown("Density Estimation", debugModeList, (uint32_t&)mScatterOrGather);
         }
-        pGui->addFloatVar("Splat size", mSplatSize, 0, 100, 0.01f);
-        pGui->addFloatVar("Kernel Power", mKernelPower, 0.01f, 10.f, 0.01f);
+        g.var("Splat size", mSplatSize, 0.f, 100.f, 0.01f);
+        g.var("Kernel Power", mKernelPower, 0.01f, 10.f, 0.01f);
 
-        if(pGui->beginGroup("Scatter Parameters", false))
+        //if(pGui->beginGroup("Scatter Parameters", false))
         {
-            pGui->addFloatVar("Z Tolerance", mZTolerance, 0.001f, 1, 0.001f);
-            pGui->addFloatVar("Scatter Normal Threshold", mScatterNormalThreshold, 0.01f, 1.0, 0.01f);
-            pGui->addFloatVar("Scatter Distance Threshold", mScatterDistanceThreshold, 0.1f, 10.0f, 0.1f);
-            pGui->addFloatVar("Scatter Planar Threshold", mScatterPlanarThreshold, 0.01f, 10.0, 0.1f);
-            pGui->addFloatVar("Max Anisotropy", mMaxAnisotropy, 1, 100, 0.1f);
+            auto g2 = w.group("Scatter Parameters", true);
+            g2.var("Z Tolerance", mZTolerance, 0.001f, 1.f, 0.001f);
+            g2.var("Scatter Normal Threshold", mScatterNormalThreshold, 0.01f, 1.0f, 0.01f);
+            g2.var("Scatter Distance Threshold", mScatterDistanceThreshold, 0.1f, 10.0f, 0.1f);
+            g2.var("Scatter Planar Threshold", mScatterPlanarThreshold, 0.01f, 10.0f, 0.1f);
+            g2.var("Max Anisotropy", mMaxAnisotropy, 1.f, 100.f, 0.1f);
             {
                 Gui::DropdownList debugModeList;
                 debugModeList.push_back({ 0, "Quad" });
                 debugModeList.push_back({ 1, "Sphere" });
-                pGui->addDropdown("Photon Geometry", debugModeList, (uint32_t&)mScatterGeometry);
+                g2.dropdown("Photon Geometry", debugModeList, (uint32_t&)mScatterGeometry);
             }
             {
                 Gui::DropdownList debugModeList;
                 debugModeList.push_back({ 0, "Kernel" });
                 debugModeList.push_back({ 1, "Solid" });
                 debugModeList.push_back({ 2, "Shaded" });
-                pGui->addDropdown("Photon Display Mode", debugModeList, (uint32_t&)mPhotonDisplayMode);
+                g2.dropdown("Photon Display Mode", debugModeList, (uint32_t&)mPhotonDisplayMode);
             }
 
             {
@@ -240,48 +250,52 @@ void Caustics::onGuiRender(Gui* pGui)
                 debugModeList.push_back({ 2, "Photon Mesh" });
                 debugModeList.push_back({ 3, "Screen Dot" });
                 debugModeList.push_back({ 4, "Screen Dot With Color" });
-                pGui->addDropdown("Photon mode", debugModeList, (uint32_t&)mPhotonMode);
+                g2.dropdown("Photon mode", debugModeList, (uint32_t&)mPhotonMode);
             }
-            pGui->endGroup();
+            //pGui->endGroup();
         }
 
-        if(pGui->beginGroup("Gather Parameters", false))
+        //if(pGui->beginGroup("Gather Parameters", false))
         {
-            pGui->addFloatVar("Gather Depth Radius", mDepthRadius, 0, 10, 0.01f);
-            pGui->addFloatVar("Gather Min Color", mMinGatherColor, 0, 2, 0.001f);
-            pGui->addCheckBox("Gather Show Tile Count", mShowTileCount);
-            pGui->addIntVar("Gather Tile Count Scale", mTileCountScale, 0, 1000);
-            pGui->endGroup();
+            auto g2 = w.group("Gather Parameters", true);
+            g2.var("Gather Depth Radius", mDepthRadius, 0.f, 10.f, 0.01f);
+            g2.var("Gather Min Color", mMinGatherColor, 0.f, 2.f, 0.001f);
+            g2.checkbox("Gather Show Tile Count", mShowTileCount);
+            g2.var("Gather Tile Count Scale", mTileCountScale, 0, 1000);
+            //pGui->endGroup();
         }
 
-        pGui->endGroup();
+        //pGui->endGroup();
     }
 
-    if (pGui->beginGroup("Temporal Filter", true))
+    //if (pGui->beginGroup("Temporal Filter", true))
     {
-        pGui->addCheckBox("Enable Temporal Filter", mTemporalFilter);
-        pGui->addFloatVar("Filter Weight", mFilterWeight, 0.0f, 1.0f, 0.001f);
-        pGui->addFloatVar("Jitter", mJitter, 0, 10, 0.01f); 
-        pGui->addFloatVar("Jitter Power", mJitterPower, 0, 200, 0.01f);
-        pGui->addFloatVar("Temporal Normal Strength", mTemporalNormalKernel, 0.0001f, 1000, 0.01f);
-        pGui->addFloatVar("Temporal Depth Strength", mTemporalDepthKernel, 0.0001f, 1000, 0.01f);
-        pGui->addFloatVar("Temporal Color Strength", mTemporalColorKernel, 0.0001f, 1000, 0.01f);
-        pGui->endGroup();
+        auto g = w.group("Temporal Filter", true);
+        g.checkbox("Enable Temporal Filter", mTemporalFilter);
+        g.var("Filter Weight", mFilterWeight, 0.0f, 1.0f, 0.001f);
+        g.var("Jitter", mJitter, 0.f, 10.f, 0.01f);
+        g.var("Jitter Power", mJitterPower, 0.f, 200.f, 0.01f);
+        g.var("Temporal Normal Strength", mTemporalNormalKernel, 0.0001f, 1000.f, 0.01f);
+        g.var("Temporal Depth Strength", mTemporalDepthKernel, 0.0001f, 1000.f, 0.01f);
+        g.var("Temporal Color Strength", mTemporalColorKernel, 0.0001f, 1000.f, 0.01f);
+        //pGui->endGroup();
     }
 
-    if (pGui->beginGroup("Spacial Filter", true))
+    //if (pGui->beginGroup("Spacial Filter", true))
     {
-        pGui->addCheckBox("Enable Spatial Filter", mSpacialFilter);
-        pGui->addIntVar("A trous Pass", mSpacialPasses, 0, 10);
-        pGui->addFloatVar("Spacial Normal Strength", mSpacialNormalKernel, 0.0001f, 100, 0.01f);
-        pGui->addFloatVar("Spacial Depth Strength", mSpacialDepthKernel, 0.0001f, 100, 0.01f);
-        pGui->addFloatVar("Spacial Color Strength", mSpacialColorKernel, 0.0001f, 100, 0.01f);
-        pGui->addFloatVar("Spacial Screen Kernel", mSpacialScreenKernel, 0.0001f, 100, 0.01f);
-        pGui->endGroup();
+        auto g = w.group("Spacial Filter", true);
+        g.checkbox("Enable Spatial Filter", mSpacialFilter);
+        g.var("A trous Pass", mSpacialPasses, 0, 10);
+        g.var("Spacial Normal Strength", mSpacialNormalKernel, 0.0001f, 100.f, 0.01f);
+        g.var("Spacial Depth Strength", mSpacialDepthKernel, 0.0001f, 100.f, 0.01f);
+        g.var("Spacial Color Strength", mSpacialColorKernel, 0.0001f, 100.f, 0.01f);
+        g.var("Spacial Screen Kernel", mSpacialScreenKernel, 0.0001f, 100.f, 0.01f);
+        //pGui->endGroup();
     }
 
-    if (pGui->beginGroup("Composite", true))
+    //if (pGui->beginGroup("Composite", true))
     {
+        auto g = w.group("Composite", true);
         {
             int oldResRatio = mCausticsMapResRatio;
             Gui::DropdownList debugModeList;
@@ -289,70 +303,77 @@ void Caustics::onGuiRender(Gui* pGui)
             debugModeList.push_back({ 2, "x 1/2" });
             debugModeList.push_back({ 4, "x 1/4" });
             debugModeList.push_back({ 8, "x 1/8" });
-            pGui->addDropdown("Caustics Resolution", debugModeList, (uint32_t&)mCausticsMapResRatio);
+            g.dropdown("Caustics Resolution", debugModeList, (uint32_t&)mCausticsMapResRatio);
             if (oldResRatio != mCausticsMapResRatio)
             {
                 createCausticsMap();
             }
         }
-        pGui->addCheckBox("Filter Caustics Map", mFilterCausticsMap);
-        pGui->addFloatVar("UV Kernel", mUVKernel, 0.0f, 1000.f, 0.1f);
-        pGui->addFloatVar("Depth Kernel", mZKernel, 0.0f, 1000.f, 0.1f);
-        pGui->addFloatVar("Normal Kernel", mNormalKernel, 0.0f, 1000.f, 0.1f);
-        pGui->endGroup();
+        g.checkbox("Filter Caustics Map", mFilterCausticsMap);
+        g.var("UV Kernel", mUVKernel, 0.0f, 1000.f, 0.1f);
+        g.var("Depth Kernel", mZKernel, 0.0f, 1000.f, 0.1f);
+        g.var("Normal Kernel", mNormalKernel, 0.0f, 1000.f, 0.1f);
+        //pGui->endGroup();
     }
     mLightDirection = vec3(
         cos(mLightAngle.x) * sin(mLightAngle.y),
         cos(mLightAngle.y),
         sin(mLightAngle.x) * sin(mLightAngle.y));
-    if (pGui->beginGroup("Light", true))
+    //if (pGui->beginGroup("Light", true))
     {
-        pGui->addFloat2Var("Light Angle", mLightAngle, -FLT_MAX, FLT_MAX, 0.01f);
+        auto g = w.group("Light", true);
+        g.var("Light Angle", mLightAngle, -FLT_MAX, FLT_MAX, 0.01f);
         if (mpScene)
         {
             auto light0 = dynamic_cast<DirectionalLight*>(mpScene->getLight(0).get());
             light0->setWorldDirection(mLightDirection);
         }
-        pGui->addFloat2Var("Light Angle Speed", mLightAngleSpeed, -FLT_MAX, FLT_MAX, 0.001f);
+        g.var("Light Angle Speed", mLightAngleSpeed, -FLT_MAX, FLT_MAX, 0.001f);
         mLightAngle += mLightAngleSpeed*0.01f;
-        pGui->endGroup();
+        //pGui->endGroup();
     }
 
-    if (pGui->beginGroup("Camera"))
+    //if (pGui->beginGroup("Camera"))
     {
+        auto g = w.group("Camera", true);
         mpCamera->renderUI(pGui);
-        pGui->endGroup();
+        //pGui->endGroup();
     }
 }
 
 void Caustics::loadScene(const std::string& filename, const Fbo* pTargetFbo)
 {
-    mpScene = RtScene::loadFromFile(filename, RtBuildFlags::None, Model::LoadFlags::None);
+    //mpScene = RtScene::loadFromFile(filename, RtBuildFlags::None, Model::LoadFlags::None);
+    mpScene = Scene::create(filename);
     if (!mpScene) return;
 
-    mpQuad = Model::createFromFile("Caustics/quad.obj");
-    mpSphere = Model::createFromFile("Caustics/sphere.obj");
+    mpQuad = Scene::create("Caustics/quad.obj");
+    mpSphere = Scene::create("Caustics/sphere.obj");
 
-    Model::SharedPtr pModel = mpScene->getModel(0);
-    float radius = pModel->getRadius();
 
-    mpCamera = mpScene->getActiveCamera();
+    //Model::SharedPtr pModel = mpScene->getModel(0);
+    auto pModel = mpScene->getMesh(0);
+    auto bbox = mpScene->getSceneBounds();
+    float radius = glm::length(bbox.getSize());// pModel->getRadius();
+
+    mpCamera = mpScene->getCamera();// mpScene->getActiveCamera();
     assert(mpCamera);
 
-    mCamController.attachCamera(mpCamera);
+    mCamController = FirstPersonCameraController::create(mpCamera);
 
     Sampler::Desc samplerDesc;
     samplerDesc.setFilterMode(Sampler::Filter::Linear, Sampler::Filter::Linear, Sampler::Filter::Linear);
     Sampler::SharedPtr pSampler = Sampler::create(samplerDesc);
-    pModel->bindSamplerToMaterials(pSampler);
+    //pModel->bindSamplerToMaterials(pSampler);
+    mpScene->bindSamplerToMaterials(pSampler);
 
     // Update the controllers
-    mCamController.setCameraSpeed(radius * 0.2f);
-    auto sceneBBox = mpScene->getBoundingBox();
+    mCamController->setCameraSpeed(radius * 0.2f);
+    auto sceneBBox = mpScene->getSceneBounds();
     float sceneRadius = sceneBBox.getSize().length() * 0.5f;
     //mCamController.setModelParams(mpScene->getCenter(), sceneRadius, sceneRadius);
-    float nearZ = std::max(0.1f, pModel->getRadius() / 750.0f);
-    float farZ = radius * 10;
+    float nearZ = 1.f;// std::max(0.1f, pModel->getRadius() / 750.0f);
+    float farZ = 1000.f;// radius * 10;
     mpCamera->setDepthRange(nearZ, farZ);
     mpCamera->setAspectRatio((float)pTargetFbo->getWidth() / (float)pTargetFbo->getHeight());
 
@@ -656,7 +677,7 @@ void Caustics::loadShader()
     mpSpacialFilterState->setProgram(mpSpacialFilterProgram);
     mpSpacialFilterVars = ComputeVars::create(mpSpacialFilterProgram.get());
 
-    mpRtRenderer = RtSceneRenderer::create(mpScene);
+    //mpRtRenderer = RtSceneRenderer::create(mpScene);
 
     mpRasterPass = RasterScenePass::create(mpScene, "Caustics.ps.hlsl", "", "main");
 
@@ -823,7 +844,8 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         }
         photonTraceShader.mpPhotonTraceState->setMaxTraceRecursionDepth(1);
         uvec3 resolution = mTraceType == TRACE_FIXED ? uvec3(mDispatchSize, mDispatchSize, 1) : uvec3(2048, 4096, 1);
-        mpRtRenderer->renderScene(pContext, photonTraceShader.mpPhotonTraceVars, photonTraceShader.mpPhotonTraceState, resolution, mpCamera.get());
+        //mpRtRenderer->renderScene(pContext, photonTraceShader.mpPhotonTraceVars, photonTraceShader.mpPhotonTraceState, resolution, mpCamera.get());
+        mpScene->raytrace(pContext, photonTraceShader.mpPhotonTraceState, photonTraceShader.mpPhotonTraceVars, resolution);
     }
 
     // analysis output
@@ -976,9 +998,9 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
             scatterState = mpPhotonScatterBlendState;
         }
         if (mScatterGeometry == SCATTER_GEOMETRY_QUAD)
-            scatterState->setVao(mpQuad->getMesh(0)->getVao());
+            scatterState->setVao(mpQuad->getVao());
         else
-            scatterState->setVao(mpSphere->getMesh(0)->getVao());
+            scatterState->setVao(mpSphere->getVao());
         scatterState->setFbo(causticsFbo);
         if (mPhotonMode == PHOTON_MODE_PHOTON_MESH)
         {
@@ -986,7 +1008,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         }
         else
         {
-            pContext->drawIndexedIndirect(scatterState.get(), mpPhotonScatterVars.get(), mpDrawArgumentBuffer.get(), 0);
+            pContext->drawIndexedIndirect(scatterState.get(), mpPhotonScatterVars.get(), 100, mpDrawArgumentBuffer.get(), 0, nullptr, 0);
         }
     }
     else if (mScatterOrGather == DENSITY_ESTIMATION_GATHER)
@@ -1154,7 +1176,8 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         auto rayGenVars = mpCompositeRTVars->getRayGenVars();
         rayGenVars->setTexture("gOutput", mpRtOut);
         mpCompositeRTState->setMaxTraceRecursionDepth(2);
-        mpRtRenderer->renderScene(pContext, mpCompositeRTVars, mpCompositeRTState, uvec3(pTargetFbo->getWidth(), pTargetFbo->getHeight(), 1), mpCamera.get());
+        //mpRtRenderer->renderScene(pContext, mpCompositeRTVars, mpCompositeRTState, uvec3(pTargetFbo->getWidth(), pTargetFbo->getHeight(), 1), mpCamera.get());
+        mpScene->raytrace(pContext, mpCompositeRTState, mpCompositeRTVars, uvec3(pTargetFbo->getWidth(), pTargetFbo->getHeight(), 1));
     }
 
     {
@@ -1186,7 +1209,7 @@ void Caustics::renderRT(RenderContext* pContext, Fbo::SharedPtr pTargetFbo)
         mpCompositePass->getVars()->setStructuredBuffer("gPixelInfo", mpPixelInfoBuffer);
         for (uint32_t i = 0; i < mpScene->getLightCount(); i++)
         {
-            mpScene->getLight(i)->setIntoProgramVars(mpCompositePass->getVars().get(), pCompCB.get(), "gLightData[" + std::to_string(i) + "]");
+            //mpScene->getLight(i)->setIntoProgramVars(mpCompositePass->getVars().get(), pCompCB.get(), "gLightData[" + std::to_string(i) + "]");
         }
         mpCompositePass->execute(pContext, pTargetFbo);
     }
@@ -1199,7 +1222,7 @@ void Caustics::onFrameRender(RenderContext* pRenderContext, const Fbo::SharedPtr
 
     if(mpScene)
     {
-        mCamController.update();
+        mCamController->update();
         if (mRayTrace)
             renderRT(pRenderContext, pTargetFbo);
         else
@@ -1211,7 +1234,7 @@ void Caustics::onFrameRender(RenderContext* pRenderContext, const Fbo::SharedPtr
 
 bool Caustics::onKeyEvent(const KeyboardEvent& keyEvent)
 {
-    if (mCamController.onKeyEvent(keyEvent))
+    if (mCamController->onKeyEvent(keyEvent))
     {
         return true;
     }
@@ -1225,7 +1248,7 @@ bool Caustics::onKeyEvent(const KeyboardEvent& keyEvent)
 
 bool Caustics::onMouseEvent(const MouseEvent& mouseEvent)
 {
-    return mCamController.onMouseEvent(mouseEvent);
+    return mCamController->onMouseEvent(mouseEvent);
 }
 
 void Caustics::onResizeSwapChain(uint32_t width, uint32_t height)
