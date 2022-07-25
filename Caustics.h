@@ -27,7 +27,7 @@
 ***************************************************************************/
 #pragma once
 #include "Falcor.h"
-#include "FalcorExperimental.h"
+//#include "FalcorExperimental.h"
 
 #define MAX_CAUSTICS_MAP_SIZE 2048
 #define MAX_PHOTON_COUNT 2048*2048
@@ -218,7 +218,7 @@ private:
     ComputeProgram::SharedPtr mpDrawArgumentProgram;
     ComputeVars::SharedPtr mpDrawArgumentVars;
     ComputeState::SharedPtr mpDrawArgumentState;
-    StructuredBuffer::SharedPtr  mpDrawArgumentBuffer;
+    Buffer::SharedPtr  mpDrawArgumentBuffer;
 
     // g-pass
     RasterScenePass::SharedPtr mpGPass;
@@ -238,7 +238,7 @@ private:
     {
         RtProgram::SharedPtr mpPhotonTraceProgram;
         RtProgramVars::SharedPtr mpPhotonTraceVars;
-        RtState::SharedPtr mpPhotonTraceState;
+        //RtStateObject mpPhotonTraceState;
     };
     enum PhotonTraceMacro
     {
@@ -259,13 +259,13 @@ private:
     ComputeProgram::SharedPtr mpAnalyseProgram;
     ComputeVars::SharedPtr mpAnalyseVars;
     ComputeState::SharedPtr mpAnalyseState;
-    StructuredBuffer::SharedPtr  mpRayArgumentBuffer;
+    Buffer::SharedPtr  mpRayArgumentBuffer;
 
     // generate ray count
     ComputeProgram::SharedPtr mpGenerateRayCountProgram;
     ComputeVars::SharedPtr mpGenerateRayCountVars;
     ComputeState::SharedPtr mpGenerateRayCountState;
-    StructuredBuffer::SharedPtr mpRayCountQuadTree;
+    Buffer::SharedPtr mpRayCountQuadTree;
 
     // generate ray count mipmap
     ComputeProgram::SharedPtr mpGenerateRayCountMipProgram;
@@ -294,7 +294,7 @@ private:
     ComputeProgram::SharedPtr   mpPhotonGatherProgram;
     ComputeVars::SharedPtr      mpPhotonGatherVars;
     ComputeState::SharedPtr     mpPhotonGatherState;
-    StructuredBuffer::SharedPtr mpTileIDInfoBuffer;
+    Buffer::SharedPtr mpTileIDInfoBuffer;
     Buffer::SharedPtr           mpIDBuffer;
     Buffer::SharedPtr           mpIDCounterBuffer;
 
@@ -311,7 +311,7 @@ private:
     // raytrace
     RtProgram::SharedPtr mpRaytraceProgram;
     RtProgramVars::SharedPtr mpRtVars;
-    RtState::SharedPtr mpRtState;
+    //RtStateObject::SharedPtr mpRtState;
     //RtSceneRenderer::SharedPtr mpRtRenderer;
     Texture::SharedPtr mpRtOut;
 
@@ -323,13 +323,13 @@ private:
     // RT composite pass
     RtProgram::SharedPtr mpCompositeRTProgram;
     RtProgramVars::SharedPtr mpCompositeRTVars;
-    RtState::SharedPtr mpCompositeRTState;
+    //RtStateObject::SharedPtr mpCompositeRTState;
 
     // Caustics map
-    StructuredBuffer::SharedPtr  mpPhotonBuffer;
-    StructuredBuffer::SharedPtr  mpPhotonBuffer2;
-    StructuredBuffer::SharedPtr  mpRayTaskBuffer;
-    StructuredBuffer::SharedPtr  mpPixelInfoBuffer;
+    Buffer::SharedPtr  mpPhotonBuffer;
+    Buffer::SharedPtr  mpPhotonBuffer2;
+    Buffer::SharedPtr  mpRayTaskBuffer;
+    Buffer::SharedPtr  mpPixelInfoBuffer;
     Texture::SharedPtr mpRayDensityTex;
 
     void setPerFrameVars(const Fbo* pTargetFbo);
