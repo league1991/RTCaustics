@@ -6,9 +6,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="Data\Caustics.rt.hlsl">
-      <Filter>Data</Filter>
-    </FxCompile>
     <FxCompile Include="Data\Caustics.ps.hlsl">
       <Filter>Data</Filter>
     </FxCompile>
@@ -63,5 +60,10 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Caustics.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ShaderSource Include="Data\Caustics.rt.hlsl">
+      <Filter>Data</Filter>
+    </ShaderSource>
   </ItemGroup>
 </Project>
