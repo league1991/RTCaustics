@@ -413,7 +413,7 @@ Caustics::PhotonTraceShader Caustics::getPhotonTraceShader()
 
         RtProgram::Desc desc;
         RtBindingTable::SharedPtr sbt = RtBindingTable::create(2, 2, mpScene->getGeometryCount());
-        desc.addShaderLibrary("PhotonTrace.rt.hlsl");
+        desc.addShaderLibrary("Samples/Raytracing/Caustics/Data/PhotonTrace.rt.hlsl");
         sbt->setRayGen(desc.addRayGen("rayGen"));
         sbt->setHitGroup(0, mpScene->getGeometryIDs(Scene::GeometryType::TriangleMesh), desc.addHitGroup("primaryClosestHit", ""));
         sbt->setMiss(0, desc.addMiss("primaryMiss"));
@@ -592,7 +592,7 @@ void Caustics::loadShader()
         sbt->setMiss(1, rtProgDesc.addMiss("shadowMiss"));
         sbt->setHitGroup(0, mpScene->getGeometryIDs(Scene::GeometryType::TriangleMesh), rtProgDesc.addHitGroup("primaryClosestHit", ""));
         sbt->setHitGroup(1, mpScene->getGeometryIDs(Scene::GeometryType::TriangleMesh), rtProgDesc.addHitGroup("", "shadowAnyHit"));
-        mpRaytraceProgram = RtProgram::create(rtProgDesc);
+        mpRaytraceProgram = RtProgram::create(rtProgDesc, mpScene->getSceneDefines());
         //mpRtState = RtState::create();
         //mpRtState->setProgram(mpRaytraceProgram);
         //mpRtState->setMaxTraceRecursionDepth(3);
@@ -600,7 +600,7 @@ void Caustics::loadShader()
     }
 
     // clear draw argument program
-    mpDrawArgumentProgram = ComputeProgram::createFromFile("ResetDrawArgument.cs.hlsl", "main");
+    mpDrawArgumentProgram = ComputeProgram::createFromFile("Samples/Raytracing/Caustics/Data/ResetDrawArgument.cs.hlsl", "main");
     mpDrawArgumentState = ComputeState::create();
     mpDrawArgumentState->setProgram(mpDrawArgumentProgram);
     mpDrawArgumentVars = ComputeVars::create(mpDrawArgumentProgram.get());
@@ -631,31 +631,31 @@ void Caustics::loadShader()
     }
 
     // update ray density texture
-    mpUpdateRayDensityProgram = ComputeProgram::createFromFile("UpdateRayDensity.cs.hlsl", "updateRayDensityTex");
+    mpUpdateRayDensityProgram = ComputeProgram::createFromFile("Samples/Raytracing/Caustics/Data/UpdateRayDensity.cs.hlsl", "updateRayDensityTex");
     mpUpdateRayDensityState = ComputeState::create();
     mpUpdateRayDensityState->setProgram(mpUpdateRayDensityProgram);
     mpUpdateRayDensityVars = ComputeVars::create(mpUpdateRayDensityProgram.get());
 
     // analyse trace result
-    mpAnalyseProgram = ComputeProgram::createFromFile("AnalyseTraceResult.cs.hlsl", "addPhotonTaskFromTexture");
+    mpAnalyseProgram = ComputeProgram::createFromFile("Samples/Raytracing/Caustics/Data/AnalyseTraceResult.cs.hlsl", "addPhotonTaskFromTexture");
     mpAnalyseState = ComputeState::create();
     mpAnalyseState->setProgram(mpAnalyseProgram);
     mpAnalyseVars = ComputeVars::create(mpAnalyseProgram.get());
 
     // generate ray count tex
-    mpGenerateRayCountProgram = ComputeProgram::createFromFile("GenerateRayCountMipmap.cs.hlsl", "generateMip0");
+    mpGenerateRayCountProgram = ComputeProgram::createFromFile("Samples/Raytracing/Caustics/Data/GenerateRayCountMipmap.cs.hlsl", "generateMip0");
     mpGenerateRayCountState = ComputeState::create();
     mpGenerateRayCountState->setProgram(mpGenerateRayCountProgram);
     mpGenerateRayCountVars = ComputeVars::create(mpGenerateRayCountProgram.get());
 
     // generate ray count mip tex
-    mpGenerateRayCountMipProgram = ComputeProgram::createFromFile("GenerateRayCountMipmap.cs.hlsl", "generateMipLevel");
+    mpGenerateRayCountMipProgram = ComputeProgram::createFromFile("Samples/Raytracing/Caustics/Data/GenerateRayCountMipmap.cs.hlsl", "generateMipLevel");
     mpGenerateRayCountMipState = ComputeState::create();
     mpGenerateRayCountMipState->setProgram(mpGenerateRayCountMipProgram);
     mpGenerateRayCountMipVars = ComputeVars::create(mpGenerateRayCountMipProgram.get());
 
     // smooth photon
-    mpSmoothProgram = ComputeProgram::createFromFile("SmoothPhoton.cs.hlsl", "main");
+    mpSmoothProgram = ComputeProgram::createFromFile("Samples/Raytracing/Caustics/Data/SmoothPhoton.cs.hlsl", "main");
     mpSmoothState = ComputeState::create();
     mpSmoothState->setProgram(mpSmoothProgram);
     mpSmoothVars = ComputeVars::create(mpSmoothProgram.get());
@@ -664,7 +664,7 @@ void Caustics::loadShader()
     const char* shaderEntries[] = { "OrthogonalizePhoton", "CountTilePhoton","AllocateMemory","StoreTilePhoton" };
     for (int i = 0; i < GATHER_PROCESSING_SHADER_COUNT; i++)
     {
-        mpAllocateTileProgram[i] = ComputeProgram::createFromFile("AllocateTilePhoton.cs.hlsl", shaderEntries[i]);
+        mpAllocateTileProgram[i] = ComputeProgram::createFromFile("Samples/Raytracing/Caustics/Data/AllocateTilePhoton.cs.hlsl", shaderEntries[i]);
         mpAllocateTileState[i] = ComputeState::create();
         mpAllocateTileState[i]->setProgram(mpAllocateTileProgram[i]);
         mpAllocateTileVars[i] = ComputeVars::create(mpAllocateTileProgram[i].get());
