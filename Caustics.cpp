@@ -427,7 +427,7 @@ Caustics::PhotonTraceShader Caustics::getPhotonTraceShader()
         desc.setMaxPayloadSize(payLoadSize);
         desc.setMaxTraceRecursionDepth(1);
 
-        auto pPhotonTraceProgram = RtProgram::create(desc);
+        auto pPhotonTraceProgram = RtProgram::create(desc, mpScene->getSceneDefines());
 
         switch (mPhotonTraceMacro)
         {
@@ -613,7 +613,7 @@ void Caustics::loadShader()
     {
         RtBindingTable::SharedPtr sbt = RtBindingTable::create(2, 2, mpScene->getGeometryCount());
         RtProgram::Desc desc;
-        desc.addShaderLibrary("Source/Samples/Raytracing/Caustics/Data/CompositeRT.rt.hlsl");
+        desc.addShaderLibrary("Samples/Raytracing/Caustics/Data/CompositeRT.rt.hlsl");
         sbt->setRayGen(desc.addRayGen("rayGen"));
         //desc.addHitGroup(0, "primaryClosestHit", "");
         //desc.addHitGroup(1, "", "shadowAnyHit").addMiss(1, "shadowMiss");
@@ -624,6 +624,7 @@ void Caustics::loadShader()
         sbt->setMiss(0, desc.addMiss("primaryMiss"));
         sbt->setMiss(1, desc.addMiss("shadowMiss"));
         desc.setMaxPayloadSize(48);
+        desc.setMaxTraceRecursionDepth(3);
         mpCompositeRTProgram = RtProgram::create(desc);
         //mpCompositeRTState = RtState::create();
         //mpCompositeRTState->setProgram(mpCompositeRTProgram);
@@ -712,14 +713,14 @@ void Caustics::loadShader()
     mpFilterVars = ComputeVars::create(mpFilterProgram.get());
 
     // spacial filter
-    mpSpacialFilterProgram = ComputeProgram::createFromFile("Source/Samples/Raytracing/Caustics/Data/SpacialFilter.cs.hlsl", "main");
+    mpSpacialFilterProgram = ComputeProgram::createFromFile("Samples/Raytracing/Caustics/Data/SpacialFilter.cs.hlsl", "main");
     mpSpacialFilterState = ComputeState::create();
     mpSpacialFilterState->setProgram(mpSpacialFilterProgram);
     mpSpacialFilterVars = ComputeVars::create(mpSpacialFilterProgram.get());
 
     //mpRtRenderer = RtSceneRenderer::create(mpScene);
 
-    mpRasterPass = RasterScenePass::create(mpScene, "Source/Samples/Raytracing/Caustics/Data/Caustics.ps.hlsl", "", "main");
+    mpRasterPass = RasterScenePass::create(mpScene, "Samples/Raytracing/Caustics/Data/Caustics.ps.hlsl", "", "main");
 
     mpGPass = RasterScenePass::create(mpScene, "GPass.ps.hlsl", "", "gpassPS");
 

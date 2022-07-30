@@ -26,10 +26,11 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
 #include "Common.hlsl"
-__import Raytracing;
-__import ShaderCommon;
-__import Shading;
-import Helpers;
+import Scene.Raytracing;
+//__import ShaderCommon;
+//__import Shading;
+//import Helpers;
+import Rendering.Lights.LightHelpers;
 
 RWStructuredBuffer<Photon> gPhotonBuffer;
 RWStructuredBuffer<DrawArguments> gDrawArgument;
@@ -230,11 +231,12 @@ void primaryMiss(inout CausticsPackedPayload hitData)
 }
 
 VertexOut getVertexAttributes(
+    const GeometryInstanceID instanceID,
     uint triangleIndex, BuiltInTriangleIntersectionAttributes attribs,
     out float3 dP1, out float3 dP2, out float3 dN1, out float3 dN2)
 {
     float3 barycentrics = float3(1.0 - attribs.barycentrics.x - attribs.barycentrics.y, attribs.barycentrics.x, attribs.barycentrics.y);
-    uint3 indices = getIndices(triangleIndex);
+    uint3 indices = gScene.getIndices(instanceID, triangleIndex);
     VertexOut v;
     v.texC = 0;
     v.normalW = 0;
@@ -246,23 +248,24 @@ VertexOut getVertexAttributes(
 #endif
     v.colorV = 0;
     v.prevPosH = 0;
-    v.lightmapC = 0;
+    //v.lightmapC = 0;
 
     float3 P[3], N[3];
     [unroll]
     for (int i = 0; i < 3; i++)
     {
+        StaticVertexData svd = gScene.getVertex(indices[i]);
         int address = (indices[i] * 3) * 4;
-        P[i] = asfloat(gPositions.Load3(address));
-        N[i] = asfloat(gNormals.Load3(address));
+        P[i] = svd.position;// asfloat(gPositions.Load3(address));
+        N[i] = svd.normal;// asfloat(gNormals.Load3(address));
 
-        v.texC += asfloat(gTexCrds.Load2(address)) * barycentrics[i];
-        v.normalW += N[i] * barycentrics[i];
-        v.bitangentW += asfloat(gBitangents.Load3(address)) * barycentrics[i];
-        v.lightmapC += asfloat(gLightMapUVs.Load2(address)) * barycentrics[i];
+        v.texC += svd.texCrd * barycentrics[i];
+        v.normalW += svd.normal * barycentrics[i];
+        //v.bitangentW += asfloat(gBitangents.Load3(address)) * barycentrics[i];
+        //v.lightmapC += asfloat(gLightMapUVs.Load2(address)) * barycentrics[i];
 
 #ifdef USE_INTERPOLATED_POSITION
-        v.posW += P[i] * barycentrics[i];
+        v.posW += svd.position * barycentrics[i];
 #endif
     }
 
@@ -270,16 +273,18 @@ VertexOut getVertexAttributes(
     v.posW = mul(float4(v.posW, 1.f), gWorldMat[0]).xyz;
 #endif
 
+    const float4x4 worldMat = gScene.getWorldMatrix(instanceID);
+    const float3x3 worldInvTransposeMat = gScene.getInverseTransposeWorldMatrix(instanceID);
 #ifndef _MS_DISABLE_INSTANCE_TRANSFORM
     // Transform normal/bitangent to world space
-    v.normalW = mul(v.normalW, (float3x3)gWorldInvTransposeMat[0]).xyz;
-    v.bitangentW = mul(v.bitangentW, (float3x3)gWorldMat[0]).xyz;
+    v.normalW = mul(v.normalW, (float3x3)worldInvTransposeMat).xyz;
+    v.bitangentW = mul(v.bitangentW, (float3x3)worldMat).xyz;
 #endif
 
-    dP1 = mul(P[1] - P[0], (float3x3)gWorldMat[0]).xyz;
-    dP2 = mul(P[2] - P[0], (float3x3)gWorldMat[0]).xyz;
-    dN1 = mul(N[1] - N[0], (float3x3)gWorldInvTransposeMat[0]).xyz;
-    dN2 = mul(N[2] - N[0], (float3x3)gWorldInvTransposeMat[0]).xyz;
+    dP1 = mul(P[1] - P[0], (float3x3)worldMat).xyz;
+    dP2 = mul(P[2] - P[0], (float3x3)worldMat).xyz;
+    dN1 = mul(N[1] - N[0], (float3x3)worldInvTransposeMat).xyz;
+    dN2 = mul(N[2] - N[0], (float3x3)worldInvTransposeMat).xyz;
 
     // Handle invalid bitangents gracefully (avoid NaN from normalization).
     v.bitangentW = dot(v.bitangentW, v.bitangentW) > 0.f ? normalize(v.bitangentW) : float3(0, 0, 0);
@@ -287,29 +292,36 @@ VertexOut getVertexAttributes(
 }
 
 void getVerticesAndNormals(
+    const GeometryInstanceID instanceID,
     uint triangleIndex, BuiltInTriangleIntersectionAttributes attribs,
     out float3 P0, out float3 P1, out float3 P2,
     out float3 N0, out float3 N1, out float3 N2,
     out float3 N)
 {
-    uint3 indices = getIndices(triangleIndex);
-    int address = (indices[0] * 3) * 4;
-    P0 = asfloat(gPositions.Load3(address)).xyz;
-    P0 = mul(float4(P0, 1.f), gWorldMat[0]).xyz;
-    N0 = asfloat(gNormals.Load3(address)).xyz;
-    N0 = normalize(mul(float4(N0, 0.f), gWorldMat[0]).xyz);
+    uint3 indices = gScene.getIndices(instanceID, triangleIndex);// getIndices(triangleIndex);
+    const float4x4 worldMat = gScene.getWorldMatrix(instanceID);
+    const float3x3 worldInvTransposeMat = gScene.getInverseTransposeWorldMatrix(instanceID);
 
-    address = (indices[1] * 3) * 4;
-    P1 = asfloat(gPositions.Load3(address)).xyz;
-    P1 = mul(float4(P1, 1.f), gWorldMat[0]).xyz;
-    N1 = asfloat(gNormals.Load3(address)).xyz;
-    N1 = normalize(mul(float4(N1, 0.f), gWorldMat[0]).xyz);
+    StaticVertexData svd = gScene.getVertex(indices[0]);
+    //int address = (indices[0] * 3) * 4;
+    P0 = svd.position;// asfloat(gPositions.Load3(address)).xyz;
+    P0 = mul(float4(P0, 1.f), worldMat).xyz;
+    N0 = svd.normal; // asfloat(gNormals.Load3(address)).xyz;
+    N0 = normalize(mul(float4(N0, 0.f), worldMat).xyz);
 
-    address = (indices[2] * 3) * 4;
-    P2 = asfloat(gPositions.Load3(address)).xyz;
-    P2 = mul(float4(P2, 1.f), gWorldMat[0]).xyz;
-    N2 = asfloat(gNormals.Load3(address)).xyz;
-    N2 = normalize(mul(float4(N2, 0.f), gWorldMat[0]).xyz);
+    svd = gScene.getVertex(indices[1]);
+    //address = (indices[1] * 3) * 4;
+    P1 = svd.position; //asfloat(gPositions.Load3(address)).xyz;
+    P1 = mul(float4(P1, 1.f), worldMat).xyz;
+    N1 = svd.normal; // asfloat(gNormals.Load3(address)).xyz;
+    N1 = normalize(mul(float4(N1, 0.f), worldMat).xyz);
+
+    svd = gScene.getVertex(indices[2]);
+    //address = (indices[2] * 3) * 4;
+    P2 = svd.position; //asfloat(gPositions.Load3(address)).xyz;
+    P2 = mul(float4(P2, 1.f), worldMat).xyz;
+    N2 = svd.normal; // asfloat(gNormals.Load3(address)).xyz;
+    N2 = normalize(mul(float4(N2, 0.f), worldMat).xyz);
 
     float3 barycentrics = float3(1.0 - attribs.barycentrics.x - attribs.barycentrics.y, attribs.barycentrics.x, attribs.barycentrics.y);
     N = (N0 * barycentrics.x + N1 * barycentrics.y + N2 * barycentrics.z);
@@ -387,11 +399,11 @@ float getPhotonScreenArea(float3 posW, float3 dPdx, float3 dPdy, out float3 scre
 {
     dPdx = dPdx * gSplatSize;
     dPdy = dPdy * gSplatSize;
-    float4 s0 = mul(float4(posW, 1), gCamera.viewProjMat);
-    float4 s00 = mul(float4(posW + dPdx + dPdy, 1), gCamera.viewProjMat);
-    float4 s01 = mul(float4(posW + dPdx - dPdy, 1), gCamera.viewProjMat);
-    float4 s10 = mul(float4(posW - dPdx + dPdy, 1), gCamera.viewProjMat);
-    float4 s11 = mul(float4(posW - dPdx - dPdy, 1), gCamera.viewProjMat);
+    float4 s0 = mul(float4(posW, 1), gScene.camera.getViewProj());
+    float4 s00 = mul(float4(posW + dPdx + dPdy, 1), gScene.camera.getViewProj());
+    float4 s01 = mul(float4(posW + dPdx - dPdy, 1), gScene.camera.getViewProj());
+    float4 s10 = mul(float4(posW - dPdx + dPdy, 1), gScene.camera.getViewProj());
+    float4 s11 = mul(float4(posW - dPdx - dPdy, 1), gScene.camera.getViewProj());
     inFrustum = isInFrustum(s00) || isInFrustum(s01) || isInFrustum(s10) || isInFrustum(s11);
     s0 /= s0.w;
     s00 /= s00.w;
@@ -435,7 +447,8 @@ void primaryClosestHit(inout CausticsPackedPayload payload, in BuiltInTriangleIn
 
     // prepare the shading data
     float3 dP1, dP2, dN1, dN2;
-    VertexOut v = getVertexAttributes(triangleIndex, attribs, dP1, dP2, dN1, dN2);
+    const GeometryInstanceID instanceID = getGeometryInstanceID();
+    VertexOut v = getVertexAttributes(instanceID, triangleIndex, attribs, dP1, dP2, dN1, dN2);
     float3 N = v.normalW;
     v.normalW = normalize(v.normalW);
 #ifdef RAY_DIFFERENTIAL
@@ -444,10 +457,15 @@ void primaryClosestHit(inout CausticsPackedPayload payload, in BuiltInTriangleIn
 #elif defined(RAY_CONE)
     hitData.radius = abs(hitData.radius + hitT * hitData.dRadius);
 #endif
-    ShadingData sd = prepareShadingData(v, gMaterial, rayOrigW, 0);
+    uint materialID = gScene.getMaterialID(instanceID);
+    let lod = ExplicitLodTextureSampler(0.f);
+    VertexData v2 = getVertexData(instanceID, triangleIndex, attribs);
+    ShadingData sd = gScene.materials.prepareShadingData(v2, materialID, rayOrigW, lod);
+    let bsdf = gScene.materials.getBSDF(sd, lod);
+    let bsdfProp = bsdf.getProperties(sd);
 
     hitData.hitT = hitT;
-    bool isSpecular = (sd.linearRoughness > roughThreshold || sd.opacity < 1);
+    bool isSpecular = (bsdfProp.roughness > roughThreshold || /*sd.opacity < 1*/bsdfProp.isTransmissive);
     hitData.isContinue = isSpecular;
     if (isSpecular)
     {
@@ -523,12 +541,12 @@ void primaryClosestHit(inout CausticsPackedPayload payload, in BuiltInTriangleIn
         float area = 0.0001;
 #endif
         hitData.nextDir = R;
-        float3 baseColor = lerp(1, sd.diffuse, sd.opacity);
+        float3 baseColor = bsdfProp.diffuseReflectionAlbedo;// lerp(1, sd.diffuse, sd.opacity);
         hitData.color = baseColor * hitData.color;// *float4(sd.specular, 1);
     }
     else
     {
-        hitData.color.rgb = dot(-rayDirW, sd.N)* sd.diffuse* hitData.color.rgb;
+        hitData.color.rgb = dot(-rayDirW, sd.N)* /*sd.diffuse*/ bsdfProp.diffuseReflectionAlbedo  * hitData.color.rgb;
         hitData.nextDir = sd.N;
     }
 
@@ -565,8 +583,9 @@ void initFromLight(float2 lightUV, float2 pixelSize0, out RayDesc ray, out Caust
     lightUV = lightUV * 2 - 1;
     float2 pixelSize = pixelSize0 * emitSize / float2(coarseDim.xy);
 
-    float3 lightOrigin = cameraPos + gLights[0].dirW * -100;// gLights[0].posW;
-    float3 lightDirZ = gLights[0].dirW;
+    const LightData light = gScene.getLight(0);
+    float3 lightOrigin = /*cameraPos*/gScene.camera.getPosition() + light.dirW * -100;// gLights[0].posW;
+    float3 lightDirZ = light.dirW;
     float3 lightDirX = normalize(float3(-lightDirZ.z, 0, lightDirZ.x));
     float3 lightDirY = normalize(cross(lightDirZ, lightDirX));
 
@@ -627,8 +646,8 @@ void StorePhoton(RayDesc ray, CausticsUnpackedPayload hitData, uint2 pixelCoord)
 #endif
         if (storePhoton)
         {
-            uint instanceIdx = 0;
-            InterlockedAdd(gDrawArgument[0].instanceCount, 1, instanceIdx);
+            int instanceIdx = 0;
+            InterlockedAdd(gDrawArgument[0].InstanceCount, 1, instanceIdx);
 
             Photon photon;
             photon.posW = posW;
@@ -819,7 +838,7 @@ void rayGen()
 
         CausticsPackedPayload payload;
         packCausticsPayload(hitData, payload);
-        TraceRay(gRtScene, 0, 0xFF, 0, hitProgramCount, 0, ray, payload);
+        TraceRay(gScene.rtAccel, 0, 0xFF, 0, rayTypeCount, 0, ray, payload);
         unpackCausticsPayload(payload, hitData);
 
         float area = (dot(hitData.dPdx, hitData.dPdx) + dot(hitData.dPdy, hitData.dPdy)) * 0.5;

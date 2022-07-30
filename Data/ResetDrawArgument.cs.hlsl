@@ -26,14 +26,14 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
 #include "common.hlsl"
-struct DrawArguments
-{
-    uint indexCountPerInstance;
-    uint instanceCount;
-    uint startIndexLocation;
-    int  baseVertexLocation;
-    uint startInstanceLocation;
-};
+//struct DrawArguments
+//{
+//    uint indexCountPerInstance;
+//    uint instanceCount;
+//    uint startIndexLocation;
+//    int  baseVertexLocation;
+//    uint startInstanceLocation;
+//};
 
 shared cbuffer PerFrameCB
 {
@@ -57,13 +57,13 @@ void main(uint3 threadIdx : SV_DispatchThreadID)
     //gPhotonBuffer.GetDimensions(length, stride);
     if (all(threadIdx == uint3(0,0,0)))
     {
-        gPhotonCountTexture[textureOffset] = gDrawArgument[0].instanceCount;
+        gPhotonCountTexture[textureOffset] = gDrawArgument[0].InstanceCount;
 
-        gDrawArgument[0].indexCountPerInstance = scatterGeoIdxCount;// 12;//6
-        gDrawArgument[0].instanceCount = 0;
-        gDrawArgument[0].startIndexLocation = 0;
-        gDrawArgument[0].baseVertexLocation = 0;
-        gDrawArgument[0].startInstanceLocation = 0;
+        gDrawArgument[0].VertexCountPerInstance = scatterGeoIdxCount;// 12;//6
+        gDrawArgument[0].InstanceCount = 0;
+        //gDrawArgument[0].startIndexLocation = 0;
+        gDrawArgument[0].StartVertexLocation = 0;
+        gDrawArgument[0].StartInstanceLocation = 0;
 
         //gRayArgument[0].rayTaskCount = initRayCount;
     }

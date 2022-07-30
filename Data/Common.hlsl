@@ -36,6 +36,25 @@ struct IDBlock
     int count;
 };
 
+struct DrawArguments
+{
+    int VertexCountPerInstance;
+    int InstanceCount;
+    int StartVertexLocation;
+    int StartInstanceLocation;
+};
+
+struct VertexOut
+{
+    float2 texC;
+    float3 normalW;
+    float3 bitangentW;
+    float3 posW;
+    float3 colorV;
+    float3 prevPosH;
+    //float3 lightmapC = 0;
+};
+
 void getRefractVector(float3 I, float3 N, out float3 R, float eta)
 {
     float IN = dot(I, N);
