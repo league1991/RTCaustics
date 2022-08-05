@@ -39,15 +39,15 @@ shared cbuffer PerFrameCB
     float gKernelPower;
     int causticsMapResRatio;
 };
-
-struct DrawArguments
-{
-    uint indexCountPerInstance;
-    uint instanceCount;
-    uint startIndexLocation;
-    int  baseVertexLocation;
-    uint startInstanceLocation;
-};
+//
+//struct DrawArguments
+//{
+//    uint indexCountPerInstance;
+//    uint instanceCount;
+//    uint startIndexLocation;
+//    int  baseVertexLocation;
+//    uint startInstanceLocation;
+//};
 
 
 StructuredBuffer<Photon> gPhotonBuffer;

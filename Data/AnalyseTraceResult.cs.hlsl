@@ -40,15 +40,15 @@ shared cbuffer PerFrameCB
     float minPhotonPixelSize;
     uint samplePlacement;
 };
-
-struct DrawArguments
-{
-    uint indexCountPerInstance;
-    uint instanceCount;
-    uint startIndexLocation;
-    int  baseVertexLocation;
-    uint startInstanceLocation;
-};
+//
+//struct DrawArguments
+//{
+//    uint indexCountPerInstance;
+//    uint instanceCount;
+//    uint startIndexLocation;
+//    int  baseVertexLocation;
+//    uint startInstanceLocation;
+//};
 
 RWStructuredBuffer<Photon> gPhotonBuffer;
 //RWStructuredBuffer<DrawArguments> gDrawArgument;

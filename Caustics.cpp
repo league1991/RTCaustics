@@ -625,7 +625,7 @@ void Caustics::loadShader()
         sbt->setMiss(1, desc.addMiss("shadowMiss"));
         desc.setMaxPayloadSize(48);
         desc.setMaxTraceRecursionDepth(3);
-        mpCompositeRTProgram = RtProgram::create(desc);
+        mpCompositeRTProgram = RtProgram::create(desc, mpScene->getSceneDefines());
         //mpCompositeRTState = RtState::create();
         //mpCompositeRTState->setProgram(mpCompositeRTProgram);
         mpCompositeRTVars = RtProgramVars::create(mpCompositeRTProgram, sbt);
@@ -672,7 +672,7 @@ void Caustics::loadShader()
     }
 
     // photon gather
-    mpPhotonGatherProgram = ComputeProgram::createFromFile("PhotonGather.cs.hlsl", "main");
+    mpPhotonGatherProgram = ComputeProgram::createFromFile("Samples/Raytracing/Caustics/Data/PhotonGather.cs.hlsl", "main");
     mpPhotonGatherState = ComputeState::create();
     mpPhotonGatherState->setProgram(mpPhotonGatherProgram);
     mpPhotonGatherVars = ComputeVars::create(mpPhotonGatherProgram.get());
@@ -683,7 +683,7 @@ void Caustics::loadShader()
         blendDesc.setRtBlend(0, true);
         blendDesc.setRtParams(0, BlendState::BlendOp::Add, BlendState::BlendOp::Add, BlendState::BlendFunc::One, BlendState::BlendFunc::One, BlendState::BlendFunc::One, BlendState::BlendFunc::One);
         BlendState::SharedPtr scatterBlendState = BlendState::create(blendDesc);
-        mpPhotonScatterProgram = GraphicsProgram::createFromFile("PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
+        mpPhotonScatterProgram = GraphicsProgram::createFromFile("Samples/Raytracing/Caustics/Data/PhotonScatter.ps.hlsl", "photonScatterVS", "photonScatterPS");
         DepthStencilState::Desc dsDesc;
         dsDesc.setDepthEnabled(false);
         dsDesc.setDepthWriteMask(false);
@@ -707,7 +707,7 @@ void Caustics::loadShader()
     }
 
     // temporal filter
-    mpFilterProgram = ComputeProgram::createFromFile("TemporalFilter.cs.hlsl", "main");
+    mpFilterProgram = ComputeProgram::createFromFile("Samples/Raytracing/Caustics/Data/TemporalFilter.cs.hlsl", "main");
     mpFilterState = ComputeState::create();
     mpFilterState->setProgram(mpFilterProgram);
     mpFilterVars = ComputeVars::create(mpFilterProgram.get());

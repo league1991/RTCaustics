@@ -46,15 +46,15 @@ shared cbuffer PerFrameCB
 
     int minNeighbourCount;
 };
-
-struct DrawArguments
-{
-    uint indexCountPerInstance;
-    uint instanceCount;
-    uint startIndexLocation;
-    int  baseVertexLocation;
-    uint startInstanceLocation;
-};
+//
+//struct DrawArguments
+//{
+//    uint indexCountPerInstance;
+//    uint instanceCount;
+//    uint startIndexLocation;
+//    int  baseVertexLocation;
+//    uint startInstanceLocation;
+//};
 
 StructuredBuffer<Photon> gSrcPhotonBuffer;
 RWStructuredBuffer<Photon> gDstPhotonBuffer;

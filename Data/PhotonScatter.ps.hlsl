@@ -25,9 +25,9 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
-__import ShaderCommon;
-__import Shading;
-__import DefaultVS;
+//__import ShaderCommon;
+//__import Shading;
+//__import DefaultVS;
 
 #include "Common.hlsl"
 
@@ -319,7 +319,7 @@ PhotonVSOut photonScatterVS(PhotonVSIn vIn)
     if (gShowPhoton == SHOW_PHOTON_SHADED)
     {
         float3 surfNormal = normalize(tangent * vIn.normal.x + bitangent * vIn.normal.z + normal * vIn.normal.y* gSplatSize);
-        vOut.color = float4(abs(dot(float3(1,1,1), surfNormal)), 1);
+        vOut.color = float4(abs(dot(float3(1,1,1), surfNormal)).xxx, 1);
     }
     else
         vOut.color = float4(color, 1);

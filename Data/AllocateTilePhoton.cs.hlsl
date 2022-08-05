@@ -26,7 +26,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
 
-__import ShaderCommon;
+//__import ShaderCommon;
 
 #include "Common.hlsl"
 
@@ -175,7 +175,7 @@ bool orthogonalizeFrame(float3 a, float3 b, out float3 orthoA, out float3 orthoB
 void OrthogonalizePhoton(uint3 threadIdx : SV_DispatchThreadID)
 {
     int photonID = threadIDToPhotonID(threadIdx);
-    if (photonID >= gDrawArgument[0].instanceCount)
+    if (photonID >= gDrawArgument[0].InstanceCount)
     {
         return;
     }
@@ -195,7 +195,7 @@ void OrthogonalizePhoton(uint3 threadIdx : SV_DispatchThreadID)
 void CountTilePhoton(uint3 threadIdx : SV_DispatchThreadID)
 {
     int photonID = threadIDToPhotonID(threadIdx);
-    if (photonID >= gDrawArgument[0].instanceCount)
+    if (photonID >= gDrawArgument[0].InstanceCount)
     {
         return;
     }
@@ -244,7 +244,7 @@ void AllocateMemory(uint3 threadIdx : SV_DispatchThreadID)
 void StoreTilePhoton(uint3 threadIdx : SV_DispatchThreadID)
 {
     int photonID = threadIDToPhotonID(threadIdx);
-    if (photonID >= gDrawArgument[0].instanceCount)
+    if (photonID >= gDrawArgument[0].InstanceCount)
     {
         return;
     }
