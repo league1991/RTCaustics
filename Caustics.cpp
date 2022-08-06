@@ -720,11 +720,11 @@ void Caustics::loadShader()
 
     //mpRtRenderer = RtSceneRenderer::create(mpScene);
 
-    mpRasterPass = RasterScenePass::create(mpScene, "Samples/Raytracing/Caustics/Data/Caustics.ps.hlsl", "", "main");
+    mpRasterPass = RasterScenePass::create(mpScene, "Samples/Raytracing/Caustics/Data/Caustics.ps.hlsl", "vsMain", "psMain");
 
-    mpGPass = RasterScenePass::create(mpScene, "GPass.ps.hlsl", "", "gpassPS");
+    mpGPass = RasterScenePass::create(mpScene, "Samples/Raytracing/Caustics/Data/GPass.ps.hlsl", "", "gpassPS");
 
-    mpCompositePass = FullScreenPass::create("Composite.ps.hlsl");
+    mpCompositePass = FullScreenPass::create("Samples/Raytracing/Caustics/Data/Composite.ps.hlsl");
 
     Sampler::Desc samplerDesc;
     samplerDesc.setFilterMode(Sampler::Filter::Linear, Sampler::Filter::Linear, Sampler::Filter::Linear);
