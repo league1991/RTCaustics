@@ -720,11 +720,16 @@ void Caustics::loadShader()
 
     //mpRtRenderer = RtSceneRenderer::create(mpScene);
 
+    // Get type conformances for types used by the scene.
+    // These need to be set on the program in order to fully use Falcor's material system.
+    auto typeConformances = mpScene->getTypeConformances();
+
     mpRasterPass = RasterScenePass::create(mpScene, "Samples/Raytracing/Caustics/Data/Caustics.ps.hlsl", "vsMain", "psMain");
 
-    mpGPass = RasterScenePass::create(mpScene, "Samples/Raytracing/Caustics/Data/GPass.ps.hlsl", "", "gpassPS");
+    mpGPass = RasterScenePass::create(mpScene, "Samples/Raytracing/Caustics/Data/GPass.ps.hlsl", "vsMain", "gpassPS");
+    mpGPass->getProgram()->setTypeConformances(typeConformances);
 
-    mpCompositePass = FullScreenPass::create("Samples/Raytracing/Caustics/Data/Composite.ps.hlsl");
+    mpCompositePass = FullScreenPass::create("Samples/Raytracing/Caustics/Data/Composite.ps.hlsl", mpScene->getSceneDefines());
 
     Sampler::Desc samplerDesc;
     samplerDesc.setFilterMode(Sampler::Filter::Linear, Sampler::Filter::Linear, Sampler::Filter::Linear);

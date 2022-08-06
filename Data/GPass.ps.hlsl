@@ -25,9 +25,15 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
-__import ShaderCommon;
-__import Shading;
-__import DefaultVS;
+//__import ShaderCommon;
+//__import Shading;
+//__import DefaultVS;
+import Scene.Raster;
+import Utils.Sampling.TinyUniformSampleGenerator;
+import Utils.Math.MathHelpers;
+import Rendering.Lights.LightHelpers;
+//import GBufferHelpers;
+import Rendering.Materials.TexLODHelpers;
 
 struct GPassPsOut
 {
@@ -36,17 +42,29 @@ struct GPassPsOut
     float4 specular: SV_TARGET2;
 };
 
-GPassPsOut gpassPS(VertexOut vOut) : SV_TARGET
+VSOut vsMain(VSIn vIn)
 {
-    ShadingData sd = prepareShadingData(vOut, gMaterial, gCamera.posW);
+    return defaultVS(vIn);
+}
 
-    if (sd.opacity < 1)
+GPassPsOut gpassPS(VSOut vOut, uint triangleIndex : SV_PrimitiveID) : SV_TARGET
+{
+    let lod = ImplicitLodTextureSampler();
+    float3 viewDir = normalize(gScene.camera.getPosition() - vOut.posW);
+    ShadingData sd = prepareShadingData(vOut, triangleIndex, viewDir, lod);
+    //ShadingData sd = prepareShadingData(vOut, gMaterial, gCamera.posW);
+
+    // Create BSDF instance and query its properties.
+    let bsdf = gScene.materials.getBSDF(sd, lod);
+    let bsdfProperties = bsdf.getProperties(sd);
+
+    if (bsdfProperties.isTransmissive < 1)
     {
         discard;
     }
     GPassPsOut output;
     output.normal = float4(normalize(vOut.normalW.xyz), 1);
-    output.diffuse = float4(sd.diffuse, sd.linearRoughness);
-    output.specular = float4(sd.specular, sd.opacity);
+    output.diffuse = float4(bsdfProperties.diffuseReflectionAlbedo, bsdfProperties.roughness);
+    output.specular = float4(bsdfProperties.specularReflectionAlbedo, /*sd.opacity*/0.5);
     return output;
 }

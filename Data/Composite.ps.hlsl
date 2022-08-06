@@ -25,9 +25,12 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***************************************************************************/
-__import ShaderCommon;
-__import Shading;
-__import DefaultVS;
+//__import ShaderCommon;
+//__import Shading;
+//__import DefaultVS;
+import Scene.Raster;
+import Utils.Sampling.TinyUniformSampleGenerator;
+import Rendering.Lights.LightHelpers;
 
 #include "Common.hlsl"
 
@@ -87,7 +90,7 @@ cbuffer PerImageCB
     float gSmallPhotonColorScale;
 };
 
-float4 main(float2 texC  : TEXCOORD) : SV_TARGET
+float4 main(float2 texC  : TEXCOORD, uint triangleIndex : SV_PrimitiveID) : SV_TARGET
 {
     float depth = gDepthTex.Sample(gPointSampler, texC).r;
     float4 screenPnt = float4(texC * float2(2,-2) + float2(-1,1), depth, 1);
@@ -140,7 +143,7 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
             uint4 v = gRayCountQuadTree[offset];// .Load(int3(texelPos, gRayCountMip));
             uint sum = v.a;
             if (sum <= gMaxPixelArea)
-                color = float4(sum / gMaxPixelArea, 1);
+                color = float4((sum / gMaxPixelArea).xxx, 1);
             else
                 color = float4(1, 0, 1, 1);
         }
@@ -219,21 +222,28 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
     }
     else
     {
-        ShadingData sd = initShadingData();
+        let lod = ImplicitLodTextureSampler();
+        ShadingData sd = {};// initShadingData();
         sd.posW = worldPnt.xyz;
         sd.V = normalize(gCameraPos - sd.posW);
         sd.N = normalVal.xyz;
-        sd.NdotV = saturate(dot(sd.V, sd.N));
-        sd.linearRoughness = diffuseVal.a;
-        sd.roughness = sd.linearRoughness * sd.linearRoughness;
-        sd.specular = specularVal.xyz;
-        sd.diffuse = diffuseVal.rgb;
-        sd.opacity = specularVal.a;
+        sd.T = normalize(cross(sd.V, sd.N));
+        sd.B = normalize(cross(sd.T, sd.N));
+        sd.uv = texC;
+        sd.faceN = sd.N;
+        //sd.NdotV = saturate(dot(sd.V, sd.N));
+        //sd.linearRoughness = diffuseVal.a;
+        //sd.roughness = sd.linearRoughness * sd.linearRoughness;
+        //sd.specular = specularVal.xyz;
+        //sd.diffuse = diffuseVal.rgb;
+        //sd.opacity = specularVal.a;
         color = float4(0,0,0,1);
-        for (uint l = 0; l < gNumLights; l++)
+        for (uint l = 0; l < gScene.getLightCount(); l++)
         {
-            ShadingResult sr = evalMaterial(sd, gLightData[l], 1);
-            color.rgb += sr.color.rgb;
+            const LightData light = gScene.getLight(l);
+            float3 L = normalize(light.posW - sd.posW);
+            //ShadingResult sr = evalMaterial(sd, gLightData[l], 1);
+            color.rgb += diffuseVal.rgb * saturate(dot(L, sd.N));// sr.color.rgb;
         }
 
         float4 photonClr = gPhotonTex.Sample(gPointSampler, texC);
@@ -250,7 +260,7 @@ float4 main(float2 texC  : TEXCOORD) : SV_TARGET
         }
         else
         {
-            color.rgb += photonClr.rgb * sd.diffuse;
+            color.rgb += photonClr.rgb * diffuseVal.rgb;// sd.diffuse;
         }
     }
 
